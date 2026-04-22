@@ -35,41 +35,40 @@ const DEFENSE_TYPES = [
   { id: "defense", name: "Defense", resource: "fish" }
 ];
 
-// Bonus cost doubles each level: level N costs baseCost * 2^(N-1) per hour
 const BONUS_CONFIG = [
-  { name: "Stronger Minions",        resource: "wood",     maxLevel: 4, baseCost: 300, desc: "Minion Damage",
+  { name: "Stronger Minions",        resource: "wood",     maxLevel: 4, costs: [0, 200, 400, 800, 1600], desc: "Minion Damage",
     levels: ["+0%", "+150%", "+200%", "+250%", "+300%"] },
-  { name: "Tower Multi-Attacks",     resource: "fish",     maxLevel: 1, baseCost: 300, desc: "Max Targets",
+  { name: "Tower Multi-Attacks",     resource: "fish",     maxLevel: 1, costs: [0, 4800], desc: "Max Targets",
     levels: ["1 Target", "2 Targets"] },
-  { name: "Tower Aura",              resource: "crops",    maxLevel: 3, baseCost: 300, desc: "Frequency",
+  { name: "Tower Aura",              resource: "crops",    maxLevel: 3, costs: [0, 800, 1600, 3200], desc: "Frequency",
     levels: ["Disabled", "24s", "18s", "12s"] },
-  { name: "Tower Volley",            resource: "ore",      maxLevel: 3, baseCost: 300, desc: "Frequency",
+  { name: "Tower Volley",            resource: "ore",      maxLevel: 3, costs: [0, 200, 400, 800], desc: "Frequency",
     levels: ["Disabled", "20s", "15s", "10s"] },
-  { name: "Gathering Experience",    resource: "wood",     maxLevel: 8, baseCost: 300, desc: "Gathering XP",
+  { name: "Gathering Experience",    resource: "wood",     maxLevel: 8, costs: [0, 600, 1300, 2000, 2700, 3400, 5500, 10000, 20000], desc: "Gathering XP",
     levels: ["+0%", "+10%", "+20%", "+30%", "+40%", "+50%", "+60%", "+80%", "+100%"] },
-  { name: "Mob Experience",          resource: "fish",     maxLevel: 8, baseCost: 300, desc: "XP Bonus",
+  { name: "Mob Experience",          resource: "fish",     maxLevel: 8, costs: [0, 600, 1200, 1800, 2400, 3000, 5000, 10000, 20000], desc: "XP Bonus",
     levels: ["+0%", "+10%", "+20%", "+30%", "+40%", "+50%", "+60%", "+80%", "+100%"] },
-  { name: "Mob Damage",              resource: "crops",    maxLevel: 8, baseCost: 300, desc: "Damage Bonus",
+  { name: "Mob Damage",              resource: "crops",    maxLevel: 8, costs: [0, 600, 1200, 1800, 2400, 3000, 5000, 10000, 20000], desc: "Damage Bonus",
     levels: ["+0%", "+10%", "+20%", "+40%", "+60%", "+80%", "+120%", "+160%", "+200%"] },
-  { name: "PvP Damage",              resource: "ore",      maxLevel: 8, baseCost: 300, desc: "Damage Bonus",
+  { name: "PvP Damage",              resource: "ore",      maxLevel: 8, costs: [0, 600, 1200, 1800, 2400, 3000, 5000, 10000, 20000], desc: "Damage Bonus",
     levels: ["+0%", "+5%", "+10%", "+15%", "+20%", "+25%", "+40%", "+65%", "+80%"] },
-  { name: "XP Seeking",              resource: "emeralds", maxLevel: 9, baseCost: 300, desc: "Guild XP",
+  { name: "XP Seeking",              resource: "emeralds", maxLevel: 9, costs: [0, 100, 200, 400, 800, 1600, 3200, 6400, 9600, 12800], desc: "Guild XP",
     levels: ["+0/h", "+36K/h", "+66K/h", "+120K/h", "+228K/h", "+456K/h", "+900K/h", "+1.74M/h", "+2.58M/h", "+3.36M/h"] },
-  { name: "Tome Seeking",            resource: "fish",     maxLevel: 3, baseCost: 300, desc: "Drop Chance",
+  { name: "Tome Seeking",            resource: "fish",     maxLevel: 3, costs: [0, 400, 3200, 6400], desc: "Drop Chance",
     levels: ["0%/h", "0.15%/h", "1.2%/h", "2.4%/h"] },
-  { name: "Emerald Seeking",         resource: "wood",     maxLevel: 5, baseCost: 300, desc: "Drop Chance",
+  { name: "Emerald Seeking",         resource: "wood",     maxLevel: 5, costs: [0, 200, 800, 1600, 3200, 6400], desc: "Drop Chance",
     levels: ["0%/h", "0.3%/h", "3%/h", "6%/h", "12%/h", "24%/h"] },
-  { name: "Larger Resource Storage", resource: "emeralds", maxLevel: 6, baseCost: 300, desc: "Storage Bonus",
+  { name: "Larger Resource Storage", resource: "emeralds", maxLevel: 6, costs: [0, 400, 800, 2000, 5000, 16000, 48000], desc: "Storage Bonus",
     levels: ["+0%", "+100%", "+300%", "+700%", "+1400%", "+3300%", "+7900%"] },
-  { name: "Larger Emerald Storage",  resource: "wood",     maxLevel: 6, baseCost: 300, desc: "Storage Bonus",
+  { name: "Larger Emerald Storage",  resource: "wood",     maxLevel: 6, costs: [0, 200, 400, 1000, 2500, 8000, 24000], desc: "Storage Bonus",
     levels: ["+0%", "+100%", "+300%", "+700%", "+1400%", "+3300%", "+7900%"] },
-  { name: "Efficient Resources",     resource: "emeralds", maxLevel: 6, baseCost: 300, desc: "Gathering Bonus",
+  { name: "Efficient Resources",     resource: "emeralds", maxLevel: 6, costs: [0, 6000, 12000, 24000, 48000, 96000, 192000], desc: "Gathering Bonus",
     levels: ["+0%", "+50%", "+100%", "+150%", "+200%", "+250%", "+300%"] },
-  { name: "Efficient Emeralds",      resource: "ore",      maxLevel: 3, baseCost: 300, desc: "Emerald Bonus",
+  { name: "Efficient Emeralds",      resource: "ore",      maxLevel: 3, costs: [0, 2000, 8000, 32000], desc: "Emerald Bonus",
     levels: ["+0%", "+35%", "+100%", "+300%"] },
-  { name: "Resource Rate",           resource: "emeralds", maxLevel: 3, baseCost: 300, desc: "Gather Rate",
+  { name: "Resource Rate",           resource: "emeralds", maxLevel: 3, costs: [0, 6000, 18000, 32000], desc: "Gather Rate",
     levels: ["4s", "3s", "2s", "1s"] },
-  { name: "Emerald Rate",            resource: "crops",    maxLevel: 3, baseCost: 300, desc: "Gather Rate",
+  { name: "Emerald Rate",            resource: "crops",    maxLevel: 3, costs: [0, 2000, 8000, 32000], desc: "Gather Rate",
     levels: ["4s", "3s", "2s", "1s"] }
 ];
 
@@ -313,8 +312,7 @@ function drawConnections() {
       const c1 = territoryCenter(name);
       const c2 = territoryCenter(neighbor);
 
-      const bothAdded = addedTerritories[name] && addedTerritories[neighbor];
-      ctx.strokeStyle = bothAdded ? 'rgba(22,163,74,1)' : 'rgba(0,0,0,0.8)';
+      ctx.strokeStyle = 'rgba(0,0,0,0.8)';
       ctx.beginPath();
       ctx.moveTo(c1.x, c1.y);
       ctx.lineTo(c2.x, c2.y);
@@ -354,8 +352,8 @@ function drawTerritories() {
       ctx.fillRect(x, y, w, h);
     }
 
-    ctx.lineWidth = isHovered ? Math.max(1.5, scale * 1.5) : Math.max(0.5, scale * 0.8);
-    ctx.strokeStyle = isHQ ? '#fbbf24' : isAdded ? '#16a34a' : 'rgba(255,255,255,0.9)';
+    ctx.lineWidth = isAdded ? Math.max(1.0, scale * 1.2) : (isHovered ? Math.max(1.5, scale * 1.5) : Math.max(0.5, scale * 0.8));
+    ctx.strokeStyle = isHQ ? '#fbbf24' : isAdded ? '#22c55e' : '#ffffff';
     ctx.strokeRect(x, y, w, h);
 
     const cx = (p1.x + p2.x) / 2;
@@ -371,7 +369,7 @@ function drawTerritories() {
     if (scale > 0.25) {
       const fontSize = Math.min(14, Math.max(7, scale * 10));
       ctx.font = `${fontSize}px 'Segoe UI', sans-serif`;
-      ctx.fillStyle = isAdded ? '#fff' : 'rgba(255,255,255,0.75)';
+      ctx.fillStyle = isAdded ? '#fff' : 'rgba(255,255,255,0.95)';
       ctx.textAlign = 'center';
       ctx.textBaseline = isAdded && scale > 0.06 ? 'top' : 'middle';
       ctx.fillText(name, cx, isAdded && scale > 0.06 ? cy + fontSize * 0.8 : cy);
@@ -402,7 +400,11 @@ function showTooltip(mx, my, name) {
   if (st.hq) html += `<div style="color:#fbbf24;margin-bottom:6px;">⭐ Headquarters</div>`;
   if (stats) {
     html += `<div style="color:#64748b;font-size:11px;margin-bottom:6px;">
-      Rating: ${stats.rating} — HP ${fmt(stats.finalHp)} / DPS ${fmt(stats.dps)}<br>
+      Damage: ${fmt(stats.finalDmgMin)}-${fmt(stats.finalDmgMax)}<br>
+      Attack Speed: ${stats.atkSpd}x<br>
+      Health: ${fmt(stats.boostedHp)}<br>
+      Defense: ${stats.defPct}%<br>
+      Rating: ${stats.rating} — EHP ${fmt(stats.finalHp)} / DPS ${fmt(stats.dps)}<br>
       Conn. Bonus: +${Math.round((stats.mult - 1) * 100)}%</div>`;
   }
   html += `<div style="font-size:11px;color:#64748b;margin-bottom:4px;">Production / Consumption</div>`;
@@ -441,10 +443,9 @@ function zeroCosts() {
 }
 
 function calcBonusCostForLevel(bonusCfg, level) {
-  if (level === 0) return zeroCosts();
-  const cost = bonusCfg.baseCost * Math.pow(2, level - 1);
+  if (level === 0 || !bonusCfg.costs || level >= bonusCfg.costs.length) return zeroCosts();
   const result = zeroCosts();
-  result[bonusCfg.resource] = cost;
+  result[bonusCfg.resource] = bonusCfg.costs[level];
   return result;
 }
 
@@ -474,19 +475,33 @@ function calcTerritoryDefenseStats(name) {
   const dmgMax = DEFENSE_LEVEL_STATS[dLevel].damageMax;
   const atkSpd = DEFENSE_LEVEL_STATS[aLevel].attackSpeed;
 
-  const finalHp = Math.round(baseHp * mult);
+  const boostedHp = baseHp * mult;
+  const boostedHp = Math.round(baseHp * mult);
+  const finalHp = Math.round(boostedHp / (1 - defPct / 100));
+  const finalDmgMin = Math.round(dmgMin * mult);
+  const finalDmgMax = Math.round(dmgMax * mult);
   const avgDmg = (dmgMin + dmgMax) / 2;
   const finalAvgDmg = avgDmg * mult;
   const dps = Math.round(finalAvgDmg * atkSpd);
 
   const totalLevels = hLevel + dLevel + aLevel + defLevel;
+  const auraLevel = (st.bonuses || {})["Tower Aura"] || 0;
+  const volleyLevel = (st.bonuses || {})["Tower Volley"] || 0;
+  let difficulty = hLevel + dLevel + aLevel + defLevel;
+  difficulty += auraLevel > 0 ? auraLevel + 5 : -5;
+  difficulty += volleyLevel > 0 ? volleyLevel + 3 : -3;
+
   let rating = "Very Low";
   if (totalLevels >= 36) rating = "Very High";
   else if (totalLevels >= 27) rating = "High";
   else if (totalLevels >= 18) rating = "Medium";
   else if (totalLevels >= 9) rating = "Low";
+  if (difficulty >= 49) rating = "Very High";
+  else if (difficulty >= 31) rating = "High";
+  else if (difficulty >= 19) rating = "Medium";
+  else if (difficulty >= 6) rating = "Low";
 
-  return { finalHp, dps, defPct, rating, mult, connections };
+  return { finalHp, dps, defPct, rating, mult, connections, boostedHp, atkSpd, finalDmgMin, finalDmgMax };
 }
 
 function calcTerritoryProduction(name) {
@@ -723,8 +738,7 @@ function openModal(name) {
 
     const nameEl = document.createElement('div');
     nameEl.className = 'bonus-name';
-    nameEl.innerHTML = `<span title="${bcfg.desc}">${bcfg.name}</span>
-      <span class="bonus-cost">${RESOURCE_ICONS[bcfg.resource]} ${bcfg.baseCost}/hr base</span>`;
+    nameEl.innerHTML = `<span title="${bcfg.desc}">${bcfg.name}</span>`;
 
     const sel = document.createElement('select');
     sel.className = 'bonus-sel';
@@ -739,7 +753,7 @@ function openModal(name) {
       if (lv === 0) {
         opt.textContent = `Lv 0: ${effText} (Free)`;
       } else {
-        const cost = bcfg.baseCost * Math.pow(2, lv - 1);
+        const cost = bcfg.costs[lv];
         opt.textContent = `Lv ${lv}: ${effText} (${RESOURCE_ICONS[bcfg.resource]}${fmt(cost)}/hr)`;
       }
       if (lv === level) opt.selected = true;
@@ -780,7 +794,11 @@ function updateModalStats() {
 
   let html = '';
   if (stats) {
-    html += `<div class="stat-line"><span class="stat-label">Rating</span><span>${stats.rating} — HP ${fmt(stats.finalHp)} / DPS ${fmt(stats.dps)}</span></div>`;
+    html += `<div class="stat-line"><span class="stat-label">Damage</span><span>${fmt(stats.finalDmgMin)}-${fmt(stats.finalDmgMax)}</span></div>`;
+    html += `<div class="stat-line"><span class="stat-label">Attack Speed</span><span>${stats.atkSpd}x</span></div>`;
+    html += `<div class="stat-line"><span class="stat-label">Health</span><span>${fmt(stats.boostedHp)}</span></div>`;
+    html += `<div class="stat-line"><span class="stat-label">Defense</span><span>${stats.defPct}%</span></div>`;
+    html += `<div class="stat-line"><span class="stat-label">Rating</span><span>${stats.rating} — EHP ${fmt(stats.finalHp)} / DPS ${fmt(stats.dps)}</span></div>`;
   }
   if (isHQ) html += `<div class="stat-line"><span class="stat-label">Role</span><span style="color:#fbbf24;">⭐ Headquarters</span></div>`;
   html += `<hr style="border-color:#334155;margin:6px 0;">`;
