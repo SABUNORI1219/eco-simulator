@@ -62,9 +62,8 @@ let hoveredTerritory = null;
 //  COORDINATE TRANSFORMS
 // ═══════════════════════════════════════════════════════════
 function gameToImage(gx, gy) {
-  const ix = (gx - MAP_CONFIG.gameMinX) / (MAP_CONFIG.gameMaxX - MAP_CONFIG.gameMinX) * MAP_CONFIG.imageWidth;
-  const iy = (gy - MAP_CONFIG.gameMaxY) / (MAP_CONFIG.gameMinY - MAP_CONFIG.gameMaxY) * MAP_CONFIG.imageHeight;
-  return { x: ix, y: iy };
+  // Offset transform verified against Python map_renderer.py: pixel = game + offset
+  return { x: gx + 2560, y: gy + 6632 };
 }
 
 function imageToCanvas(ix, iy) {
@@ -79,9 +78,7 @@ function gameToCanvas(gx, gy) {
 function canvasToGame(cx, cy) {
   const ix = (cx - panX) / scale;
   const iy = (cy - panY) / scale;
-  const gx = ix / MAP_CONFIG.imageWidth * (MAP_CONFIG.gameMaxX - MAP_CONFIG.gameMinX) + MAP_CONFIG.gameMinX;
-  const gy = iy / MAP_CONFIG.imageHeight * (MAP_CONFIG.gameMinY - MAP_CONFIG.gameMaxY) + MAP_CONFIG.gameMaxY;
-  return { x: gx, y: gy };
+  return { x: ix - 2560, y: iy - 6632 };
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -267,7 +264,7 @@ function draw() {
 function drawConnections() {
   const drawn = new Set();
   ctx.save();
-  ctx.lineWidth = Math.max(0.5, scale * 0.5);
+  ctx.lineWidth = Math.max(1, scale * 3);
 
   for (const [name, t] of Object.entries(territories)) {
     if (!t['Trading Routes']) continue;
@@ -282,7 +279,7 @@ function drawConnections() {
       const c2 = territoryCenter(neighbor);
 
       const bothAdded = addedTerritories[name] && addedTerritories[neighbor];
-      ctx.strokeStyle = bothAdded ? 'rgba(74,222,128,0.6)' : 'rgba(148,163,184,0.15)';
+      ctx.strokeStyle = bothAdded ? 'rgba(74,222,128,0.75)' : 'rgba(255,255,255,0.4)';
       ctx.beginPath();
       ctx.moveTo(c1.x, c1.y);
       ctx.lineTo(c2.x, c2.y);
@@ -308,7 +305,7 @@ function drawTerritories() {
     const isHQ = isAdded && addedTerritories[name].hq;
     const isHovered = name === hoveredTerritory;
 
-    if (!isAdded && scale < 0.15) continue;
+    if (!isAdded && scale < 0.05) continue;
 
     if (isAdded) {
       ctx.fillStyle = isHQ
