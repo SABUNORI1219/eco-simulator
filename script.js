@@ -11,31 +11,66 @@ const MAP_CONFIG = {
   gameMaxY: -200,   // north (top of map)
 };
 
-const DEFENSE_CONFIG = {
-  "Very Low": { hp: "300,000",    dps: "500",    cost: { emeralds: 0,     ore: 0, crops: 0, fish: 0, wood: 0 } },
-  "Low":      { hp: "750,000",    dps: "1,500",  cost: { emeralds: 300,   ore: 0, crops: 0, fish: 0, wood: 0 } },
-  "Medium":   { hp: "2,000,000",  dps: "4,000",  cost: { emeralds: 1500,  ore: 0, crops: 0, fish: 0, wood: 0 } },
-  "High":     { hp: "6,000,000",  dps: "10,000", cost: { emeralds: 7500,  ore: 0, crops: 0, fish: 0, wood: 0 } },
-  "Very High":{ hp: "18,000,000", dps: "25,000", cost: { emeralds: 30000, ore: 0, crops: 0, fish: 0, wood: 0 } },
-};
+const DEFENSE_LEVEL_STATS = [
+  { health: 300000,  defense: 10.0, damageMin: 1000, damageMax: 1500, attackSpeed: 0.5 },
+  { health: 450000,  defense: 40.0, damageMin: 1400, damageMax: 2100, attackSpeed: 0.75 },
+  { health: 600000,  defense: 55.0, damageMin: 1800, damageMax: 2700, attackSpeed: 1.0 },
+  { health: 750000,  defense: 62.5, damageMin: 2200, damageMax: 3300, attackSpeed: 1.25 },
+  { health: 960000,  defense: 70.0, damageMin: 2600, damageMax: 3900, attackSpeed: 1.6 },
+  { health: 1200000, defense: 75.0, damageMin: 3000, damageMax: 4500, attackSpeed: 2.0 },
+  { health: 1500000, defense: 79.0, damageMin: 3400, damageMax: 5100, attackSpeed: 2.5 },
+  { health: 1800000, defense: 82.0, damageMin: 3800, damageMax: 5700, attackSpeed: 3.0 },
+  { health: 2160000, defense: 84.0, damageMin: 4200, damageMax: 6300, attackSpeed: 3.6 },
+  { health: 2280000, defense: 86.0, damageMin: 4600, damageMax: 6900, attackSpeed: 3.8 },
+  { health: 2580000, defense: 88.0, damageMin: 5000, damageMax: 7500, attackSpeed: 4.2 },
+  { health: 2820000, defense: 90.0, damageMin: 5400, damageMax: 8100, attackSpeed: 4.7 }
+];
+
+const DEFENSE_COST_TABLE = [0, 100, 300, 600, 1200, 2400, 4800, 8400, 12000, 15600, 19200, 22800];
+
+const DEFENSE_TYPES = [
+  { id: "damage", name: "Damage", resource: "ore" },
+  { id: "attack", name: "Attack Speed", resource: "crops" },
+  { id: "health", name: "Health", resource: "wood" },
+  { id: "defense", name: "Defense", resource: "fish" }
+];
 
 // Bonus cost doubles each level: level N costs baseCost * 2^(N-1) per hour
 const BONUS_CONFIG = [
-  { name: "Stronger Minions", resource: "emeralds", baseCost: 300, productionBonus: 0,   desc: "Strengthens territory guards" },
-  { name: "Tower Aura",       resource: "emeralds", baseCost: 300, productionBonus: 0,   desc: "Adds aura damage to tower" },
-  { name: "Tower Volley",     resource: "emeralds", baseCost: 300, productionBonus: 0,   desc: "Adds volley attack to tower" },
-  { name: "Gather XP Bonus",  resource: "wood",     baseCost: 300, productionBonus: 0,   desc: "Increases gather XP" },
-  { name: "Mob XP Bonus",     resource: "ore",      baseCost: 300, productionBonus: 0,   desc: "Increases mob kill XP" },
-  { name: "Mob Damage",       resource: "emeralds", baseCost: 300, productionBonus: 0,   desc: "Increases mob damage" },
-  { name: "PvP Damage",       resource: "emeralds", baseCost: 300, productionBonus: 0,   desc: "Increases PvP damage" },
-  { name: "XP Seeking",       resource: "emeralds", baseCost: 300, productionBonus: 0,   desc: "Better XP drops" },
-  { name: "Tome Seeking",     resource: "fish",     baseCost: 300, productionBonus: 0,   desc: "Better tome drops" },
-  { name: "Emerald Seeking",  resource: "wood",     baseCost: 300, productionBonus: 0,   desc: "Better emerald drops" },
-  { name: "Emerald Rate",     resource: "emeralds", baseCost: 300, productionBonus: 0.2, desc: "+20%/level emerald production" },
-  { name: "Ore Rate",         resource: "ore",      baseCost: 300, productionBonus: 0.2, desc: "+20%/level ore production" },
-  { name: "Crop Rate",        resource: "crops",    baseCost: 300, productionBonus: 0.2, desc: "+20%/level crop production" },
-  { name: "Fish Rate",        resource: "fish",     baseCost: 300, productionBonus: 0.2, desc: "+20%/level fish production" },
-  { name: "Wood Rate",        resource: "wood",     baseCost: 300, productionBonus: 0.2, desc: "+20%/level wood production" },
+  { name: "Stronger Minions",        resource: "wood",     maxLevel: 4, baseCost: 300, desc: "Minion Damage",
+    levels: ["+0%", "+150%", "+200%", "+250%", "+300%"] },
+  { name: "Tower Multi-Attacks",     resource: "fish",     maxLevel: 1, baseCost: 300, desc: "Max Targets",
+    levels: ["1 Target", "2 Targets"] },
+  { name: "Tower Aura",              resource: "crops",    maxLevel: 3, baseCost: 300, desc: "Frequency",
+    levels: ["Disabled", "24s", "18s", "12s"] },
+  { name: "Tower Volley",            resource: "ore",      maxLevel: 3, baseCost: 300, desc: "Frequency",
+    levels: ["Disabled", "20s", "15s", "10s"] },
+  { name: "Gathering Experience",    resource: "wood",     maxLevel: 8, baseCost: 300, desc: "Gathering XP",
+    levels: ["+0%", "+10%", "+20%", "+30%", "+40%", "+50%", "+60%", "+80%", "+100%"] },
+  { name: "Mob Experience",          resource: "fish",     maxLevel: 8, baseCost: 300, desc: "XP Bonus",
+    levels: ["+0%", "+10%", "+20%", "+30%", "+40%", "+50%", "+60%", "+80%", "+100%"] },
+  { name: "Mob Damage",              resource: "crops",    maxLevel: 8, baseCost: 300, desc: "Damage Bonus",
+    levels: ["+0%", "+10%", "+20%", "+40%", "+60%", "+80%", "+120%", "+160%", "+200%"] },
+  { name: "PvP Damage",              resource: "ore",      maxLevel: 8, baseCost: 300, desc: "Damage Bonus",
+    levels: ["+0%", "+5%", "+10%", "+15%", "+20%", "+25%", "+40%", "+65%", "+80%"] },
+  { name: "XP Seeking",              resource: "emeralds", maxLevel: 9, baseCost: 300, desc: "Guild XP",
+    levels: ["+0/h", "+36K/h", "+66K/h", "+120K/h", "+228K/h", "+456K/h", "+900K/h", "+1.74M/h", "+2.58M/h", "+3.36M/h"] },
+  { name: "Tome Seeking",            resource: "fish",     maxLevel: 3, baseCost: 300, desc: "Drop Chance",
+    levels: ["0%/h", "0.15%/h", "1.2%/h", "2.4%/h"] },
+  { name: "Emerald Seeking",         resource: "wood",     maxLevel: 5, baseCost: 300, desc: "Drop Chance",
+    levels: ["0%/h", "0.3%/h", "3%/h", "6%/h", "12%/h", "24%/h"] },
+  { name: "Larger Resource Storage", resource: "emeralds", maxLevel: 6, baseCost: 300, desc: "Storage Bonus",
+    levels: ["+0%", "+100%", "+300%", "+700%", "+1400%", "+3300%", "+7900%"] },
+  { name: "Larger Emerald Storage",  resource: "wood",     maxLevel: 6, baseCost: 300, desc: "Storage Bonus",
+    levels: ["+0%", "+100%", "+300%", "+700%", "+1400%", "+3300%", "+7900%"] },
+  { name: "Efficient Resources",     resource: "emeralds", maxLevel: 6, baseCost: 300, desc: "Gathering Bonus",
+    levels: ["+0%", "+50%", "+100%", "+150%", "+200%", "+250%", "+300%"] },
+  { name: "Efficient Emeralds",      resource: "ore",      maxLevel: 3, baseCost: 300, desc: "Emerald Bonus",
+    levels: ["+0%", "+35%", "+100%", "+300%"] },
+  { name: "Resource Rate",           resource: "emeralds", maxLevel: 3, baseCost: 300, desc: "Gather Rate",
+    levels: ["4s", "3s", "2s", "1s"] },
+  { name: "Emerald Rate",            resource: "crops",    maxLevel: 3, baseCost: 300, desc: "Gather Rate",
+    levels: ["4s", "3s", "2s", "1s"] }
 ];
 
 const RESOURCES = ['emeralds', 'ore', 'crops', 'fish', 'wood'];
@@ -279,7 +314,7 @@ function drawConnections() {
       const c2 = territoryCenter(neighbor);
 
       const bothAdded = addedTerritories[name] && addedTerritories[neighbor];
-      ctx.strokeStyle = bothAdded ? 'rgba(74,222,128,0.75)' : 'rgba(255,255,255,0.4)';
+      ctx.strokeStyle = bothAdded ? 'rgba(22,163,74,1)' : 'rgba(0,0,0,0.8)';
       ctx.beginPath();
       ctx.moveTo(c1.x, c1.y);
       ctx.lineTo(c2.x, c2.y);
@@ -320,7 +355,7 @@ function drawTerritories() {
     }
 
     ctx.lineWidth = isHovered ? Math.max(1.5, scale * 1.5) : Math.max(0.5, scale * 0.8);
-    ctx.strokeStyle = isHQ ? '#fbbf24' : isAdded ? '#4ade80' : 'rgba(255,255,255,0.35)';
+    ctx.strokeStyle = isHQ ? '#fbbf24' : isAdded ? '#16a34a' : 'rgba(255,255,255,0.9)';
     ctx.strokeRect(x, y, w, h);
 
     const cx = (p1.x + p2.x) / 2;
@@ -336,7 +371,7 @@ function drawTerritories() {
     if (scale > 0.25) {
       const fontSize = Math.min(14, Math.max(7, scale * 10));
       ctx.font = `${fontSize}px 'Segoe UI', sans-serif`;
-      ctx.fillStyle = isAdded ? '#fff' : 'rgba(255,255,255,0.6)';
+      ctx.fillStyle = isAdded ? '#fff' : 'rgba(255,255,255,0.75)';
       ctx.textAlign = 'center';
       ctx.textBaseline = isAdded && scale > 0.06 ? 'top' : 'middle';
       ctx.fillText(name, cx, isAdded && scale > 0.06 ? cy + fontSize * 0.8 : cy);
@@ -361,11 +396,15 @@ function showTooltip(mx, my, name) {
   const prod = calcTerritoryProduction(name);
   const cons = calcTerritoryConsumption(name);
   const st = addedTerritories[name];
-  const def = DEFENSE_CONFIG[st.defense] || DEFENSE_CONFIG["Very Low"];
+  const stats = calcTerritoryDefenseStats(name);
 
   let html = `<h4>${name}</h4>`;
   if (st.hq) html += `<div style="color:#fbbf24;margin-bottom:6px;">⭐ Headquarters</div>`;
-  html += `<div style="color:#64748b;font-size:11px;margin-bottom:6px;">Defense: ${st.defense} — HP ${def.hp} / DPS ${def.dps}</div>`;
+  if (stats) {
+    html += `<div style="color:#64748b;font-size:11px;margin-bottom:6px;">
+      Rating: ${stats.rating} — HP ${fmt(stats.finalHp)} / DPS ${fmt(stats.dps)}<br>
+      Conn. Bonus: +${Math.round((stats.mult - 1) * 100)}%</div>`;
+  }
   html += `<div style="font-size:11px;color:#64748b;margin-bottom:4px;">Production / Consumption</div>`;
 
   for (const r of RESOURCES) {
@@ -409,6 +448,47 @@ function calcBonusCostForLevel(bonusCfg, level) {
   return result;
 }
 
+function calcTerritoryDefenseStats(name) {
+  const st = addedTerritories[name];
+  if (!st || !st.defense) return null;
+  const t = territories[name];
+  if (!t) return null;
+
+  let connections = 0;
+  if (t['Trading Routes']) {
+    for (const route of t['Trading Routes']) {
+      if (addedTerritories[route]) connections++;
+    }
+  }
+
+  const mult = 1.0 + (0.3 * connections);
+  
+  const hLevel = st.defense.health || 0;
+  const dLevel = st.defense.damage || 0;
+  const aLevel = st.defense.attack || 0;
+  const defLevel = st.defense.defense || 0;
+
+  const baseHp = DEFENSE_LEVEL_STATS[hLevel].health;
+  const defPct = DEFENSE_LEVEL_STATS[defLevel].defense;
+  const dmgMin = DEFENSE_LEVEL_STATS[dLevel].damageMin;
+  const dmgMax = DEFENSE_LEVEL_STATS[dLevel].damageMax;
+  const atkSpd = DEFENSE_LEVEL_STATS[aLevel].attackSpeed;
+
+  const finalHp = Math.round(baseHp * mult);
+  const avgDmg = (dmgMin + dmgMax) / 2;
+  const finalAvgDmg = avgDmg * mult;
+  const dps = Math.round(finalAvgDmg * atkSpd);
+
+  const totalLevels = hLevel + dLevel + aLevel + defLevel;
+  let rating = "Very Low";
+  if (totalLevels >= 36) rating = "Very High";
+  else if (totalLevels >= 27) rating = "High";
+  else if (totalLevels >= 18) rating = "Medium";
+  else if (totalLevels >= 9) rating = "Low";
+
+  return { finalHp, dps, defPct, rating, mult, connections };
+}
+
 function calcTerritoryProduction(name) {
   const t = territories[name];
   if (!t) return zeroCosts();
@@ -416,15 +496,27 @@ function calcTerritoryProduction(name) {
   for (const r of RESOURCES) base[r] = parseFloat(t.resources[r] || 0);
 
   const st = addedTerritories[name];
-  if (!st) return base;
+  if (!st || !st.bonuses) return base;
 
+  const effEmLevel = st.bonuses["Efficient Emeralds"] || 0;
+  const rateEmLevel = st.bonuses["Emerald Rate"] || 0;
+  const effResLevel = st.bonuses["Efficient Resources"] || 0;
+  const rateResLevel = st.bonuses["Resource Rate"] || 0;
+
+  const effEmMult = 1 + [0, 0.35, 1.0, 3.0][effEmLevel];
+  const rateEmSec = [4, 3, 2, 1][rateEmLevel];
+  const rateEmMult = 4 / rateEmSec;
+
+  const effResMult = 1 + [0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0][effResLevel];
+  const rateResSec = [4, 3, 2, 1][rateResLevel];
+  const rateResMult = 4 / rateResSec;
+  
   const result = { ...base };
-  for (const bcfg of BONUS_CONFIG) {
-    if (bcfg.productionBonus === 0) continue;
-    const level = (st.bonuses || {})[bcfg.name] || 0;
-    if (level === 0) continue;
-    result[bcfg.resource] = Math.round(base[bcfg.resource] * (1 + bcfg.productionBonus * level));
+  result.emeralds = Math.round(base.emeralds * effEmMult * rateEmMult);
+  for (const r of ['ore', 'crops', 'wood', 'fish']) {
+    result[r] = Math.round(base[r] * effResMult * rateResMult);
   }
+
   return result;
 }
 
@@ -434,8 +526,12 @@ function calcTerritoryConsumption(name) {
 
   const result = zeroCosts();
 
-  const def = DEFENSE_CONFIG[st.defense] || DEFENSE_CONFIG["Very Low"];
-  for (const r of RESOURCES) result[r] += def.cost[r] || 0;
+  if (st.defense) {
+    for (const dt of DEFENSE_TYPES) {
+      const level = st.defense[dt.id] || 0;
+      result[dt.resource] += DEFENSE_COST_TABLE[level] || 0;
+    }
+  }
 
   for (const bcfg of BONUS_CONFIG) {
     const level = (st.bonuses || {})[bcfg.name] || 0;
@@ -541,7 +637,7 @@ function escapeHtml(s) {
 function addTerritory(name) {
   if (!territories[name]) return;
   if (!addedTerritories[name]) {
-    addedTerritories[name] = { defense: 'Very Low', bonuses: {}, hq: false };
+    addedTerritories[name] = { defense: { damage: 0, attack: 0, health: 0, defense: 0 }, bonuses: {}, hq: false };
   }
   refreshUI();
 }
@@ -591,8 +687,34 @@ function openModal(name) {
   currentModalTerritory = name;
   const st = addedTerritories[name];
   document.getElementById('modal-title').textContent = name;
-  document.getElementById('modal-defense').value = st.defense || 'Very Low';
   document.getElementById('modal-hq').checked = !!st.hq;
+
+  const defGrid = document.getElementById('defense-grid');
+  defGrid.innerHTML = '';
+  for (const dt of DEFENSE_TYPES) {
+    const level = (st.defense || {})[dt.id] || 0;
+    
+    const nameEl = document.createElement('div');
+    nameEl.className = 'bonus-name';
+    nameEl.innerHTML = `<span>${dt.name}</span><span class="bonus-cost">${RESOURCE_ICONS[dt.resource]}</span>`;
+    
+    const sel = document.createElement('select');
+    sel.className = 'defense-sel';
+    sel.dataset.defId = dt.id;
+    
+    for (let lv = 0; lv <= 11; lv++) {
+      const opt = document.createElement('option');
+      opt.value = lv;
+      const cost = DEFENSE_COST_TABLE[lv];
+      opt.textContent = lv === 0 ? 'Lv 0 (Free)' : `Lv ${lv} (${RESOURCE_ICONS[dt.resource]}${fmt(cost)}/hr)`;
+      if (lv === level) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    sel.addEventListener('change', updateModalStats);
+    
+    defGrid.appendChild(nameEl);
+    defGrid.appendChild(sel);
+  }
 
   const grid = document.getElementById('bonus-grid');
   grid.innerHTML = '';
@@ -607,14 +729,18 @@ function openModal(name) {
     const sel = document.createElement('select');
     sel.className = 'bonus-sel';
     sel.dataset.bonus = bcfg.name;
-    for (let lv = 0; lv <= 11; lv++) {
+    
+    const maxLv = bcfg.maxLevel || 11;
+    for (let lv = 0; lv <= maxLv; lv++) {
       const opt = document.createElement('option');
       opt.value = lv;
+      
+      const effText = bcfg.levels ? bcfg.levels[lv] : `Lv ${lv}`;
       if (lv === 0) {
-        opt.textContent = 'Off';
+        opt.textContent = `Lv 0: ${effText} (Free)`;
       } else {
         const cost = bcfg.baseCost * Math.pow(2, lv - 1);
-        opt.textContent = `Lv ${lv} (${RESOURCE_ICONS[bcfg.resource]}${fmt(cost)}/hr)`;
+        opt.textContent = `Lv ${lv}: ${effText} (${RESOURCE_ICONS[bcfg.resource]}${fmt(cost)}/hr)`;
       }
       if (lv === level) opt.selected = true;
       sel.appendChild(opt);
@@ -633,7 +759,10 @@ function updateModalStats() {
   const name = currentModalTerritory;
   if (!name) return;
 
-  const defense = document.getElementById('modal-defense').value;
+  const defense = {};
+  document.querySelectorAll('.defense-sel').forEach(sel => {
+    defense[sel.dataset.defId] = parseInt(sel.value) || 0;
+  });
   const isHQ = document.getElementById('modal-hq').checked;
   const bonuses = {};
   document.querySelectorAll('.bonus-sel').forEach(sel => {
@@ -645,11 +774,14 @@ function updateModalStats() {
 
   const prod = calcTerritoryProduction(name);
   const cons = calcTerritoryConsumption(name);
-  const def = DEFENSE_CONFIG[defense] || DEFENSE_CONFIG["Very Low"];
+  const stats = calcTerritoryDefenseStats(name);
 
   addedTerritories[name] = orig;
 
-  let html = `<div class="stat-line"><span class="stat-label">Defense</span><span>${defense} — HP ${def.hp} / DPS ${def.dps}</span></div>`;
+  let html = '';
+  if (stats) {
+    html += `<div class="stat-line"><span class="stat-label">Rating</span><span>${stats.rating} — HP ${fmt(stats.finalHp)} / DPS ${fmt(stats.dps)}</span></div>`;
+  }
   if (isHQ) html += `<div class="stat-line"><span class="stat-label">Role</span><span style="color:#fbbf24;">⭐ Headquarters</span></div>`;
   html += `<hr style="border-color:#334155;margin:6px 0;">`;
 
@@ -669,7 +801,10 @@ function updateModalStats() {
 function saveModal() {
   const name = currentModalTerritory;
   if (!name) return;
-  const defense = document.getElementById('modal-defense').value;
+  const defense = {};
+  document.querySelectorAll('.defense-sel').forEach(sel => {
+    defense[sel.dataset.defId] = parseInt(sel.value) || 0;
+  });
   const isHQ = document.getElementById('modal-hq').checked;
   const bonuses = {};
   document.querySelectorAll('.bonus-sel').forEach(sel => {
