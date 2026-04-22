@@ -475,7 +475,6 @@ function calcTerritoryDefenseStats(name) {
   const dmgMax = DEFENSE_LEVEL_STATS[dLevel].damageMax;
   const atkSpd = DEFENSE_LEVEL_STATS[aLevel].attackSpeed;
 
-  const boostedHp = baseHp * mult;
   const boostedHp = Math.round(baseHp * mult);
   const finalHp = Math.round(boostedHp / (1 - defPct / 100));
   const finalDmgMin = Math.round(dmgMin * mult);
