@@ -118,6 +118,48 @@ button.danger:hover { background: #b91c1c; }
 #modal-stats .stat-line { display: flex; justify-content: space-between; margin-bottom: 4px; }
 #modal-stats .stat-label { color: #64748b; }
 
+/* Upgrade UI */
+#upgrade-header { font-size: 12px; color: #e2e8f0; margin-bottom: 6px; font-weight: 600; text-align: center; }
+.upgrade-container {
+  background-color: #988367;
+  padding: 16px 20px;
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+.upgrade-inner {
+  background-color: #C4AB79;
+  border-radius: 8px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.15);
+}
+.upgrade-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+}
+.upgrade-item {
+  position: relative;
+  cursor: pointer;
+  width: 44px;
+  height: 44px;
+  background-color: rgba(0,0,0,0.15);
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.1);
+  transition: transform 0.1s, background-color 0.1s;
+}
+.upgrade-item:hover { background-color: rgba(0,0,0,0.25); transform: translateY(-1px); border-color: rgba(255,255,255,0.3); }
+.upgrade-item img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; padding: 4px; }
+.upgrade-level {
+  position: absolute; bottom: -2px; right: 2px; color: #fff;
+  font-family: 'Minecraftia', sans-serif; font-size: 10px;
+  text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000; pointer-events: none;
+}
+#upgrade-desc { font-size: 11px; color: #94a3b8; margin-bottom: 14px; text-align: center; line-height: 1.4; }
+
 /* Tooltip */
 #tooltip {
   display: none; position: fixed; background: rgba(15,23,42,0.95);

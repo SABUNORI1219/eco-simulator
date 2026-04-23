@@ -381,7 +381,16 @@ function drawConnections() {
 
 function drawIcon(img, x, y, size) {
   if (img && img.complete && img.naturalWidth > 0) {
-    ctx.drawImage(img, x, y, size, size);
+    const aspect = img.naturalWidth / img.naturalHeight;
+    let w = size, h = size;
+    if (aspect > 1) {
+      h = size / aspect;
+    } else {
+      w = size * aspect;
+    }
+    const dx = x + (size - w) / 2;
+    const dy = y + (size - h) / 2;
+    ctx.drawImage(img, dx, dy, w, h);
   }
 }
 
@@ -1006,6 +1015,41 @@ function refreshUI() {
 // ═══════════════════════════════════════════════════════════
 //  MODAL
 // ═══════════════════════════════════════════════════════════
+function getDefConfig(id) { return DEFENSE_TYPES.find(d => d.id === id); }
+function getBonusConfig(name) { return BONUS_CONFIG.find(b => b.name === name); }
+
+const UPGRADE_LAYOUT = [
+  [
+    { type: 'def', id: 'damage', name: 'Damage' },
+    { type: 'def', id: 'attack', name: 'Attack Speed' },
+    { type: 'def', id: 'health', name: 'Health' },
+    { type: 'def', id: 'defense', name: 'Defense' }
+  ],
+  [
+    { type: 'bonus', name: 'Stronger Minions' },
+    { type: 'bonus', name: 'Tower Multi-Attacks' },
+    { type: 'bonus', name: 'Tower Aura' },
+    { type: 'bonus', name: 'Tower Volley' }
+  ],
+  [
+    { type: 'bonus', name: 'Gathering Experience' },
+    { type: 'bonus', name: 'Mob Experience' },
+    { type: 'bonus', name: 'Mob Damage' },
+    { type: 'bonus', name: 'PvP Damage' },
+    { type: 'bonus', name: 'XP Seeking' },
+    { type: 'bonus', name: 'Tome Seeking' },
+    { type: 'bonus', name: 'Emerald Seeking' }
+  ],
+  [
+    { type: 'bonus', name: 'Larger Resource Storage' },
+    { type: 'bonus', name: 'Larger Emerald Storage' },
+    { type: 'bonus', name: 'Efficient Resources' },
+    { type: 'bonus', name: 'Efficient Emeralds' },
+    { type: 'bonus', name: 'Resource Rate' },
+    { type: 'bonus', name: 'Emerald Rate' }
+  ]
+];
+
 function openModal(name, bulkNames = null) {
   const isBulk = bulkNames !== null;
   currentModalMode = isBulk ? 'bulk' : 'single';
@@ -1016,6 +1060,9 @@ function openModal(name, bulkNames = null) {
   document.getElementById('modal-title').textContent = isBulk
     ? `Editing ${bulkNames.length} territories`
     : name;
+
+  const count = isBulk ? bulkNames.length : 1;
+  document.getElementById('upgrade-header').textContent = `Upgrades and Bonuses for selected territory (${count})`;
   document.getElementById('modal-hq').checked = isBulk ? false : !!st.hq;
   document.getElementById('hq-section').style.display = isBulk ? 'none' : '';
   
@@ -1034,79 +1081,87 @@ function openModal(name, bulkNames = null) {
     treasurySel.value = st.treasury || 'Very Low';
   }
 
-  const defGrid = document.getElementById('defense-grid');
-  defGrid.innerHTML = '';
-  for (const dt of DEFENSE_TYPES) {
-    const level = (st.defense || {})[dt.id] || 0;
+  const upgradeInner = document.getElementById('upgrade-inner');
+  upgradeInner.innerHTML = '';
+  
+  for (const row of UPGRADE_LAYOUT) {
+    const rowEl = document.createElement('div');
+    rowEl.className = 'upgrade-row';
     
-    const nameEl = document.createElement('div');
-    nameEl.className = 'bonus-name';
-    nameEl.innerHTML = `<span>${dt.name}</span><span class="bonus-cost">${RESOURCE_ICONS[dt.resource]}</span>`;
-    
-    const sel = document.createElement('select');
-    sel.className = 'defense-sel';
-    sel.dataset.defId = dt.id;
-    
-    if (isBulk) {
-      const opt = document.createElement('option');
-      opt.value = "";
-      opt.textContent = "- No Change -";
-      sel.appendChild(opt);
-    }
-    
-    for (let lv = 0; lv <= 11; lv++) {
-      const opt = document.createElement('option');
-      opt.value = lv;
-      const cost = DEFENSE_COST_TABLE[lv];
-      opt.textContent = lv === 0 ? 'Lv 0 (Free)' : `Lv ${lv} (${fmt(cost)}/hr)`;
-      if (!isBulk && lv === level) opt.selected = true;
-      sel.appendChild(opt);
-    }
-    sel.addEventListener('change', updateModalStats);
-    
-    defGrid.appendChild(nameEl);
-    defGrid.appendChild(sel);
-  }
-
-  const grid = document.getElementById('bonus-grid');
-  grid.innerHTML = '';
-  for (const bcfg of BONUS_CONFIG) {
-    const level = (st.bonuses || {})[bcfg.name] || 0;
-
-    const nameEl = document.createElement('div');
-    nameEl.className = 'bonus-name';
-    nameEl.innerHTML = `<span title="${bcfg.desc}">${bcfg.name}</span><span class="bonus-cost">${RESOURCE_ICONS[bcfg.resource]}</span>`;
-
-    const sel = document.createElement('select');
-    sel.className = 'bonus-sel';
-    sel.dataset.bonus = bcfg.name;
-    
-    if (isBulk) {
-      const opt = document.createElement('option');
-      opt.value = "";
-      opt.textContent = "- No Change -";
-      sel.appendChild(opt);
-    }
-    
-    const maxLv = bcfg.maxLevel || 11;
-    for (let lv = 0; lv <= maxLv; lv++) {
-      const opt = document.createElement('option');
-      opt.value = lv;
+    for (const item of row) {
+      const itemEl = document.createElement('div');
+      itemEl.className = 'upgrade-item';
       
-      const effText = bcfg.levels ? bcfg.levels[lv] : `Lv ${lv}`;
-      if (lv === 0) {
-        opt.textContent = `Lv 0: ${effText} (Free)`;
+      let currentLevel = 0;
+      let maxLevel = 11;
+      let isBonus = item.type === 'bonus';
+      let cfg = null;
+      let displayName = item.name;
+      
+      if (isBonus) {
+        cfg = getBonusConfig(item.name);
+        currentLevel = (st.bonuses || {})[item.name] || 0;
+        maxLevel = cfg.maxLevel || 11;
       } else {
-        const cost = bcfg.costs[lv];
-        opt.textContent = `Lv ${lv}: ${effText} (${fmt(cost)}/hr)`;
+        cfg = getDefConfig(item.id);
+        currentLevel = (st.defense || {})[item.id] || 0;
+        displayName = cfg.name;
       }
-      if (!isBulk && lv === level) opt.selected = true;
-      sel.appendChild(opt);
+      
+      itemEl.title = `${displayName} (${cfg.resource} required)\nClick to change level`;
+      
+      const iconName = displayName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+      const iconPath = `./assets/icons/upgrades/${iconName}.png`;
+      
+      itemEl.innerHTML = `
+        <img src="${iconPath}" alt="${displayName}" onerror="this.src='./assets/icons/resources/emerald.png'">
+        <div class="upgrade-level">${isBulk ? '-' : currentLevel}</div>
+      `;
+      
+      const sel = document.createElement('select');
+      sel.className = isBonus ? 'bonus-sel' : 'defense-sel';
+      if (isBonus) sel.dataset.bonus = item.name;
+      else sel.dataset.defId = item.id;
+      sel.style.cssText = 'position:absolute; top:0; left:0; width:100%; height:100%; opacity:0; cursor:pointer; appearance:none; -webkit-appearance:none;';
+      
+      if (isBulk) {
+        const opt = document.createElement('option');
+        opt.value = "";
+        opt.textContent = "- No Change -";
+        sel.appendChild(opt);
+      }
+      
+      for (let lv = 0; lv <= maxLevel; lv++) {
+        const opt = document.createElement('option');
+        opt.value = lv;
+        
+        if (isBonus) {
+          const effText = cfg.levels ? cfg.levels[lv] : `Lv ${lv}`;
+          if (lv === 0) {
+            opt.textContent = `Lv 0: ${effText} (Free)`;
+          } else {
+            const cost = cfg.costs[lv];
+            opt.textContent = `Lv ${lv}: ${effText} (${fmt(cost)}/hr)`;
+          }
+        } else {
+          const cost = DEFENSE_COST_TABLE[lv];
+          opt.textContent = lv === 0 ? 'Lv 0 (Free)' : `Lv ${lv} (${fmt(cost)}/hr)`;
+        }
+        
+        if (!isBulk && lv === currentLevel) opt.selected = true;
+        sel.appendChild(opt);
+      }
+      
+      sel.addEventListener('change', (e) => {
+        const val = e.target.value;
+        itemEl.querySelector('.upgrade-level').textContent = val === "" ? "-" : val;
+        updateModalStats();
+      });
+      
+      itemEl.appendChild(sel);
+      rowEl.appendChild(itemEl);
     }
-    sel.addEventListener('change', updateModalStats);
-
-    grid.appendChild(nameEl);
-    grid.appendChild(sel);
+    upgradeInner.appendChild(rowEl);
   }
 
   updateModalStats();
