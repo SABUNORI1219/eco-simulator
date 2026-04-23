@@ -73,7 +73,13 @@ const BONUS_CONFIG = [
 ];
 
 const RESOURCES = ['emeralds', 'ore', 'crops', 'fish', 'wood'];
-const RESOURCE_ICONS  = { emeralds: '💎', ore: '⛏️', crops: '🌾', fish: '🐟', wood: '🪵' };
+const RESOURCE_ICONS  = {
+  emeralds: '<img src="./assets/icons/resources/emerald.png" class="res-icon-img" alt="emeralds">',
+  ore: '<img src="./assets/icons/resources/ore.png" class="res-icon-img" alt="ore">',
+  crops: '<img src="./assets/icons/resources/crop.png" class="res-icon-img" alt="crops">',
+  fish: '<img src="./assets/icons/resources/fish.png" class="res-icon-img" alt="fish">',
+  wood: '<img src="./assets/icons/resources/wood.png" class="res-icon-img" alt="wood">'
+};
 const RESOURCE_COLORS = { emeralds: '#4ade80', ore: '#94a3b8', crops: '#facc15', fish: '#38bdf8', wood: '#a16207' };
 
 // ═══════════════════════════════════════════════════════════
@@ -92,12 +98,15 @@ const resImages = {
   fish: new Image(),
   wood: new Image()
 };
+const hqImage = new Image();
 resImages.emeralds.src = './assets/icons/resources/emerald.png';
 resImages.ore.src = './assets/icons/resources/ore.png';
 resImages.crops.src = './assets/icons/resources/crop.png';
 resImages.fish.src = './assets/icons/resources/fish.png';
 resImages.wood.src = './assets/icons/resources/wood.png';
-Object.values(resImages).forEach(img => { img.onload = () => draw(); });
+hqImage.src = './assets/icons/other/guild_headquarter.png';
+const allImages = [...Object.values(resImages), hqImage];
+allImages.forEach(img => { img.onload = () => draw(); });
 
 // Pan/Zoom
 const canvas = document.getElementById('canvas');
@@ -432,6 +441,15 @@ function drawTerritories() {
     const cy = (p1.y + p2.y) / 2;
 
     if (scale > 0.25) {
+      const iconSize = Math.max(18, Math.min(36, scale * 18));
+      const gap = 2;
+      let textY = cy;
+
+      if (isHQ) {
+        const sy = cy - iconSize * 0.8;
+        drawIcon(hqImage, cx - iconSize / 2, sy, iconSize);
+        textY = sy + iconSize + gap + 2;
+      } else {
       const res = t.resources;
       const em = parseFloat(res.emeralds || 0);
       const ore = parseFloat(res.ore || 0);
@@ -449,10 +467,6 @@ function drawTerritories() {
         else if (fish > 0) mainRes = 'fish';
         else if (wood > 0) mainRes = 'wood';
       }
-
-      const iconSize = Math.max(14, Math.min(28, scale * 14));
-      const gap = 2;
-      let textY = cy;
 
       if (isRainbow) {
         // 虹資源地 (2x2 Grid)
@@ -487,8 +501,9 @@ function drawTerritories() {
           textY = cy; // 資源がない場合
         }
       }
+      }
 
-      const fontSize = Math.min(14, Math.max(7, scale * 10));
+      const fontSize = Math.min(18, Math.max(9, scale * 13));
       ctx.font = `${fontSize}px 'Minecraftia', sans-serif`;
       ctx.shadowBlur = 4;
       ctx.shadowColor = 'rgba(0,0,0,0.9)';
@@ -498,7 +513,7 @@ function drawTerritories() {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
 
-      const prefix = isHQ ? '⭐ ' : (isAdded ? '🏴 ' : '');
+      const prefix = isHQ ? '' : (isAdded ? '🏴 ' : '');
       const displayText = prefix + name;
 
       ctx.strokeText(displayText, cx, textY);
@@ -508,11 +523,17 @@ function drawTerritories() {
       ctx.shadowBlur = 0;
     } else if (isAdded && scale > 0.06) {
       // 引いた時の簡易表示
-      ctx.font = `${Math.max(12, scale * 16)}px serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText(isHQ ? '⭐' : '🏴', cx, cy);
+      if (isHQ) {
+        ctx.fillStyle = '#fbbf24';
+        const size = Math.max(8, scale * 50);
+        ctx.fillRect(cx - size / 2, cy - size / 2, size, size);
+      } else {
+        ctx.font = `${Math.max(12, scale * 16)}px serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText('🏴', cx, cy);
+      }
     }
   }
   ctx.restore();
@@ -537,7 +558,7 @@ function showTooltip(mx, my, name) {
   const stats = calcTerritoryDefenseStats(name);
 
   let html = `<h4>${name}</h4>`;
-  if (st.hq) html += `<div style="color:#fbbf24;margin-bottom:6px;">⭐ Headquarters</div>`;
+  if (st.hq) html += `<div style="color:#fbbf24;margin-bottom:6px;">Headquarters</div>`;
   if (stats) {
     html += `<div style="color:#64748b;font-size:11px;margin-bottom:6px;">
       Damage: ${fmtNum(stats.finalDmgMin)}-${fmtNum(stats.finalDmgMax)}<br>
@@ -852,7 +873,7 @@ function updateTerritoryList() {
     const isSel = listSelectedTerritories.has(name);
     const safeNameArg = escapeHtml(JSON.stringify(name));
     return `<div class="territory-item${isSel ? ' list-selected' : ''}" onclick="toggleListSelection(${safeNameArg})">
-      <span>${st.hq ? '⭐ ' : '🏴 '}${escapeHtml(name)}</span>
+      <span>${st.hq ? '<span style="color:#fbbf24">[HQ]</span> ' : '🏴 '}${escapeHtml(name)}</span>
       <button class="rm-btn" onclick="event.stopPropagation();removeTerritory(${safeNameArg})">✕</button>
     </div>`;
   }).join('');
@@ -1009,7 +1030,7 @@ function openModal(name, bulkNames = null) {
       const opt = document.createElement('option');
       opt.value = lv;
       const cost = DEFENSE_COST_TABLE[lv];
-      opt.textContent = lv === 0 ? 'Lv 0 (Free)' : `Lv ${lv} (${RESOURCE_ICONS[dt.resource]}${fmt(cost)}/hr)`;
+      opt.textContent = lv === 0 ? 'Lv 0 (Free)' : `Lv ${lv} (${fmt(cost)}/hr)`;
       if (!isBulk && lv === level) opt.selected = true;
       sel.appendChild(opt);
     }
@@ -1026,7 +1047,7 @@ function openModal(name, bulkNames = null) {
 
     const nameEl = document.createElement('div');
     nameEl.className = 'bonus-name';
-    nameEl.innerHTML = `<span title="${bcfg.desc}">${bcfg.name}</span>`;
+    nameEl.innerHTML = `<span title="${bcfg.desc}">${bcfg.name}</span><span class="bonus-cost">${RESOURCE_ICONS[bcfg.resource]}</span>`;
 
     const sel = document.createElement('select');
     sel.className = 'bonus-sel';
@@ -1049,7 +1070,7 @@ function openModal(name, bulkNames = null) {
         opt.textContent = `Lv 0: ${effText} (Free)`;
       } else {
         const cost = bcfg.costs[lv];
-        opt.textContent = `Lv ${lv}: ${effText} (${RESOURCE_ICONS[bcfg.resource]}${fmt(cost)}/hr)`;
+        opt.textContent = `Lv ${lv}: ${effText} (${fmt(cost)}/hr)`;
       }
       if (!isBulk && lv === level) opt.selected = true;
       sel.appendChild(opt);
@@ -1101,7 +1122,7 @@ function updateModalStats() {
     html += `<div class="stat-line"><span class="stat-label">Defense</span><span>${stats.defPct}%</span></div>`;
     html += `<div class="stat-line"><span class="stat-label">Rating</span><span>${stats.rating} — EHP ${fmtNum(stats.finalHp)} / DPS ${fmtNum(stats.dps)}</span></div>`;
   }
-  if (isHQ) html += `<div class="stat-line"><span class="stat-label">Role</span><span style="color:#fbbf24;">⭐ Headquarters</span></div>`;
+  if (isHQ) html += `<div class="stat-line"><span class="stat-label">Role</span><span style="color:#fbbf24;">Headquarters</span></div>`;
   const buffPct = calcTreasuryBuff(name, getHQDistances());
   if (buffPct > 0) {
     html += `<div class="stat-line"><span class="stat-label">Treasury Buff</span><span style="color:#4ade80">+${(buffPct * 100).toFixed(1)}%</span></div>`;

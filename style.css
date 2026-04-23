@@ -30,6 +30,12 @@ body { background: #0f172a; color: #e2e8f0; font-family: 'Segoe UI', sans-serif;
   margin-top: 0;
 }
 .icon-btn:hover { background: #334155; }
+.res-icon-img {
+  width: 1.2em;
+  height: 1.2em;
+  vertical-align: text-bottom;
+  image-rendering: pixelated;
+}
 #overview h2 { font-size: 14px; font-weight: 700; color: #94a3b8; letter-spacing: .05em; margin-bottom: 10px; }
 .res-row { margin-bottom: 8px; }
 .res-header { display: flex; align-items: center; gap: 6px; font-size: 13px; margin-bottom: 3px; }
