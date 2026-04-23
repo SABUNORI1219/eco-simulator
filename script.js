@@ -483,7 +483,6 @@ function calcTerritoryDefenseStats(name) {
   const finalAvgDmg = avgDmg * mult;
   const dps = Math.round(finalAvgDmg * atkSpd);
 
-  const totalLevels = hLevel + dLevel + aLevel + defLevel;
   const auraLevel = (st.bonuses || {})["Tower Aura"] || 0;
   const volleyLevel = (st.bonuses || {})["Tower Volley"] || 0;
   let difficulty = hLevel + dLevel + aLevel + defLevel;
@@ -491,10 +490,6 @@ function calcTerritoryDefenseStats(name) {
   difficulty += volleyLevel > 0 ? volleyLevel + 3 : -3;
 
   let rating = "Very Low";
-  if (totalLevels >= 36) rating = "Very High";
-  else if (totalLevels >= 27) rating = "High";
-  else if (totalLevels >= 18) rating = "Medium";
-  else if (totalLevels >= 9) rating = "Low";
   if (difficulty >= 49) rating = "Very High";
   else if (difficulty >= 31) rating = "High";
   else if (difficulty >= 19) rating = "Medium";
@@ -857,33 +852,41 @@ async function loadGuilds() {
   const sel = document.getElementById('guild-select');
   try {
     const res = await fetch('https://api.wynncraft.com/v3/guild/list/territory');
+    if (!res.ok) {
+      throw new Error(`API error: ${res.status} ${res.statusText}`);
+    }
     const data = await res.json();
 
     const guildMap = {};
     for (const [territoryName, info] of Object.entries(data)) {
-      const guildName = info.guild?.name || info.name;
-      if (!guildName) continue;
-      if (!guildMap[guildName]) guildMap[guildName] = [];
-      guildMap[guildName].push(territoryName);
+      const guildInfo = info.guild;
+      if (!guildInfo || !guildInfo.name) continue;
+
+      const guildName = guildInfo.name;
+      if (!guildMap[guildName]) {
+        guildMap[guildName] = { prefix: guildInfo.prefix || '', territories: [] };
+      }
+      guildMap[guildName].territories.push(territoryName);
 
       if (territories[territoryName]) {
         territories[territoryName].Guild = {
           name: guildName,
-          prefix: info.guild?.prefix || info.prefix || '',
-          uuid: info.guild?.uuid || info.uuid || '',
+          prefix: guildInfo.prefix || '',
+          uuid: guildInfo.uuid || '',
         };
       }
     }
 
     window.guildTerritoryMap = guildMap;
-
-    const sorted = Object.keys(guildMap).sort();
+    const sortedGuilds = Object.keys(guildMap).sort();
+    
     sel.innerHTML = '<option value="">— select guild —</option>' +
-      sorted.map(g => {
-        const prefix = guildMap[g][0] && territories[guildMap[g][0]]
-          ? (territories[guildMap[g][0]].Guild?.prefix || '')
-          : '';
-        return `<option value="${escapeHtml(g)}">[${escapeHtml(prefix)}] ${escapeHtml(g)} (${guildMap[g].length})</option>`;
+      sortedGuilds.map(g => {
+        window.guildTerritoryMap[g] = guildMap[g].territories;
+        const prefix = guildMap[g].prefix;
+        const count = guildMap[g].territories.length;
+        const prefixStr = prefix ? `[${escapeHtml(prefix)}] ` : '';
+        return `<option value="${escapeHtml(g)}">${prefixStr}${escapeHtml(g)} (${count})</option>`;
       }).join('');
   } catch (err) {
     sel.innerHTML = '<option value="">— API unavailable —</option>';
@@ -903,10 +906,9 @@ async function init() {
     territories = {};
   }
 
-  const tSel = document.getElementById('territory-select');
   const sorted = Object.keys(territories).sort();
-  tSel.innerHTML = '<option value="">— select territory —</option>' +
-    sorted.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+  const dl = document.getElementById('territory-list-options');
+  if (dl) dl.innerHTML = sorted.map(n => `<option value="${escapeHtml(n)}">`).join('');
 
   mapImage = new Image();
   mapImage.onload = () => {

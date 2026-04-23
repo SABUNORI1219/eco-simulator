@@ -25,7 +25,8 @@
 
   <div class="ctrl-section">
     <h3>Add Specified Territory</h3>
-    <select id="territory-select"><option value="">— select territory —</option></select>
+    <input type="text" id="territory-select" list="territory-list-options" placeholder="Type to search...">
+    <datalist id="territory-list-options"></datalist>
     <button class="primary" onclick="addSelectedTerritory()">Add Territory</button>
   </div>
 
