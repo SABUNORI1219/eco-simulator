@@ -877,7 +877,7 @@ async function loadGuilds() {
       }
     }
 
-    window.guildTerritoryMap = guildMap;
+    window.guildTerritoryMap = {};
     const sortedGuilds = Object.keys(guildMap).sort();
     
     sel.innerHTML = '<option value="">— select guild —</option>' +
