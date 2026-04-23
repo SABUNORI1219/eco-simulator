@@ -455,11 +455,11 @@ function showTooltip(mx, my, name) {
   if (st.hq) html += `<div style="color:#fbbf24;margin-bottom:6px;">⭐ Headquarters</div>`;
   if (stats) {
     html += `<div style="color:#64748b;font-size:11px;margin-bottom:6px;">
-      Damage: ${fmt(stats.finalDmgMin)}-${fmt(stats.finalDmgMax)}<br>
+      Damage: ${fmtNum(stats.finalDmgMin)}-${fmtNum(stats.finalDmgMax)}<br>
       Attack Speed: ${stats.atkSpd}x<br>
-      Health: ${fmt(stats.boostedHp)}<br>
+      Health: ${fmtNum(stats.boostedHp)}<br>
       Defense: ${stats.defPct}%<br>
-      Rating: ${stats.rating} — EHP ${fmt(stats.finalHp)} / DPS ${fmt(stats.dps)}<br>
+      Rating: ${stats.rating} — EHP ${fmtNum(stats.finalHp)} / DPS ${fmtNum(stats.dps)}<br>
       Conn. Bonus: +${Math.round((stats.mult - 1) * 100)}%</div>`;
   }
 
@@ -663,6 +663,10 @@ function fmt(n) {
   if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
   if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
   return Math.round(n).toString();
+}
+
+function fmtNum(n) {
+  return Math.round(n).toLocaleString('en-US');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1006,27 +1010,16 @@ function updateModalStats() {
 
   let html = '';
   if (stats) {
-    html += `<div class="stat-line"><span class="stat-label">Damage</span><span>${fmt(stats.finalDmgMin)}-${fmt(stats.finalDmgMax)}</span></div>`;
+    html += `<div class="stat-line"><span class="stat-label">Damage</span><span>${fmtNum(stats.finalDmgMin)}-${fmtNum(stats.finalDmgMax)}</span></div>`;
     html += `<div class="stat-line"><span class="stat-label">Attack Speed</span><span>${stats.atkSpd}x</span></div>`;
-    html += `<div class="stat-line"><span class="stat-label">Health</span><span>${fmt(stats.boostedHp)}</span></div>`;
+    html += `<div class="stat-line"><span class="stat-label">Health</span><span>${fmtNum(stats.boostedHp)}</span></div>`;
     html += `<div class="stat-line"><span class="stat-label">Defense</span><span>${stats.defPct}%</span></div>`;
-    html += `<div class="stat-line"><span class="stat-label">Rating</span><span>${stats.rating} — EHP ${fmt(stats.finalHp)} / DPS ${fmt(stats.dps)}</span></div>`;
+    html += `<div class="stat-line"><span class="stat-label">Rating</span><span>${stats.rating} — EHP ${fmtNum(stats.finalHp)} / DPS ${fmtNum(stats.dps)}</span></div>`;
   }
   if (isHQ) html += `<div class="stat-line"><span class="stat-label">Role</span><span style="color:#fbbf24;">⭐ Headquarters</span></div>`;
   const buffPct = calcTreasuryBuff(name, getHQDistances());
   if (buffPct > 0) {
     html += `<div class="stat-line"><span class="stat-label">Treasury Buff</span><span style="color:#4ade80">+${(buffPct * 100).toFixed(1)}%</span></div>`;
-  }
-  html += `<hr style="border-color:#334155;margin:6px 0;">`;
-
-  for (const r of RESOURCES) {
-    const net = prod[r] - cons[r];
-    if (prod[r] === 0 && cons[r] === 0) continue;
-    const col = net >= 0 ? '#60a5fa' : '#f87171';
-    html += `<div class="stat-line">
-      <span class="stat-label">${RESOURCE_ICONS[r]} ${r}</span>
-      <span>${fmt(prod[r])}/hr prod &nbsp;− ${fmt(cons[r])}/hr cons = <b style="color:${col}">${net >= 0 ? '+' : ''}${fmt(net)}/hr</b></span>
-    </div>`;
   }
 
   document.getElementById('modal-stats').innerHTML = html;
