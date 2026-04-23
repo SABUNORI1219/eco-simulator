@@ -14,6 +14,16 @@ body { background: #0f172a; color: #e2e8f0; font-family: 'Segoe UI', sans-serif;
   top: 12px; left: 12px; width: 300px; max-height: calc(100vh - 24px);
   overflow-y: auto;
 }
+.panel-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.panel-header h2 { font-size: 14px; font-weight: 700; color: #94a3b8; letter-spacing: .05em; margin-bottom: 0; }
+.panel-btns { display: flex; gap: 4px; }
+.icon-btn {
+  width: 28px; height: 28px; padding: 0; border-radius: 6px; font-size: 14px;
+  border: 1px solid #334155; background: #1e293b; color: #e2e8f0;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  margin-top: 0;
+}
+.icon-btn:hover { background: #334155; }
 #overview h2 { font-size: 14px; font-weight: 700; color: #94a3b8; letter-spacing: .05em; margin-bottom: 10px; }
 .res-row { margin-bottom: 8px; }
 .res-header { display: flex; align-items: center; gap: 6px; font-size: 13px; margin-bottom: 3px; }
@@ -40,18 +50,28 @@ select, button {
   border: 1px solid #334155; background: #1e293b; color: #e2e8f0;
   font-size: 13px; cursor: pointer; margin-top: 4px;
 }
+input[list] {
+  width: 100%; padding: 7px 10px; border-radius: 6px;
+  border: 1px solid #334155; background: #1e293b; color: #e2e8f0;
+  font-size: 13px; margin-top: 4px; outline: none;
+}
+input[list]:focus { border-color: #4ade80; }
 button:hover { background: #334155; }
 button.primary { background: #16a34a; border-color: #15803d; color: #fff; }
 button.primary:hover { background: #15803d; }
 button.danger { background: #dc2626; border-color: #b91c1c; color: #fff; }
 button.danger:hover { background: #b91c1c; }
+.btn-row { display: flex; gap: 4px; margin-top: 4px; }
+.btn-row button { flex: 1; padding: 5px 4px; font-size: 11px; margin-top: 0; }
 .territory-list { max-height: 200px; overflow-y: auto; margin-top: 6px; }
 .territory-item {
   display: flex; justify-content: space-between; align-items: center;
   padding: 4px 8px; border-radius: 4px; margin-bottom: 2px;
   background: #1e293b; font-size: 12px; cursor: pointer;
+  border: 1px solid transparent;
 }
 .territory-item:hover { background: #334155; }
+.territory-item.list-selected { background: rgba(59,130,246,0.2); border-color: #3b82f6; }
 .territory-item .hq-badge { color: #fbbf24; font-size: 11px; }
 .territory-item .rm-btn {
   width: auto; padding: 1px 6px; font-size: 11px; background: transparent;
@@ -96,6 +116,26 @@ button.danger:hover { background: #b91c1c; }
 #tooltip .tt-row { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 3px; }
 #tooltip .tt-label { color: #64748b; }
 #tooltip .tt-val { font-weight: 600; }
+
+/* Tribute Modal */
+#tribute-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+  z-index: 100; align-items: center; justify-content: center;
+}
+#tribute-overlay.open { display: flex; }
+#tribute-modal {
+  background: #1e293b; border: 1px solid #334155; border-radius: 10px;
+  padding: 20px; width: 320px;
+}
+#tribute-modal h2 { font-size: 16px; margin-bottom: 8px; color: #e2e8f0; }
+.tribute-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.tribute-row label { font-size: 13px; }
+.tribute-row input[type="number"] {
+  width: 110px; padding: 5px 8px; border-radius: 5px;
+  border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font-size: 13px;
+}
+#tribute-footer { display: flex; gap: 8px; margin-top: 16px; }
+#tribute-footer button { flex: 1; }
 
 /* Loading */
 #loading {

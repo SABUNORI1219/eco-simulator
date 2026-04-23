@@ -5,20 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Wynncraft Guild War Economy Simulator</title>
 <link rel="stylesheet" href="./style.css">
-<style>
-  input[type="text"] {
-    background-color: #1e293b;
-    color: #f8fafc;
-    border: 1px solid #334155;
-    padding: 6px;
-    border-radius: 4px;
-    box-sizing: border-box;
-  }
-  input[type="text"]:focus {
-    outline: none;
-    border-color: #4ade80;
-  }
-</style>
 </head>
 <body>
 
@@ -27,7 +13,13 @@
 
 <!-- Overview Panel -->
 <div class="panel" id="overview">
-  <h2>📊 OVERVIEW</h2>
+  <div class="panel-header">
+    <h2>📊 OVERVIEW</h2>
+    <div class="panel-btns">
+      <button class="icon-btn" onclick="openTributeModal()" title="Tributes">💰</button>
+      <button class="icon-btn" id="share-btn" onclick="copyShareLink()" title="Share Link">🔗</button>
+    </div>
+  </div>
   <div id="overview-body">
     <div style="color:#64748b;font-size:12px;">Add territories to see balance.</div>
   </div>
@@ -39,21 +31,42 @@
 
   <div class="ctrl-section">
     <h3>Add Specified Territory</h3>
-    <input type="text" id="territory-select" list="territory-list-options" placeholder="Type to search...">
+    <input id="territory-select" list="territory-list-options" placeholder="Search territory…">
     <datalist id="territory-list-options"></datalist>
     <button class="primary" onclick="addSelectedTerritory()">Add Territory</button>
   </div>
 
   <div class="ctrl-section">
     <h3>Add from Guild (Live)</h3>
-    <input type="text" id="guild-select" list="guild-list-options" placeholder="Loading guilds...">
+    <input id="guild-select" list="guild-list-options" placeholder="Loading guilds…">
     <datalist id="guild-list-options"></datalist>
     <button class="primary" onclick="addGuildTerritories()">Add Guild's Territories</button>
   </div>
 
   <div class="ctrl-section">
+    <h3>Selected on Map (<span id="selected-count">0</span>)</h3>
+    <button class="primary" onclick="addSelectedTerritories()">Add Selected Territories</button>
+  </div>
+
+  <div class="ctrl-section">
+    <h3>Guild Treasury</h3>
+    <select id="treasury-select" onchange="setTreasury(this.value)">
+      <option value="Very Low">Very Low (No Buff)</option>
+      <option value="Low">Low</option>
+      <option value="Medium">Medium</option>
+      <option value="High">High</option>
+      <option value="Very High">Very High</option>
+    </select>
+  </div>
+
+  <div class="ctrl-section">
     <h3>Added Territories (<span id="added-count">0</span>)</h3>
-    <button class="danger" onclick="clearAllTerritories()">Clear All</button>
+    <div class="btn-row">
+      <button onclick="selectAll()">Select All</button>
+      <button onclick="selectNone()">Select None</button>
+      <button class="primary" onclick="editSelected()">Edit Selected</button>
+      <button class="danger" onclick="clearAllTerritories()">Clear All</button>
+    </div>
     <div class="territory-list" id="territory-list"></div>
   </div>
 </div>
@@ -66,11 +79,11 @@
     <div id="modal-stats"></div>
 
     <div class="modal-section">
-      <label>Defense Settings</label>
+      <label>Defense</label>
       <div class="bonus-grid" id="defense-grid"></div>
     </div>
 
-    <div class="modal-section">
+    <div class="modal-section" id="hq-section">
       <label>Headquarters</label>
       <div class="hq-row">
         <input type="checkbox" id="modal-hq" onchange="updateModalStats()">
@@ -86,6 +99,21 @@
     <div id="modal-footer">
       <button onclick="closeModal()">Cancel</button>
       <button class="primary" onclick="saveModal()">💾 Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Tribute Modal -->
+<div id="tribute-overlay">
+  <div id="tribute-modal">
+    <h2>💰 Tributes</h2>
+    <div style="font-size:12px;color:#64748b;margin-bottom:12px;">
+      External resource flows per hour. Positive = incoming, negative = outgoing.
+    </div>
+    <div id="tribute-form"></div>
+    <div id="tribute-footer">
+      <button onclick="closeTributeModal()">Cancel</button>
+      <button class="primary" onclick="saveTributes()">💾 Save</button>
     </div>
   </div>
 </div>

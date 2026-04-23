@@ -91,6 +91,13 @@ let panX = 0, panY = 0, scale = 1;
 let isDragging = false, dragStart = { x: 0, y: 0 };
 let lastMousePos = { x: 0, y: 0 };
 let hoveredTerritory = null;
+let selectedTerritories = new Set();    // map selection (unregistered)
+let listSelectedTerritories = new Set(); // manager list selection (registered)
+let treasuryLevel = 'Very Low';
+let _hqDistanceCache = null;
+let tributeValues = { emeralds: 0, ore: 0, crops: 0, fish: 0, wood: 0 };
+let currentModalMode = 'single'; // 'single' | 'bulk'
+let currentBulkTerritories = [];
 
 // ═══════════════════════════════════════════════════════════
 //  COORDINATE TRANSFORMS
@@ -160,12 +167,12 @@ canvas.addEventListener('mousemove', e => {
     draw();
     return;
   }
-  const hit = hitTest(e.clientX, e.clientY);
+  const hit = hitTestAll(e.clientX, e.clientY);
   if (hit !== hoveredTerritory) {
     hoveredTerritory = hit;
     draw();
   }
-  if (hit) {
+  if (hit && addedTerritories[hit]) {
     showTooltip(e.clientX, e.clientY, hit);
   } else {
     hideTooltip();
@@ -255,20 +262,47 @@ canvas.addEventListener('touchend', () => {
 function hitTest(cx, cy) {
   for (const name of Object.keys(addedTerritories)) {
     const t = territories[name];
-    if (!t) continue;
+    if (!t || !t.Location) continue;
     const loc = t.Location;
     const p1 = gameToCanvas(loc.start[0], loc.start[1]);
     const p2 = gameToCanvas(loc.end[0], loc.end[1]);
-    const x1 = Math.min(p1.x, p2.x), x2 = Math.max(p1.x, p2.x);
-    const y1 = Math.min(p1.y, p2.y), y2 = Math.max(p1.y, p2.y);
-    if (cx >= x1 && cx <= x2 && cy >= y1 && cy <= y2) return name;
+    if (cx >= Math.min(p1.x, p2.x) && cx <= Math.max(p1.x, p2.x) &&
+        cy >= Math.min(p1.y, p2.y) && cy <= Math.max(p1.y, p2.y)) return name;
+  }
+  return null;
+}
+
+function hitTestAll(cx, cy) {
+  const added = hitTest(cx, cy);
+  if (added) return added;
+  if (scale < 0.05) return null;
+  for (const name of Object.keys(territories)) {
+    if (addedTerritories[name]) continue;
+    const t = territories[name];
+    if (!t || !t.Location) continue;
+    const loc = t.Location;
+    const p1 = gameToCanvas(loc.start[0], loc.start[1]);
+    const p2 = gameToCanvas(loc.end[0], loc.end[1]);
+    if (cx >= Math.min(p1.x, p2.x) && cx <= Math.max(p1.x, p2.x) &&
+        cy >= Math.min(p1.y, p2.y) && cy <= Math.max(p1.y, p2.y)) return name;
   }
   return null;
 }
 
 function handleClick(cx, cy) {
-  const hit = hitTest(cx, cy);
-  if (hit) openModal(hit);
+  const hit = hitTestAll(cx, cy);
+  if (!hit) return;
+  if (addedTerritories[hit]) {
+    openModal(hit);
+  } else {
+    if (selectedTerritories.has(hit)) {
+      selectedTerritories.delete(hit);
+    } else {
+      selectedTerritories.add(hit);
+    }
+    updateSelectedCount();
+    draw();
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -298,7 +332,8 @@ function draw() {
 function drawConnections() {
   const drawn = new Set();
   ctx.save();
-  ctx.lineWidth = Math.max(1, scale * 3);
+  ctx.lineWidth = Math.max(1.5, scale * 4);
+  ctx.strokeStyle = 'rgba(0,0,0,0.97)';
 
   for (const [name, t] of Object.entries(territories)) {
     if (!t['Trading Routes']) continue;
@@ -312,7 +347,6 @@ function drawConnections() {
       const c1 = territoryCenter(name);
       const c2 = territoryCenter(neighbor);
 
-      ctx.strokeStyle = 'rgba(0,0,0,0.8)';
       ctx.beginPath();
       ctx.moveTo(c1.x, c1.y);
       ctx.lineTo(c2.x, c2.y);
@@ -337,23 +371,41 @@ function drawTerritories() {
     const isAdded = !!addedTerritories[name];
     const isHQ = isAdded && addedTerritories[name].hq;
     const isHovered = name === hoveredTerritory;
+    const isSelected = selectedTerritories.has(name);
 
-    if (!isAdded && scale < 0.05) continue;
+    if (!isAdded && !isSelected && scale < 0.05) continue;
 
+    // Fill
     if (isAdded) {
       ctx.fillStyle = isHQ
         ? 'rgba(251,191,36,0.25)'
-        : isHovered
-          ? 'rgba(74,222,128,0.25)'
-          : 'rgba(74,222,128,0.12)';
+        : isHovered ? 'rgba(74,222,128,0.28)' : 'rgba(74,222,128,0.14)';
+      ctx.fillRect(x, y, w, h);
+    } else if (isSelected) {
+      ctx.fillStyle = isHovered ? 'rgba(96,165,250,0.28)' : 'rgba(96,165,250,0.16)';
       ctx.fillRect(x, y, w, h);
     } else if (isHovered) {
-      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      ctx.fillStyle = 'rgba(255,255,255,0.12)';
       ctx.fillRect(x, y, w, h);
     }
 
-    ctx.lineWidth = isAdded ? Math.max(1.0, scale * 1.2) : (isHovered ? Math.max(1.5, scale * 1.5) : Math.max(0.5, scale * 0.8));
-    ctx.strokeStyle = isHQ ? '#fbbf24' : isAdded ? '#22c55e' : '#ffffff';
+    // Outline
+    if (isHQ) {
+      ctx.lineWidth = Math.max(2.0, scale * 2.2);
+      ctx.strokeStyle = '#fbbf24';
+    } else if (isAdded) {
+      ctx.lineWidth = Math.max(2.0, scale * 2.2);
+      ctx.strokeStyle = '#15803d';
+    } else if (isSelected) {
+      ctx.lineWidth = Math.max(1.8, scale * 2.0);
+      ctx.strokeStyle = '#3b82f6';
+    } else if (isHovered) {
+      ctx.lineWidth = Math.max(1.5, scale * 1.8);
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    } else {
+      ctx.lineWidth = Math.max(1.0, scale * 1.4);
+      ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+    }
     ctx.strokeRect(x, y, w, h);
 
     const cx = (p1.x + p2.x) / 2;
@@ -369,10 +421,14 @@ function drawTerritories() {
     if (scale > 0.25) {
       const fontSize = Math.min(14, Math.max(7, scale * 10));
       ctx.font = `${fontSize}px 'Segoe UI', sans-serif`;
-      ctx.fillStyle = isAdded ? '#fff' : 'rgba(255,255,255,0.95)';
+      ctx.shadowColor = 'rgba(0,0,0,0.85)';
+      ctx.shadowBlur = 4;
+      ctx.fillStyle = isAdded ? '#ffffff' : isSelected ? '#93c5fd' : 'rgba(255,255,255,0.82)';
       ctx.textAlign = 'center';
       ctx.textBaseline = isAdded && scale > 0.06 ? 'top' : 'middle';
       ctx.fillText(name, cx, isAdded && scale > 0.06 ? cy + fontSize * 0.8 : cy);
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
     }
   }
   ctx.restore();
@@ -406,6 +462,11 @@ function showTooltip(mx, my, name) {
       Defense: ${stats.defPct}%<br>
       Rating: ${stats.rating} — EHP ${fmt(stats.finalHp)} / DPS ${fmt(stats.dps)}<br>
       Conn. Bonus: +${Math.round((stats.mult - 1) * 100)}%</div>`;
+  }
+
+  const buffPct = calcTreasuryBuff(name, getHQDistances());
+  if (buffPct > 0) {
+    html += `<div style="color:#4ade80;font-size:11px;margin-bottom:4px;">🏦 Treasury: +${(buffPct * 100).toFixed(1)}%</div>`;
   }
 
   let prodHtml = '';
@@ -550,10 +611,12 @@ function calcTerritoryProduction(name) {
   const rateResSec = [4, 3, 2, 1][rateResLevel];
   const rateResMult = 4 / rateResSec;
   
+  const treasBuff = 1 + calcTreasuryBuff(name, getHQDistances());
+
   const result = { ...base };
-  result.emeralds = Math.round(base.emeralds * effEmMult * rateEmMult);
+  result.emeralds = Math.round(base.emeralds * effEmMult * rateEmMult * treasBuff);
   for (const r of ['ore', 'crops', 'wood', 'fish']) {
-    result[r] = Math.round(base[r] * effResMult * rateResMult);
+    result[r] = Math.round(base[r] * effResMult * rateResMult * treasBuff);
   }
 
   return result;
@@ -604,6 +667,38 @@ function fmt(n) {
 }
 
 // ═══════════════════════════════════════════════════════════
+//  TREASURY
+// ═══════════════════════════════════════════════════════════
+// dist 0-2: 10%, dist 3: 8.5%, dist 4: 7%, dist 5: 5.5%, dist 6+: 4%
+const TREASURY_BASE_PCTS = [0.10, 0.10, 0.10, 0.085, 0.07, 0.055, 0.04];
+const TREASURY_LEVEL_MULT = { 'Very Low': 0, 'Low': 1, 'Medium': 2, 'High': 2.5, 'Very High': 3 };
+
+function getHQDistances() {
+  if (_hqDistanceCache !== null) return _hqDistanceCache;
+  const hqName = Object.keys(addedTerritories).find(n => addedTerritories[n].hq);
+  if (!hqName) return (_hqDistanceCache = {});
+  const dist = { [hqName]: 0 };
+  const queue = [hqName];
+  while (queue.length > 0) {
+    const curr = queue.shift();
+    const t = territories[curr];
+    if (!t || !t['Trading Routes']) continue;
+    for (const nb of t['Trading Routes']) {
+      if (dist[nb] === undefined) { dist[nb] = dist[curr] + 1; queue.push(nb); }
+    }
+  }
+  return (_hqDistanceCache = dist);
+}
+
+function calcTreasuryBuff(name, hqDist) {
+  const mult = TREASURY_LEVEL_MULT[treasuryLevel];
+  if (!mult || !hqDist) return 0;
+  const dist = hqDist[name];
+  if (dist === undefined) return 0;
+  return TREASURY_BASE_PCTS[Math.min(dist, 6)] * mult;
+}
+
+// ═══════════════════════════════════════════════════════════
 //  OVERVIEW PANEL
 // ═══════════════════════════════════════════════════════════
 function updateOverview() {
@@ -621,11 +716,17 @@ function updateOverview() {
   for (const r of RESOURCES) {
     const prod = production[r];
     const cons = consumption[r];
-    const net = prod - cons;
-    const pct = prod > 0 ? Math.min(100, (cons / prod) * 100) : (cons > 0 ? 100 : 0);
+    const trib = tributeValues[r] || 0;
+    const net = prod - cons + trib;
+    const totalIn = prod + Math.max(0, trib);
+    const pct = totalIn > 0 ? Math.min(100, (cons / totalIn) * 100) : (cons > 0 ? 100 : 0);
     const netCls = net >= 0 ? 'pos' : 'neg';
     const netStr = (net >= 0 ? '+' : '') + fmt(net) + '/hr';
     const col = RESOURCE_COLORS[r];
+
+    let detail = `Prod: ${fmt(prod)}/hr &nbsp;|&nbsp; Cons: ${fmt(cons)}/hr`;
+    if (trib !== 0) detail += ` &nbsp;|&nbsp; <span style="color:${trib > 0 ? '#4ade80' : '#f87171'}">Trib: ${trib > 0 ? '+' : ''}${fmt(trib)}/hr</span>`;
+    detail += ` &nbsp;|&nbsp; ${pct.toFixed(1)}% used`;
 
     html += `
     <div class="res-row">
@@ -634,7 +735,7 @@ function updateOverview() {
         <span class="res-name">${r}</span>
         <span class="res-net ${netCls}">${netStr}</span>
       </div>
-      <div class="res-detail">Prod: ${fmt(prod)}/hr &nbsp;|&nbsp; Cons: ${fmt(cons)}/hr &nbsp;|&nbsp; ${pct.toFixed(1)}% used</div>
+      <div class="res-detail">${detail}</div>
       <div class="progress-track">
         <div class="progress-fill" style="width:${pct}%;background:${col};"></div>
       </div>
@@ -659,7 +760,8 @@ function updateTerritoryList() {
 
   list.innerHTML = Object.keys(addedTerritories).map(name => {
     const st = addedTerritories[name];
-    return `<div class="territory-item" onclick="openModal('${escapeHtml(name)}')">
+    const isSel = listSelectedTerritories.has(name);
+    return `<div class="territory-item${isSel ? ' list-selected' : ''}" onclick="toggleListSelection('${escapeHtml(name)}')">
       <span>${st.hq ? '⭐ ' : '🏴 '}${name}</span>
       <button class="rm-btn" onclick="event.stopPropagation();removeTerritory('${escapeHtml(name)}')">✕</button>
     </div>`;
@@ -678,18 +780,64 @@ function addTerritory(name) {
   if (!addedTerritories[name]) {
     addedTerritories[name] = { defense: { damage: 0, attack: 0, health: 0, defense: 0 }, bonuses: {}, hq: false };
   }
+  selectedTerritories.delete(name);
+  updateSelectedCount();
   refreshUI();
+}
+
+function addSelectedTerritories() {
+  for (const name of selectedTerritories) {
+    if (territories[name] && !addedTerritories[name]) {
+      addedTerritories[name] = { defense: { damage: 0, attack: 0, health: 0, defense: 0 }, bonuses: {}, hq: false };
+    }
+  }
+  selectedTerritories.clear();
+  updateSelectedCount();
+  refreshUI();
+}
+
+function updateSelectedCount() {
+  document.getElementById('selected-count').textContent = selectedTerritories.size;
+}
+
+function setTreasury(val) {
+  treasuryLevel = val;
+  updateOverview();
 }
 
 function removeTerritory(name) {
   delete addedTerritories[name];
+  listSelectedTerritories.delete(name);
   refreshUI();
 }
 
 function clearAllTerritories() {
   if (!confirm('Remove all territories?')) return;
   addedTerritories = {};
+  listSelectedTerritories.clear();
   refreshUI();
+}
+
+function toggleListSelection(name) {
+  if (listSelectedTerritories.has(name)) listSelectedTerritories.delete(name);
+  else listSelectedTerritories.add(name);
+  updateTerritoryList();
+}
+
+function selectAll() {
+  listSelectedTerritories = new Set(Object.keys(addedTerritories));
+  updateTerritoryList();
+}
+
+function selectNone() {
+  listSelectedTerritories.clear();
+  updateTerritoryList();
+}
+
+function editSelected() {
+  const names = [...listSelectedTerritories].filter(n => addedTerritories[n]);
+  if (names.length === 0) return;
+  openModal(names[0], names.length > 1 ? names : null);
 }
 
 function addSelectedTerritory() {
@@ -710,10 +858,12 @@ function addGuildTerritories() {
   if (window.guildTerritoryMap && window.guildTerritoryMap[guildName]) {
     for (const name of window.guildTerritoryMap[guildName]) addTerritory(name);
   }
+  sel.value = '';
   refreshUI();
 }
 
 function refreshUI() {
+  _hqDistanceCache = null;
   updateOverview();
   updateTerritoryList();
   draw();
@@ -722,11 +872,18 @@ function refreshUI() {
 // ═══════════════════════════════════════════════════════════
 //  MODAL
 // ═══════════════════════════════════════════════════════════
-function openModal(name) {
-  currentModalTerritory = name;
-  const st = addedTerritories[name];
-  document.getElementById('modal-title').textContent = name;
-  document.getElementById('modal-hq').checked = !!st.hq;
+function openModal(name, bulkNames = null) {
+  const isBulk = bulkNames !== null;
+  currentModalMode = isBulk ? 'bulk' : 'single';
+  currentBulkTerritories = isBulk ? bulkNames : [];
+  currentModalTerritory = isBulk ? null : name;
+
+  const st = addedTerritories[name] || { defense: {}, bonuses: {}, hq: false };
+  document.getElementById('modal-title').textContent = isBulk
+    ? `Editing ${bulkNames.length} territories`
+    : name;
+  document.getElementById('modal-hq').checked = isBulk ? false : !!st.hq;
+  document.getElementById('hq-section').style.display = isBulk ? 'none' : '';
 
   const defGrid = document.getElementById('defense-grid');
   defGrid.innerHTML = '';
@@ -794,6 +951,11 @@ function openModal(name) {
 }
 
 function updateModalStats() {
+  if (currentModalMode === 'bulk') {
+    document.getElementById('modal-stats').innerHTML =
+      `<div style="color:#64748b;font-size:12px;">Editing ${currentBulkTerritories.length} territories — settings will be applied to all.</div>`;
+    return;
+  }
   const name = currentModalTerritory;
   if (!name) return;
 
@@ -825,6 +987,10 @@ function updateModalStats() {
     html += `<div class="stat-line"><span class="stat-label">Rating</span><span>${stats.rating} — EHP ${fmt(stats.finalHp)} / DPS ${fmt(stats.dps)}</span></div>`;
   }
   if (isHQ) html += `<div class="stat-line"><span class="stat-label">Role</span><span style="color:#fbbf24;">⭐ Headquarters</span></div>`;
+  const buffPct = calcTreasuryBuff(name, getHQDistances());
+  if (buffPct > 0) {
+    html += `<div class="stat-line"><span class="stat-label">Treasury Buff</span><span style="color:#4ade80">+${(buffPct * 100).toFixed(1)}%</span></div>`;
+  }
   html += `<hr style="border-color:#334155;margin:6px 0;">`;
 
   for (const r of RESOURCES) {
@@ -841,24 +1007,34 @@ function updateModalStats() {
 }
 
 function saveModal() {
-  const name = currentModalTerritory;
-  if (!name) return;
   const defense = {};
   document.querySelectorAll('.defense-sel').forEach(sel => {
     defense[sel.dataset.defId] = parseInt(sel.value) || 0;
   });
-  const isHQ = document.getElementById('modal-hq').checked;
   const bonuses = {};
   document.querySelectorAll('.bonus-sel').forEach(sel => {
     bonuses[sel.dataset.bonus] = parseInt(sel.value) || 0;
   });
 
-  if (isHQ) {
-    for (const n of Object.keys(addedTerritories)) {
-      addedTerritories[n].hq = false;
+  if (currentModalMode === 'bulk') {
+    for (const n of currentBulkTerritories) {
+      if (addedTerritories[n]) {
+        addedTerritories[n].defense = { ...defense };
+        addedTerritories[n].bonuses = { ...bonuses };
+      }
     }
+    listSelectedTerritories.clear();
+    closeModal();
+    refreshUI();
+    return;
   }
 
+  const name = currentModalTerritory;
+  if (!name) return;
+  const isHQ = document.getElementById('modal-hq').checked;
+  if (isHQ) {
+    for (const n of Object.keys(addedTerritories)) addedTerritories[n].hq = false;
+  }
   addedTerritories[name] = { defense, bonuses, hq: isHQ };
   closeModal();
   refreshUI();
@@ -866,12 +1042,101 @@ function saveModal() {
 
 function closeModal() {
   currentModalTerritory = null;
+  currentModalMode = 'single';
+  currentBulkTerritories = [];
+  document.getElementById('hq-section').style.display = '';
   document.getElementById('modal-overlay').classList.remove('open');
 }
 
 document.getElementById('modal-overlay').addEventListener('click', e => {
   if (e.target === document.getElementById('modal-overlay')) closeModal();
 });
+
+// ═══════════════════════════════════════════════════════════
+//  TRIBUTES
+// ═══════════════════════════════════════════════════════════
+function openTributeModal() {
+  document.getElementById('tribute-form').innerHTML = RESOURCES.map(r => `
+    <div class="tribute-row">
+      <label>${RESOURCE_ICONS[r]} ${r}</label>
+      <input type="number" id="tribute-${r}" value="${tributeValues[r] || 0}" step="1000">
+    </div>
+  `).join('');
+  document.getElementById('tribute-overlay').classList.add('open');
+}
+
+function closeTributeModal() {
+  document.getElementById('tribute-overlay').classList.remove('open');
+}
+
+function saveTributes() {
+  for (const r of RESOURCES) {
+    tributeValues[r] = parseInt(document.getElementById(`tribute-${r}`).value) || 0;
+  }
+  closeTributeModal();
+  updateOverview();
+}
+
+document.getElementById('tribute-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('tribute-overlay')) closeTributeModal();
+});
+
+// ═══════════════════════════════════════════════════════════
+//  SHARE LINK
+// ═══════════════════════════════════════════════════════════
+function getShareState() {
+  const tData = Object.entries(addedTerritories).map(([name, st]) => {
+    const d = {};
+    for (const [k, v] of Object.entries(st.defense || {})) { if (v) d[k] = v; }
+    const b = {};
+    for (const [k, v] of Object.entries(st.bonuses || {})) { if (v) b[k] = v; }
+    return { n: name, hq: st.hq || false, d, b };
+  });
+  const tr = {};
+  for (const [k, v] of Object.entries(tributeValues)) { if (v) tr[k] = v; }
+  return { v: 1, tl: treasuryLevel, tr, t: tData };
+}
+
+function copyShareLink() {
+  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(getShareState()))));
+  const url = `${location.origin}${location.pathname}#s=${encoded}`;
+  const btn = document.getElementById('share-btn');
+  navigator.clipboard.writeText(url).then(() => {
+    btn.textContent = '✅';
+    setTimeout(() => { btn.textContent = '🔗'; }, 2000);
+  }).catch(() => { prompt('Copy this link:', url); });
+}
+
+function loadFromHash() {
+  if (!location.hash.startsWith('#s=')) return;
+  try {
+    const state = JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(3)))));
+    if (state.v !== 1) return;
+    if (state.tl) {
+      treasuryLevel = state.tl;
+      const sel = document.getElementById('treasury-select');
+      if (sel) sel.value = treasuryLevel;
+    }
+    if (state.tr) {
+      for (const r of RESOURCES) tributeValues[r] = state.tr[r] || 0;
+    }
+    if (state.t) {
+      addedTerritories = {};
+      for (const item of state.t) {
+        if (!territories[item.n]) continue;
+        addedTerritories[item.n] = {
+          defense: { damage: 0, attack: 0, health: 0, defense: 0, ...item.d },
+          bonuses: item.b || {},
+          hq: item.hq || false
+        };
+      }
+    }
+    _hqDistanceCache = null;
+    refreshUI();
+  } catch (e) {
+    console.warn('Failed to load from hash:', e);
+  }
+}
 
 // ═══════════════════════════════════════════════════════════
 //  GUILD API
@@ -967,8 +1232,11 @@ async function init() {
   document.getElementById('loading').style.display = 'none';
 
   loadGuilds();
-  updateOverview();
-  updateTerritoryList();
+  loadFromHash();
+  if (Object.keys(addedTerritories).length === 0) {
+    updateOverview();
+    updateTerritoryList();
+  }
 }
 
 init();
