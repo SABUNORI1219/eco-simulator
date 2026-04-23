@@ -1,3 +1,9 @@
+@font-face {
+  font-family: 'Minecraftia';
+  src: url('./assets/fonts/Minecraftia.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { background: #0f172a; color: #e2e8f0; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
 #canvas { display: block; cursor: grab; }

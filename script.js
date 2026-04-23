@@ -84,6 +84,21 @@ let addedTerritories = {};  // name -> { defense, bonuses, hq, treasury }
 let currentModalTerritory = null;
 let mapImage = null;
 
+// アイコン画像の読み込み
+const resImages = {
+  emeralds: new Image(),
+  ore: new Image(),
+  crops: new Image(),
+  fish: new Image(),
+  wood: new Image()
+};
+resImages.emeralds.src = './assets/icons/resources/emerald.png';
+resImages.ore.src = './assets/icons/resources/ore.png';
+resImages.crops.src = './assets/icons/resources/crop.png';
+resImages.fish.src = './assets/icons/resources/fish.png';
+resImages.wood.src = './assets/icons/resources/wood.png';
+Object.values(resImages).forEach(img => { img.onload = () => draw(); });
+
 // Pan/Zoom
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
@@ -355,6 +370,12 @@ function drawConnections() {
   ctx.restore();
 }
 
+function drawIcon(img, x, y, size) {
+  if (img && img.complete && img.naturalWidth > 0) {
+    ctx.drawImage(img, x, y, size, size);
+  }
+}
+
 function drawTerritories() {
   ctx.save();
   for (const [name, t] of Object.entries(territories)) {
@@ -410,24 +431,88 @@ function drawTerritories() {
     const cx = (p1.x + p2.x) / 2;
     const cy = (p1.y + p2.y) / 2;
 
-    if (isAdded && scale > 0.06) {
+    if (scale > 0.25) {
+      const res = t.resources;
+      const em = parseFloat(res.emeralds || 0);
+      const ore = parseFloat(res.ore || 0);
+      const crops = parseFloat(res.crops || 0);
+      const fish = parseFloat(res.fish || 0);
+      const wood = parseFloat(res.wood || 0);
+
+      const isCity = em >= 18000;
+      const isRainbow = ore > 0 && crops > 0 && fish > 0 && wood > 0;
+      
+      let mainRes = null;
+      if (!isRainbow) {
+        if (ore > 0) mainRes = 'ore';
+        else if (crops > 0) mainRes = 'crops';
+        else if (fish > 0) mainRes = 'fish';
+        else if (wood > 0) mainRes = 'wood';
+      }
+
+      const iconSize = Math.max(14, Math.min(28, scale * 14));
+      const gap = 2;
+      let textY = cy;
+
+      if (isRainbow) {
+        // 虹資源地 (2x2 Grid)
+        const totalW = iconSize * 2 + gap;
+        const totalH = iconSize * 2 + gap;
+        const sx = cx - totalW / 2;
+        const sy = cy - totalH / 2 - iconSize * 0.4;
+
+        drawIcon(resImages.ore, sx, sy, iconSize);
+        drawIcon(resImages.crops, sx + iconSize + gap, sy, iconSize);
+        drawIcon(resImages.fish, sx, sy + iconSize + gap, iconSize);
+        drawIcon(resImages.wood, sx + iconSize + gap, sy + iconSize + gap, iconSize);
+        
+        textY = sy + totalH + gap + 2;
+      } else {
+        // 街または通常資源地 (横並び)
+        const iconsToDraw = [];
+        if (isCity) iconsToDraw.push(resImages.emeralds);
+        if (mainRes) iconsToDraw.push(resImages[mainRes]);
+
+        if (iconsToDraw.length > 0) {
+          const totalW = iconsToDraw.length * iconSize + (iconsToDraw.length - 1) * gap;
+          let sx = cx - totalW / 2;
+          const sy = cy - iconSize * 0.8;
+          
+          for (const img of iconsToDraw) {
+            drawIcon(img, sx, sy, iconSize);
+            sx += iconSize + gap;
+          }
+          textY = sy + iconSize + gap + 2;
+        } else {
+          textY = cy; // 資源がない場合
+        }
+      }
+
+      const fontSize = Math.min(14, Math.max(7, scale * 10));
+      ctx.font = `${fontSize}px 'Minecraftia', sans-serif`;
+      ctx.shadowBlur = 4;
+      ctx.shadowColor = 'rgba(0,0,0,0.9)';
+      ctx.lineWidth = Math.max(2, fontSize * 0.15);
+      ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+      ctx.fillStyle = isAdded ? '#ffffff' : isSelected ? '#93c5fd' : 'rgba(255,255,255,0.82)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+
+      const prefix = isHQ ? '⭐ ' : (isAdded ? '🏴 ' : '');
+      const displayText = prefix + name;
+
+      ctx.strokeText(displayText, cx, textY);
+      ctx.fillText(displayText, cx, textY);
+
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
+    } else if (isAdded && scale > 0.06) {
+      // 引いた時の簡易表示
       ctx.font = `${Math.max(12, scale * 16)}px serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#ffffff';
       ctx.fillText(isHQ ? '⭐' : '🏴', cx, cy);
-    }
-
-    if (scale > 0.25) {
-      const fontSize = Math.min(14, Math.max(7, scale * 10));
-      ctx.font = `${fontSize}px 'Segoe UI', sans-serif`;
-      ctx.shadowColor = 'rgba(0,0,0,0.85)';
-      ctx.shadowBlur = 4;
-      ctx.fillStyle = isAdded ? '#ffffff' : isSelected ? '#93c5fd' : 'rgba(255,255,255,0.82)';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = isAdded && scale > 0.06 ? 'top' : 'middle';
-      ctx.fillText(name, cx, isAdded && scale > 0.06 ? cy + fontSize * 0.8 : cy);
-      ctx.shadowColor = 'transparent';
-      ctx.shadowBlur = 0;
     }
   }
   ctx.restore();
@@ -1271,6 +1356,8 @@ async function init() {
     updateOverview();
     updateTerritoryList();
   }
+  
+  document.fonts.ready.then(() => draw());
 }
 
 init();
