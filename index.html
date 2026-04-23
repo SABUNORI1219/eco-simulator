@@ -49,17 +49,6 @@
   </div>
 
   <div class="ctrl-section">
-    <h3>Guild Treasury</h3>
-    <select id="treasury-select" onchange="setTreasury(this.value)">
-      <option value="Very Low">Very Low (No Buff)</option>
-      <option value="Low">Low</option>
-      <option value="Medium">Medium</option>
-      <option value="High">High</option>
-      <option value="Very High">Very High</option>
-    </select>
-  </div>
-
-  <div class="ctrl-section">
     <h3>Added Territories (<span id="added-count">0</span>)</h3>
     <div class="btn-row">
       <button onclick="selectAll()">Select All</button>
@@ -89,6 +78,17 @@
         <input type="checkbox" id="modal-hq" onchange="updateModalStats()">
         <span>Make this the HQ (only one allowed)</span>
       </div>
+    </div>
+
+    <div class="modal-section">
+      <label>Treasury</label>
+      <select id="modal-treasury" onchange="updateModalStats()">
+        <option value="Very Low">Very Low (No Buff)</option>
+        <option value="Low">Low</option>
+        <option value="Medium">Medium</option>
+        <option value="High">High</option>
+        <option value="Very High">Very High</option>
+      </select>
     </div>
 
     <div class="modal-section">

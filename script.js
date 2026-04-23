@@ -80,7 +80,7 @@ const RESOURCE_COLORS = { emeralds: '#4ade80', ore: '#94a3b8', crops: '#facc15',
 //  STATE
 // ═══════════════════════════════════════════════════════════
 let territories = {};
-let addedTerritories = {};  // name -> { defense, bonuses: {bonusName: level}, hq }
+let addedTerritories = {};  // name -> { defense, bonuses, hq, treasury }
 let currentModalTerritory = null;
 let mapImage = null;
 
@@ -93,7 +93,6 @@ let lastMousePos = { x: 0, y: 0 };
 let hoveredTerritory = null;
 let selectedTerritories = new Set();    // map selection (unregistered)
 let listSelectedTerritories = new Set(); // manager list selection (registered)
-let treasuryLevel = 'Very Low';
 let _hqDistanceCache = null;
 let tributeValues = { emeralds: 0, ore: 0, crops: 0, fish: 0, wood: 0 };
 let currentModalMode = 'single'; // 'single' | 'bulk'
@@ -691,7 +690,8 @@ function getHQDistances() {
 }
 
 function calcTreasuryBuff(name, hqDist) {
-  const mult = TREASURY_LEVEL_MULT[treasuryLevel];
+  const level = (addedTerritories[name] && addedTerritories[name].treasury) || 'Very Low';
+  const mult = TREASURY_LEVEL_MULT[level];
   if (!mult || !hqDist) return 0;
   const dist = hqDist[name];
   if (dist === undefined) return 0;
@@ -778,7 +778,7 @@ function escapeHtml(s) {
 function addTerritory(name) {
   if (!territories[name]) return;
   if (!addedTerritories[name]) {
-    addedTerritories[name] = { defense: { damage: 0, attack: 0, health: 0, defense: 0 }, bonuses: {}, hq: false };
+    addedTerritories[name] = { defense: { damage: 0, attack: 0, health: 0, defense: 0 }, bonuses: {}, hq: false, treasury: 'Very Low' };
   }
   selectedTerritories.delete(name);
   updateSelectedCount();
@@ -788,7 +788,7 @@ function addTerritory(name) {
 function addSelectedTerritories() {
   for (const name of selectedTerritories) {
     if (territories[name] && !addedTerritories[name]) {
-      addedTerritories[name] = { defense: { damage: 0, attack: 0, health: 0, defense: 0 }, bonuses: {}, hq: false };
+      addedTerritories[name] = { defense: { damage: 0, attack: 0, health: 0, defense: 0 }, bonuses: {}, hq: false, treasury: 'Very Low' };
     }
   }
   selectedTerritories.clear();
@@ -798,11 +798,6 @@ function addSelectedTerritories() {
 
 function updateSelectedCount() {
   document.getElementById('selected-count').textContent = selectedTerritories.size;
-}
-
-function setTreasury(val) {
-  treasuryLevel = val;
-  updateOverview();
 }
 
 function removeTerritory(name) {
@@ -878,12 +873,13 @@ function openModal(name, bulkNames = null) {
   currentBulkTerritories = isBulk ? bulkNames : [];
   currentModalTerritory = isBulk ? null : name;
 
-  const st = addedTerritories[name] || { defense: {}, bonuses: {}, hq: false };
+  const st = addedTerritories[name] || { defense: {}, bonuses: {}, hq: false, treasury: 'Very Low' };
   document.getElementById('modal-title').textContent = isBulk
     ? `Editing ${bulkNames.length} territories`
     : name;
   document.getElementById('modal-hq').checked = isBulk ? false : !!st.hq;
   document.getElementById('hq-section').style.display = isBulk ? 'none' : '';
+  document.getElementById('modal-treasury').value = st.treasury || 'Very Low';
 
   const defGrid = document.getElementById('defense-grid');
   defGrid.innerHTML = '';
@@ -969,8 +965,9 @@ function updateModalStats() {
     bonuses[sel.dataset.bonus] = parseInt(sel.value) || 0;
   });
 
+  const treasury = document.getElementById('modal-treasury').value || 'Very Low';
   const orig = addedTerritories[name];
-  addedTerritories[name] = { defense, bonuses, hq: isHQ };
+  addedTerritories[name] = { defense, bonuses, hq: isHQ, treasury };
 
   const prod = calcTerritoryProduction(name);
   const cons = calcTerritoryConsumption(name);
@@ -1016,11 +1013,14 @@ function saveModal() {
     bonuses[sel.dataset.bonus] = parseInt(sel.value) || 0;
   });
 
+  const treasury = document.getElementById('modal-treasury').value || 'Very Low';
+
   if (currentModalMode === 'bulk') {
     for (const n of currentBulkTerritories) {
       if (addedTerritories[n]) {
         addedTerritories[n].defense = { ...defense };
         addedTerritories[n].bonuses = { ...bonuses };
+        addedTerritories[n].treasury = treasury;
       }
     }
     listSelectedTerritories.clear();
@@ -1035,7 +1035,7 @@ function saveModal() {
   if (isHQ) {
     for (const n of Object.keys(addedTerritories)) addedTerritories[n].hq = false;
   }
-  addedTerritories[name] = { defense, bonuses, hq: isHQ };
+  addedTerritories[name] = { defense, bonuses, hq: isHQ, treasury };
   closeModal();
   refreshUI();
 }
@@ -1090,11 +1090,12 @@ function getShareState() {
     for (const [k, v] of Object.entries(st.defense || {})) { if (v) d[k] = v; }
     const b = {};
     for (const [k, v] of Object.entries(st.bonuses || {})) { if (v) b[k] = v; }
-    return { n: name, hq: st.hq || false, d, b };
+    const tl = st.treasury || 'Very Low';
+    return { n: name, hq: st.hq || false, d, b, tl };
   });
   const tr = {};
   for (const [k, v] of Object.entries(tributeValues)) { if (v) tr[k] = v; }
-  return { v: 1, tl: treasuryLevel, tr, t: tData };
+  return { v: 2, tr, t: tData };
 }
 
 function copyShareLink() {
@@ -1111,12 +1112,7 @@ function loadFromHash() {
   if (!location.hash.startsWith('#s=')) return;
   try {
     const state = JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(3)))));
-    if (state.v !== 1) return;
-    if (state.tl) {
-      treasuryLevel = state.tl;
-      const sel = document.getElementById('treasury-select');
-      if (sel) sel.value = treasuryLevel;
-    }
+    if (state.v !== 1 && state.v !== 2) return;
     if (state.tr) {
       for (const r of RESOURCES) tributeValues[r] = state.tr[r] || 0;
     }
@@ -1127,7 +1123,8 @@ function loadFromHash() {
         addedTerritories[item.n] = {
           defense: { damage: 0, attack: 0, health: 0, defense: 0, ...item.d },
           bonuses: item.b || {},
-          hq: item.hq || false
+          hq: item.hq || false,
+          treasury: item.tl || 'Very Low'
         };
       }
     }
