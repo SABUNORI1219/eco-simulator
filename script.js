@@ -19,11 +19,11 @@ const DEFENSE_LEVEL_STATS = [
   { health: 960000,  defense: 70.0, damageMin: 2600, damageMax: 3900, attackSpeed: 1.6 },
   { health: 1200000, defense: 75.0, damageMin: 3000, damageMax: 4500, attackSpeed: 2.0 },
   { health: 1500000, defense: 79.0, damageMin: 3400, damageMax: 5100, attackSpeed: 2.5 },
-  { health: 1800000, defense: 82.0, damageMin: 3800, damageMax: 5700, attackSpeed: 3.0 },
-  { health: 2160000, defense: 84.0, damageMin: 4200, damageMax: 6300, attackSpeed: 3.6 },
-  { health: 2280000, defense: 86.0, damageMin: 4600, damageMax: 6900, attackSpeed: 3.8 },
-  { health: 2580000, defense: 88.0, damageMin: 5000, damageMax: 7500, attackSpeed: 4.2 },
-  { health: 2820000, defense: 90.0, damageMin: 5400, damageMax: 8100, attackSpeed: 4.7 }
+  { health: 1860000, defense: 82.0, damageMin: 3800, damageMax: 5700, attackSpeed: 3.0 },
+  { health: 2220000, defense: 84.0, damageMin: 4200, damageMax: 6300, attackSpeed: 3.6 },
+  { health: 2580000, defense: 86.0, damageMin: 4600, damageMax: 6900, attackSpeed: 3.8 },
+  { health: 2940000, defense: 88.0, damageMin: 5000, damageMax: 7500, attackSpeed: 4.2 },
+  { health: 3300000, defense: 90.0, damageMin: 5400, damageMax: 8100, attackSpeed: 4.7 }
 ];
 
 const DEFENSE_COST_TABLE = [0, 100, 300, 600, 1200, 2400, 4800, 8400, 12000, 15600, 19200, 22800];
@@ -851,7 +851,7 @@ window.guildTerritoryMap = {};
 async function loadGuilds() {
   const sel = document.getElementById('guild-select');
   try {
-    const res = await fetch('https://api.wynncraft.com/v3/guild/list/territory');
+    const res = await fetch('https://corsproxy.io/?https://api.wynncraft.com/v3/guild/list/territory');
     if (!res.ok) {
       throw new Error(`API error: ${res.status} ${res.statusText}`);
     }
