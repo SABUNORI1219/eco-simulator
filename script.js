@@ -407,17 +407,19 @@ function showTooltip(mx, my, name) {
       Rating: ${stats.rating} — EHP ${fmt(stats.finalHp)} / DPS ${fmt(stats.dps)}<br>
       Conn. Bonus: +${Math.round((stats.mult - 1) * 100)}%</div>`;
   }
-  html += `<div style="font-size:11px;color:#64748b;margin-bottom:4px;">Production / Consumption</div>`;
 
+  let prodHtml = '';
   for (const r of RESOURCES) {
-    const p = prod[r], c = cons[r];
-    if (p === 0 && c === 0) continue;
-    const net = p - c;
-    const col = net >= 0 ? '#60a5fa' : '#f87171';
-    html += `<div class="tt-row">
+    const p = prod[r];
+    if (p > 0) {
+      prodHtml += `<div class="tt-row">
       <span class="tt-label">${RESOURCE_ICONS[r]} ${r}</span>
-      <span class="tt-val" style="color:${col}">${fmt(p)} / ${fmt(c)} (${net >= 0 ? '+' : ''}${fmt(net)})</span>
+      <span class="tt-val" style="color:#60a5fa">+${fmt(p)}/hr</span>
     </div>`;
+    }
+  }
+  if (prodHtml) {
+    html += `<div style="font-size:11px;color:#64748b;margin-bottom:4px;">Production</div>` + prodHtml;
   }
 
   tooltip.innerHTML = html;
@@ -462,7 +464,28 @@ function calcTerritoryDefenseStats(name) {
     }
   }
 
-  const mult = 1.0 + (0.3 * connections);
+  let mult = 1.0 + (0.3 * connections);
+  let externals = 0;
+
+  if (st.hq) {
+    const visited = new Set([name]);
+    const queue = [name];
+
+    while (queue.length > 0) {
+      const curr = queue.shift();
+      const currT = territories[curr];
+      if (currT && currT['Trading Routes']) {
+        for (const route of currT['Trading Routes']) {
+          if (addedTerritories[route] && !visited.has(route)) {
+            visited.add(route);
+            queue.push(route);
+            externals++;
+          }
+        }
+      }
+    }
+    mult = (1.5 + (0.25 * externals)) * (1.0 + (0.3 * connections));
+  }
   
   const hLevel = st.defense.health || 0;
   const dLevel = st.defense.damage || 0;
@@ -849,7 +872,8 @@ document.getElementById('modal-overlay').addEventListener('click', e => {
 window.guildTerritoryMap = {};
 
 async function loadGuilds() {
-  const sel = document.getElementById('guild-select');
+  const input = document.getElementById('guild-select');
+  const dl = document.getElementById('guild-list-options');
   try {
     const res = await fetch('https://corsproxy.io/?https://api.wynncraft.com/v3/guild/list/territory');
     if (!res.ok) {
@@ -880,16 +904,19 @@ async function loadGuilds() {
     window.guildTerritoryMap = {};
     const sortedGuilds = Object.keys(guildMap).sort();
     
-    sel.innerHTML = '<option value="">— select guild —</option>' +
-      sortedGuilds.map(g => {
+    if (dl) {
+      dl.innerHTML = sortedGuilds.map(g => {
         window.guildTerritoryMap[g] = guildMap[g].territories;
         const prefix = guildMap[g].prefix;
         const count = guildMap[g].territories.length;
         const prefixStr = prefix ? `[${escapeHtml(prefix)}] ` : '';
         return `<option value="${escapeHtml(g)}">${prefixStr}${escapeHtml(g)} (${count})</option>`;
       }).join('');
+    }
+    if (input) input.placeholder = "Type to search guild...";
   } catch (err) {
-    sel.innerHTML = '<option value="">— API unavailable —</option>';
+    const errMsg = err.message || 'Unknown Error';
+    if (input) input.placeholder = `API error: ${errMsg}`;
     console.warn('Guild API error:', err);
   }
 }

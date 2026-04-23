@@ -5,6 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Wynncraft Guild War Economy Simulator</title>
 <link rel="stylesheet" href="./style.css">
+<style>
+  input[type="text"] {
+    background-color: #1e293b;
+    color: #f8fafc;
+    border: 1px solid #334155;
+    padding: 6px;
+    border-radius: 4px;
+    box-sizing: border-box;
+  }
+  input[type="text"]:focus {
+    outline: none;
+    border-color: #4ade80;
+  }
+</style>
 </head>
 <body>
 
@@ -32,7 +46,8 @@
 
   <div class="ctrl-section">
     <h3>Add from Guild (Live)</h3>
-    <select id="guild-select"><option value="">— loading guilds… —</option></select>
+    <input type="text" id="guild-select" list="guild-list-options" placeholder="Loading guilds...">
+    <datalist id="guild-list-options"></datalist>
     <button class="primary" onclick="addGuildTerritories()">Add Guild's Territories</button>
   </div>
 
