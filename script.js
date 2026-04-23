@@ -570,35 +570,108 @@ function showTooltip(mx, my, name) {
   const st = addedTerritories[name];
   const stats = calcTerritoryDefenseStats(name);
 
-  let html = `<h4>${name}</h4>`;
-  if (st.hq) html += `<div style="color:#fbbf24;margin-bottom:6px;">Headquarters</div>`;
-  if (stats) {
-    html += `<div style="color:#64748b;font-size:11px;margin-bottom:6px;">
-      Damage: ${fmtNum(stats.finalDmgMin)}-${fmtNum(stats.finalDmgMax)}<br>
-      Attack Speed: ${stats.atkSpd}x<br>
-      Health: ${fmtNum(stats.boostedHp)}<br>
-      Defense: ${stats.defPct}%<br>
-      Rating: ${stats.rating} — EHP ${fmtNum(stats.finalHp)} / DPS ${fmtNum(stats.dps)}<br>
-      Conn. Bonus: +${Math.round((stats.mult - 1) * 100)}%</div>`;
+  let html = `<div style="color:#ffffff; font-weight:bold; font-size:12px; margin-bottom:8px;">${name}</div>`;
+  if (st.hq) html += `<div style="color:#fbbf24;margin-bottom:8px;">[HQ] Headquarters</div>`;
+
+  const resStorageLv = (st.bonuses || {})['Larger Resource Storage'] || 0;
+  const emStorageLv = (st.bonuses || {})['Larger Emerald Storage'] || 0;
+
+  const maxEm = st.hq 
+    ? [5000, 10000, 20000, 40000, 75000, 170000, 400000][emStorageLv]
+    : [3000, 6000, 12000, 24000, 45000, 102000, 240000][emStorageLv];
+    
+  const maxRes = st.hq
+    ? [1500, 3000, 6000, 12000, 22500, 51000, 120000][resStorageLv]
+    : [300, 600, 1200, 2400, 4500, 10200, 24000][resStorageLv];
+
+  // Emeralds
+  const emTotal = prod.emeralds + cons.emeralds;
+  if (emTotal > 0) {
+    if (prod.emeralds > 0) html += `<div style="color:#55FF55;">+${fmtNum(prod.emeralds)} Emeralds per Hour</div>`;
+    const stored = Math.round(emTotal / 60);
+    const color = stored >= maxEm ? '#FF5555' : '#55FF55';
+    html += `<div style="color:${color};">${fmtNum(stored)}/${fmtNum(maxEm)} stored</div>`;
   }
 
+  // Ore
+  const oreTotal = prod.ore + cons.ore;
+  if (oreTotal > 0) {
+    if (prod.ore > 0) html += `<div style="color:#FFFFFF;">${RESOURCE_ICONS.ore} +${fmtNum(prod.ore)} Ore per Hour</div>`;
+    const stored = Math.round(oreTotal / 60);
+    const color = stored >= maxRes ? '#FF5555' : '#FFFFFF';
+    html += `<div style="color:${color};">${RESOURCE_ICONS.ore} ${fmtNum(stored)}/${fmtNum(maxRes)} stored</div>`;
+  }
+
+  // Wood
+  const woodTotal = prod.wood + cons.wood;
+  if (woodTotal > 0) {
+    if (prod.wood > 0) html += `<div style="color:#FFAA00;">${RESOURCE_ICONS.wood} +${fmtNum(prod.wood)} Wood per Hour</div>`;
+    const stored = Math.round(woodTotal / 60);
+    const color = stored >= maxRes ? '#FF5555' : '#FFAA00';
+    html += `<div style="color:${color};">${RESOURCE_ICONS.wood} ${fmtNum(stored)}/${fmtNum(maxRes)} stored</div>`;
+  }
+
+  // Fish
+  const fishTotal = prod.fish + cons.fish;
+  if (fishTotal > 0) {
+    if (prod.fish > 0) html += `<div style="color:#55FFFF;">${RESOURCE_ICONS.fish} +${fmtNum(prod.fish)} Fish per Hour</div>`;
+    const stored = Math.round(fishTotal / 60);
+    const color = stored >= maxRes ? '#FF5555' : '#55FFFF';
+    html += `<div style="color:${color};">${RESOURCE_ICONS.fish} ${fmtNum(stored)}/${fmtNum(maxRes)} stored</div>`;
+  }
+
+  // Crops
+  const cropsTotal = prod.crops + cons.crops;
+  if (cropsTotal > 0) {
+    if (prod.crops > 0) html += `<div style="color:#FFFF55;">${RESOURCE_ICONS.crops} +${fmtNum(prod.crops)} Crops per Hour</div>`;
+    const stored = Math.round(cropsTotal / 60);
+    const color = stored >= maxRes ? '#FF5555' : '#FFFF55';
+    html += `<div style="color:${color};">${RESOURCE_ICONS.crops} ${fmtNum(stored)}/${fmtNum(maxRes)} stored</div>`;
+  }
+
+  // Treasury Bonus
   const buffPct = calcTreasuryBuff(name, getHQDistances());
   if (buffPct > 0) {
-    html += `<div style="color:#4ade80;font-size:11px;margin-bottom:4px;">🏦 Treasury: +${(buffPct * 100).toFixed(1)}%</div>`;
+    html += `<div style="margin-top:8px;"><span style="color:#FF55FF;">♦ Treasury Bonus: </span><span style="color:#FFFFFF;">${(buffPct * 100).toFixed(1)}%</span></div>`;
   }
 
-  let prodHtml = '';
-  for (const r of RESOURCES) {
-    const p = prod[r];
-    if (p > 0) {
-      prodHtml += `<div class="tt-row">
-      <span class="tt-label">${RESOURCE_ICONS[r]} ${r}</span>
-      <span class="tt-val" style="color:#60a5fa">+${fmt(p)}/hr</span>
-    </div>`;
+  // Upgrades
+  html += `<div style="color:#FF55FF; margin-top:8px;">Upgrades:</div>`;
+  let hasUpgrades = false;
+  for (const dt of DEFENSE_TYPES) {
+    const lv = (st.defense || {})[dt.id] || 0;
+    if (lv > 0) {
+      html += `<div><span style="color:#FF55FF;">- </span><span style="color:#AAAAAA;">${dt.name} </span><span style="color:#555555;">[Lv.${lv}]</span></div>`;
+      hasUpgrades = true;
     }
   }
-  if (prodHtml) {
-    html += `<div style="font-size:11px;color:#64748b;margin-bottom:4px;">Production</div>` + prodHtml;
+  for (const bcfg of BONUS_CONFIG) {
+    const lv = (st.bonuses || {})[bcfg.name] || 0;
+    if (lv > 0) {
+      html += `<div><span style="color:#FF55FF;">- </span><span style="color:#AAAAAA;">${bcfg.name} </span><span style="color:#555555;">[Lv.${lv}]</span></div>`;
+      hasUpgrades = true;
+    }
+  }
+  if (!hasUpgrades) {
+    html += `<div style="color:#AAAAAA;">No upgrades active</div>`;
+  }
+
+  // Total Stats
+  if (stats) {
+    let ratingColor = '#55FF55';
+    switch(stats.rating) {
+      case "Very Low": ratingColor = '#00AA00'; break;
+      case "Low": ratingColor = '#55FF55'; break;
+      case "Medium": ratingColor = '#FFFF55'; break;
+      case "High": ratingColor = '#FF5555'; break;
+      case "Very High": ratingColor = '#AA0000'; break;
+    }
+    html += `<div style="margin-top:8px;"><span style="color:#FF55FF;">Total Stats (</span><span style="color:${ratingColor};">${stats.rating}</span><span style="color:#FF55FF;">):</span></div>`;
+    html += `<div><span style="color:#FF55FF;">- </span><span style="color:#AAAAAA;">Damage: ${fmtNum(stats.finalDmgMin)} - ${fmtNum(stats.finalDmgMax)}</span></div>`;
+    html += `<div><span style="color:#FF55FF;">- </span><span style="color:#AAAAAA;">Attacks per Second: ${stats.atkSpd}</span></div>`;
+    html += `<div><span style="color:#FF55FF;">- </span><span style="color:#AAAAAA;">Health: ${fmtNum(stats.boostedHp)}</span></div>`;
+    html += `<div><span style="color:#FF55FF;">- </span><span style="color:#AAAAAA;">Defense: ${stats.defPct}%</span></div>`;
+    html += `<div><span style="color:#FF55FF;">- </span><span style="color:#AAAAAA;">EHP: ${fmtNum(stats.finalHp)} / DPS: ${fmtNum(stats.dps)}</span></div>`;
   }
 
   tooltip.innerHTML = html;
@@ -1108,7 +1181,7 @@ function openModal(name, bulkNames = null) {
         displayName = cfg.name;
       }
       
-      itemEl.title = `${displayName} (${cfg.resource} required)\nClick to change level`;
+      itemEl.title = `${displayName}\nClick to change level`;
       
       const iconName = displayName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
       const iconPath = `./assets/icons/upgrades/${iconName}.png`;
@@ -1141,11 +1214,11 @@ function openModal(name, bulkNames = null) {
             opt.textContent = `Lv 0: ${effText} (Free)`;
           } else {
             const cost = cfg.costs[lv];
-            opt.textContent = `Lv ${lv}: ${effText} (${fmt(cost)}/hr)`;
+            opt.textContent = `Lv ${lv}: ${effText} (-${fmt(cost)} ${cfg.resource}/hr)`;
           }
         } else {
           const cost = DEFENSE_COST_TABLE[lv];
-          opt.textContent = lv === 0 ? 'Lv 0 (Free)' : `Lv ${lv} (${fmt(cost)}/hr)`;
+          opt.textContent = lv === 0 ? 'Lv 0 (Free)' : `Lv ${lv} (-${fmt(cost)} ${cfg.resource}/hr)`;
         }
         
         if (!isBulk && lv === currentLevel) opt.selected = true;
