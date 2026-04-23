@@ -458,33 +458,40 @@ function calcTerritoryDefenseStats(name) {
   if (!t) return null;
 
   let connections = 0;
-  if (t['Trading Routes']) {
-    for (const route of t['Trading Routes']) {
-      if (addedTerritories[route]) connections++;
-    }
-  }
-
-  let mult = 1.0 + (0.3 * connections);
   let externals = 0;
+  let mult = 1.0;
 
   if (st.hq) {
-    const visited = new Set([name]);
-    const queue = [name];
+    const connSet = new Set();
+    const extSet = new Set();
+    const visited = new Set();
+    const queue = [{ curr: name, dist: 0 }];
 
     while (queue.length > 0) {
-      const curr = queue.shift();
+      const { curr, dist } = queue.shift();
+      if (visited.has(curr) || dist > 3) continue;
+      visited.add(curr);
+
+      if (dist === 1 && addedTerritories[curr]) connSet.add(curr);
+      if (dist > 0 && addedTerritories[curr] && curr !== name) extSet.add(curr);
+
       const currT = territories[curr];
       if (currT && currT['Trading Routes']) {
-        for (const route of currT['Trading Routes']) {
-          if (addedTerritories[route] && !visited.has(route)) {
-            visited.add(route);
-            queue.push(route);
-            externals++;
-          }
+        for (const conn of currT['Trading Routes']) {
+          if (!visited.has(conn)) queue.push({ curr: conn, dist: dist + 1 });
         }
       }
     }
-    mult = (1.5 + (0.25 * externals)) * (1.0 + (0.3 * connections));
+    connections = connSet.size;
+    externals = extSet.size;
+    mult = (1.5 + (0.25 * externals)) * (1.0 + (0.30 * connections));
+  } else {
+    if (t['Trading Routes']) {
+      for (const route of t['Trading Routes']) {
+        if (addedTerritories[route]) connections++;
+      }
+    }
+    mult = 1.0 + (0.3 * connections);
   }
   
   const hLevel = st.defense.health || 0;
