@@ -104,7 +104,7 @@ resImages.ore.src = './assets/icons/resources/ore.png';
 resImages.crops.src = './assets/icons/resources/crop.png';
 resImages.fish.src = './assets/icons/resources/fish.png';
 resImages.wood.src = './assets/icons/resources/wood.png';
-hqImage.src = './assets/icons/other/guild_headquarter.png';
+hqImage.src = './assets/icons/others/guild_headquarter.png';
 const allImages = [...Object.values(resImages), hqImage];
 allImages.forEach(img => { img.onload = () => draw(); });
 
@@ -461,11 +461,12 @@ function drawTerritories() {
       const isRainbow = ore > 0 && crops > 0 && fish > 0 && wood > 0;
       
       let mainRes = null;
+      let mainResAmount = 0;
       if (!isRainbow) {
-        if (ore > 0) mainRes = 'ore';
-        else if (crops > 0) mainRes = 'crops';
-        else if (fish > 0) mainRes = 'fish';
-        else if (wood > 0) mainRes = 'wood';
+        if (ore > 0) { mainRes = 'ore'; mainResAmount = ore; }
+        else if (crops > 0) { mainRes = 'crops'; mainResAmount = crops; }
+        else if (fish > 0) { mainRes = 'fish'; mainResAmount = fish; }
+        else if (wood > 0) { mainRes = 'wood'; mainResAmount = wood; }
       }
 
       if (isRainbow) {
@@ -485,7 +486,10 @@ function drawTerritories() {
         // 街または通常資源地 (横並び)
         const iconsToDraw = [];
         if (isCity) iconsToDraw.push(resImages.emeralds);
-        if (mainRes) iconsToDraw.push(resImages[mainRes]);
+        if (mainRes) {
+          iconsToDraw.push(resImages[mainRes]);
+          if (mainResAmount >= 7200) iconsToDraw.push(resImages[mainRes]);
+        }
 
         if (iconsToDraw.length > 0) {
           const totalW = iconsToDraw.length * iconSize + (iconsToDraw.length - 1) * gap;
@@ -691,6 +695,8 @@ function calcTerritoryDefenseStats(name) {
   else if (difficulty >= 19) rating = "Medium";
   else if (difficulty >= 6) rating = "Low";
 
+  if (st.hq) rating = "Very High";
+
   return { finalHp, dps, defPct, rating, mult, connections, boostedHp, atkSpd, finalDmgMin, finalDmgMax };
 }
 
@@ -781,6 +787,20 @@ function fmtNum(n) {
 // dist 0-2: 10%, dist 3: 8.5%, dist 4: 7%, dist 5: 5.5%, dist 6+: 4%
 const TREASURY_BASE_PCTS = [0.10, 0.10, 0.10, 0.085, 0.07, 0.055, 0.04];
 const TREASURY_LEVEL_MULT = { 'Very Low': 0, 'Low': 1, 'Medium': 2, 'High': 2.5, 'Very High': 3 };
+
+function calculateTreasuryFromAcquired(acquiredStr) {
+  if (!acquiredStr) return 'Very Low';
+  const acquiredDate = new Date(acquiredStr).getTime();
+  const now = Date.now();
+  if (isNaN(acquiredDate)) return 'Very Low';
+  const diffHours = (now - acquiredDate) / (1000 * 60 * 60);
+
+  if (diffHours >= 288) return 'Very High'; // 12 days
+  if (diffHours >= 120) return 'High';      // 5 days
+  if (diffHours >= 24) return 'Medium';     // 1 day
+  if (diffHours >= 1) return 'Low';         // 1 hour
+  return 'Very Low';
+}
 
 function getHQDistances() {
   if (_hqDistanceCache !== null) return _hqDistanceCache;
@@ -889,7 +909,11 @@ function escapeHtml(s) {
 function addTerritory(name) {
   if (!territories[name]) return;
   if (!addedTerritories[name]) {
-    addedTerritories[name] = { defense: { damage: 0, attack: 0, health: 0, defense: 0 }, bonuses: {}, hq: false, treasury: 'Very Low' };
+    let initialTreasury = 'Very Low';
+    if (territories[name].Guild && territories[name].Guild.acquired) {
+      initialTreasury = calculateTreasuryFromAcquired(territories[name].Guild.acquired);
+    }
+    addedTerritories[name] = { defense: { damage: 0, attack: 0, health: 0, defense: 0 }, bonuses: {}, hq: false, treasury: initialTreasury };
   }
   selectedTerritories.delete(name);
   updateSelectedCount();
@@ -899,7 +923,11 @@ function addTerritory(name) {
 function addSelectedTerritories() {
   for (const name of selectedTerritories) {
     if (territories[name] && !addedTerritories[name]) {
-      addedTerritories[name] = { defense: { damage: 0, attack: 0, health: 0, defense: 0 }, bonuses: {}, hq: false, treasury: 'Very Low' };
+      let initialTreasury = 'Very Low';
+      if (territories[name].Guild && territories[name].Guild.acquired) {
+        initialTreasury = calculateTreasuryFromAcquired(territories[name].Guild.acquired);
+      }
+      addedTerritories[name] = { defense: { damage: 0, attack: 0, health: 0, defense: 0 }, bonuses: {}, hq: false, treasury: initialTreasury };
     }
   }
   selectedTerritories.clear();
@@ -1309,6 +1337,7 @@ async function loadGuilds() {
           name: guildName,
           prefix: guildInfo.prefix || '',
           uuid: guildInfo.uuid || '',
+          acquired: info.acquired || null
         };
       }
     }
