@@ -761,9 +761,10 @@ function updateTerritoryList() {
   list.innerHTML = Object.keys(addedTerritories).map(name => {
     const st = addedTerritories[name];
     const isSel = listSelectedTerritories.has(name);
-    return `<div class="territory-item${isSel ? ' list-selected' : ''}" onclick="toggleListSelection('${escapeHtml(name)}')">
-      <span>${st.hq ? '⭐ ' : '🏴 '}${name}</span>
-      <button class="rm-btn" onclick="event.stopPropagation();removeTerritory('${escapeHtml(name)}')">✕</button>
+    const safeNameArg = escapeHtml(JSON.stringify(name));
+    return `<div class="territory-item${isSel ? ' list-selected' : ''}" onclick="toggleListSelection(${safeNameArg})">
+      <span>${st.hq ? '⭐ ' : '🏴 '}${escapeHtml(name)}</span>
+      <button class="rm-btn" onclick="event.stopPropagation();removeTerritory(${safeNameArg})">✕</button>
     </div>`;
   }).join('');
 }
@@ -879,7 +880,21 @@ function openModal(name, bulkNames = null) {
     : name;
   document.getElementById('modal-hq').checked = isBulk ? false : !!st.hq;
   document.getElementById('hq-section').style.display = isBulk ? 'none' : '';
-  document.getElementById('modal-treasury').value = st.treasury || 'Very Low';
+  
+  const treasurySel = document.getElementById('modal-treasury');
+  let noChangeOpt = treasurySel.querySelector('option[value=""]');
+  if (isBulk) {
+    if (!noChangeOpt) {
+      noChangeOpt = document.createElement('option');
+      noChangeOpt.value = "";
+      noChangeOpt.textContent = "- No Change -";
+      treasurySel.insertBefore(noChangeOpt, treasurySel.firstChild);
+    }
+    treasurySel.value = "";
+  } else {
+    if (noChangeOpt) treasurySel.removeChild(noChangeOpt);
+    treasurySel.value = st.treasury || 'Very Low';
+  }
 
   const defGrid = document.getElementById('defense-grid');
   defGrid.innerHTML = '';
@@ -894,12 +909,19 @@ function openModal(name, bulkNames = null) {
     sel.className = 'defense-sel';
     sel.dataset.defId = dt.id;
     
+    if (isBulk) {
+      const opt = document.createElement('option');
+      opt.value = "";
+      opt.textContent = "- No Change -";
+      sel.appendChild(opt);
+    }
+    
     for (let lv = 0; lv <= 11; lv++) {
       const opt = document.createElement('option');
       opt.value = lv;
       const cost = DEFENSE_COST_TABLE[lv];
       opt.textContent = lv === 0 ? 'Lv 0 (Free)' : `Lv ${lv} (${RESOURCE_ICONS[dt.resource]}${fmt(cost)}/hr)`;
-      if (lv === level) opt.selected = true;
+      if (!isBulk && lv === level) opt.selected = true;
       sel.appendChild(opt);
     }
     sel.addEventListener('change', updateModalStats);
@@ -921,6 +943,13 @@ function openModal(name, bulkNames = null) {
     sel.className = 'bonus-sel';
     sel.dataset.bonus = bcfg.name;
     
+    if (isBulk) {
+      const opt = document.createElement('option');
+      opt.value = "";
+      opt.textContent = "- No Change -";
+      sel.appendChild(opt);
+    }
+    
     const maxLv = bcfg.maxLevel || 11;
     for (let lv = 0; lv <= maxLv; lv++) {
       const opt = document.createElement('option');
@@ -933,7 +962,7 @@ function openModal(name, bulkNames = null) {
         const cost = bcfg.costs[lv];
         opt.textContent = `Lv ${lv}: ${effText} (${RESOURCE_ICONS[bcfg.resource]}${fmt(cost)}/hr)`;
       }
-      if (lv === level) opt.selected = true;
+      if (!isBulk && lv === level) opt.selected = true;
       sel.appendChild(opt);
     }
     sel.addEventListener('change', updateModalStats);
@@ -1004,6 +1033,36 @@ function updateModalStats() {
 }
 
 function saveModal() {
+  if (currentModalMode === 'bulk') {
+    const defenseToApply = {};
+    document.querySelectorAll('.defense-sel').forEach(sel => {
+      if (sel.value !== "") defenseToApply[sel.dataset.defId] = parseInt(sel.value);
+    });
+    const bonusesToApply = {};
+    document.querySelectorAll('.bonus-sel').forEach(sel => {
+      if (sel.value !== "") bonusesToApply[sel.dataset.bonus] = parseInt(sel.value);
+    });
+    const treasury = document.getElementById('modal-treasury').value;
+
+    for (const n of currentBulkTerritories) {
+      if (addedTerritories[n]) {
+        for (const [k, v] of Object.entries(defenseToApply)) {
+          addedTerritories[n].defense[k] = v;
+        }
+        for (const [k, v] of Object.entries(bonusesToApply)) {
+          addedTerritories[n].bonuses[k] = v;
+        }
+        if (treasury !== "") {
+          addedTerritories[n].treasury = treasury;
+        }
+      }
+    }
+    listSelectedTerritories.clear();
+    closeModal();
+    refreshUI();
+    return;
+  }
+
   const defense = {};
   document.querySelectorAll('.defense-sel').forEach(sel => {
     defense[sel.dataset.defId] = parseInt(sel.value) || 0;
@@ -1012,22 +1071,7 @@ function saveModal() {
   document.querySelectorAll('.bonus-sel').forEach(sel => {
     bonuses[sel.dataset.bonus] = parseInt(sel.value) || 0;
   });
-
   const treasury = document.getElementById('modal-treasury').value || 'Very Low';
-
-  if (currentModalMode === 'bulk') {
-    for (const n of currentBulkTerritories) {
-      if (addedTerritories[n]) {
-        addedTerritories[n].defense = { ...defense };
-        addedTerritories[n].bonuses = { ...bonuses };
-        addedTerritories[n].treasury = treasury;
-      }
-    }
-    listSelectedTerritories.clear();
-    closeModal();
-    refreshUI();
-    return;
-  }
 
   const name = currentModalTerritory;
   if (!name) return;
