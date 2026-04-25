@@ -1064,6 +1064,17 @@ function clearAllTerritories() {
   refreshUI();
 }
 
+function resetSelected() {
+  const names = [...listSelectedTerritories].filter(n => addedTerritories[n]);
+  if (names.length === 0) return;
+  if (!confirm(`Reset upgrades and bonuses for ${names.length} selected territories?`)) return;
+  for (const n of names) {
+    addedTerritories[n].defense = { damage: 0, attack: 0, health: 0, defense: 0 };
+    addedTerritories[n].bonuses = {};
+  }
+  refreshUI();
+}
+
 function toggleListSelection(name) {
   if (listSelectedTerritories.has(name)) listSelectedTerritories.delete(name);
   else listSelectedTerritories.add(name);
