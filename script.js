@@ -410,14 +410,19 @@ function drawTerritories() {
     const isHQ = isAdded && addedTerritories[name].hq;
     const isHovered = name === hoveredTerritory;
     const isSelected = selectedTerritories.has(name);
+    const isListSelected = listSelectedTerritories.has(name);
 
     if (!isAdded && !isSelected && scale < 0.05) continue;
 
     // Fill
     if (isAdded) {
-      ctx.fillStyle = isHQ
-        ? 'rgba(251,191,36,0.25)'
-        : isHovered ? 'rgba(74,222,128,0.28)' : 'rgba(74,222,128,0.14)';
+      if (isListSelected) {
+        ctx.fillStyle = isHovered ? 'rgba(59,130,246,0.4)' : 'rgba(59,130,246,0.25)';
+      } else {
+        ctx.fillStyle = isHQ
+          ? 'rgba(251,191,36,0.25)'
+          : isHovered ? 'rgba(74,222,128,0.28)' : 'rgba(74,222,128,0.14)';
+      }
       ctx.fillRect(x, y, w, h);
     } else if (isSelected) {
       ctx.fillStyle = isHovered ? 'rgba(96,165,250,0.28)' : 'rgba(96,165,250,0.16)';
@@ -428,23 +433,31 @@ function drawTerritories() {
     }
 
     // Outline
-    if (isHQ) {
-      ctx.lineWidth = Math.max(2.0, scale * 2.2);
-      ctx.strokeStyle = '#fbbf24';
-    } else if (isAdded) {
-      ctx.lineWidth = Math.max(2.0, scale * 2.2);
-      ctx.strokeStyle = '#15803d';
-    } else if (isSelected) {
-      ctx.lineWidth = Math.max(1.8, scale * 2.0);
+    if (isAdded && isListSelected) {
+      ctx.setLineDash([Math.max(4, scale * 8), Math.max(4, scale * 8)]);
+      ctx.lineWidth = Math.max(2.0, scale * 2.5);
       ctx.strokeStyle = '#3b82f6';
-    } else if (isHovered) {
-      ctx.lineWidth = Math.max(1.5, scale * 1.8);
-      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
     } else {
-      ctx.lineWidth = Math.max(1.0, scale * 1.4);
-      ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+      ctx.setLineDash([]);
+      if (isHQ) {
+        ctx.lineWidth = Math.max(2.0, scale * 2.2);
+        ctx.strokeStyle = '#fbbf24';
+      } else if (isAdded) {
+        ctx.lineWidth = Math.max(2.0, scale * 2.2);
+        ctx.strokeStyle = '#15803d';
+      } else if (isSelected) {
+        ctx.lineWidth = Math.max(1.8, scale * 2.0);
+        ctx.strokeStyle = '#3b82f6';
+      } else if (isHovered) {
+        ctx.lineWidth = Math.max(1.5, scale * 1.8);
+        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      } else {
+        ctx.lineWidth = Math.max(1.0, scale * 1.4);
+        ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+      }
     }
     ctx.strokeRect(x, y, w, h);
+    ctx.setLineDash([]);
 
     const cx = (p1.x + p2.x) / 2;
     const cy = (p1.y + p2.y) / 2;
@@ -1108,16 +1121,19 @@ function toggleListSelection(name) {
   if (listSelectedTerritories.has(name)) listSelectedTerritories.delete(name);
   else listSelectedTerritories.add(name);
   updateTerritoryList();
+  draw();
 }
 
 function selectAll() {
   listSelectedTerritories = new Set(Object.keys(addedTerritories));
   updateTerritoryList();
+  draw();
 }
 
 function selectNone() {
   listSelectedTerritories.clear();
   updateTerritoryList();
+  draw();
 }
 
 function editSelected() {
