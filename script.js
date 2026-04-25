@@ -570,7 +570,7 @@ function showTooltip(mx, my, name) {
   const st = addedTerritories[name];
   const stats = calcTerritoryDefenseStats(name);
 
-  let html = `<div style="color:#ffffff; font-weight:bold; font-size:12px; margin-bottom:8px;">${name}</div>`;
+  let html = `<div style="color:#ffffff; font-weight:bold; font-size:16px; margin-bottom:8px;">${name}</div>`;
   if (st.hq) html += `<div style="color:#fbbf24;margin-bottom:8px;">[HQ] Headquarters</div>`;
 
   const resStorageLv = (st.bonuses || {})['Larger Resource Storage'] || 0;
@@ -590,7 +590,7 @@ function showTooltip(mx, my, name) {
     if (prod.emeralds > 0) html += `<div style="color:#55FF55;">+${fmtNum(prod.emeralds)} Emeralds per Hour</div>`;
     const stored = Math.round(emTotal / 60);
     const color = stored >= maxEm ? '#FF5555' : '#55FF55';
-    html += `<div style="color:${color};">${fmtNum(stored)}/${fmtNum(maxEm)} stored</div>`;
+    html += `<div style="color:#55FF55;"><span style="color:${color};">${fmtNum(stored)}</span>/${fmtNum(maxEm)} stored</div>`;
   }
 
   // Ore
@@ -599,7 +599,7 @@ function showTooltip(mx, my, name) {
     if (prod.ore > 0) html += `<div style="color:#FFFFFF;">${RESOURCE_ICONS.ore} +${fmtNum(prod.ore)} Ore per Hour</div>`;
     const stored = Math.round(oreTotal / 60);
     const color = stored >= maxRes ? '#FF5555' : '#FFFFFF';
-    html += `<div style="color:${color};">${RESOURCE_ICONS.ore} ${fmtNum(stored)}/${fmtNum(maxRes)} stored</div>`;
+    html += `<div style="color:#FFFFFF;">${RESOURCE_ICONS.ore} <span style="color:${color};">${fmtNum(stored)}</span>/${fmtNum(maxRes)} stored</div>`;
   }
 
   // Wood
@@ -608,7 +608,7 @@ function showTooltip(mx, my, name) {
     if (prod.wood > 0) html += `<div style="color:#FFAA00;">${RESOURCE_ICONS.wood} +${fmtNum(prod.wood)} Wood per Hour</div>`;
     const stored = Math.round(woodTotal / 60);
     const color = stored >= maxRes ? '#FF5555' : '#FFAA00';
-    html += `<div style="color:${color};">${RESOURCE_ICONS.wood} ${fmtNum(stored)}/${fmtNum(maxRes)} stored</div>`;
+    html += `<div style="color:#FFAA00;">${RESOURCE_ICONS.wood} <span style="color:${color};">${fmtNum(stored)}</span>/${fmtNum(maxRes)} stored</div>`;
   }
 
   // Fish
@@ -617,7 +617,7 @@ function showTooltip(mx, my, name) {
     if (prod.fish > 0) html += `<div style="color:#55FFFF;">${RESOURCE_ICONS.fish} +${fmtNum(prod.fish)} Fish per Hour</div>`;
     const stored = Math.round(fishTotal / 60);
     const color = stored >= maxRes ? '#FF5555' : '#55FFFF';
-    html += `<div style="color:${color};">${RESOURCE_ICONS.fish} ${fmtNum(stored)}/${fmtNum(maxRes)} stored</div>`;
+    html += `<div style="color:#55FFFF;">${RESOURCE_ICONS.fish} <span style="color:${color};">${fmtNum(stored)}</span>/${fmtNum(maxRes)} stored</div>`;
   }
 
   // Crops
@@ -626,7 +626,7 @@ function showTooltip(mx, my, name) {
     if (prod.crops > 0) html += `<div style="color:#FFFF55;">${RESOURCE_ICONS.crops} +${fmtNum(prod.crops)} Crops per Hour</div>`;
     const stored = Math.round(cropsTotal / 60);
     const color = stored >= maxRes ? '#FF5555' : '#FFFF55';
-    html += `<div style="color:${color};">${RESOURCE_ICONS.crops} ${fmtNum(stored)}/${fmtNum(maxRes)} stored</div>`;
+    html += `<div style="color:#FFFF55;">${RESOURCE_ICONS.crops} <span style="color:${color};">${fmtNum(stored)}</span>/${fmtNum(maxRes)} stored</div>`;
   }
 
   // Treasury Bonus
@@ -671,7 +671,7 @@ function showTooltip(mx, my, name) {
     html += `<div><span style="color:#FF55FF;">- </span><span style="color:#AAAAAA;">Attacks per Second: ${stats.atkSpd}</span></div>`;
     html += `<div><span style="color:#FF55FF;">- </span><span style="color:#AAAAAA;">Health: ${fmtNum(stats.boostedHp)}</span></div>`;
     html += `<div><span style="color:#FF55FF;">- </span><span style="color:#AAAAAA;">Defense: ${stats.defPct}%</span></div>`;
-    html += `<div><span style="color:#FF55FF;">- </span><span style="color:#AAAAAA;">EHP: ${fmtNum(stats.finalHp)} / DPS: ${fmtNum(stats.dps)}</span></div>`;
+    html += `<div><span style="color:#FF55FF;">- </span><span style="color:#AAAAAA;">EHP: ${fmt(stats.finalHp)} / DPS: ${fmt(stats.dps)}</span></div>`;
   }
 
   tooltip.innerHTML = html;
@@ -768,8 +768,8 @@ function calcTerritoryDefenseStats(name) {
   const auraLevel = (st.bonuses || {})["Tower Aura"] || 0;
   const volleyLevel = (st.bonuses || {})["Tower Volley"] || 0;
   let difficulty = hLevel + dLevel + aLevel + defLevel;
-  difficulty += auraLevel > 0 ? auraLevel + 5 : -5;
-  difficulty += volleyLevel > 0 ? volleyLevel + 3 : -3;
+  difficulty += auraLevel > 0 ? auraLevel + 5 : 0;
+  difficulty += volleyLevel > 0 ? volleyLevel + 3 : 0;
 
   let rating = "Very Low";
   if (difficulty >= 49) rating = "Very High";
@@ -923,36 +923,59 @@ function updateOverview() {
   }
 
   const { production, consumption } = calcOverallBalance();
-  let html = '';
+  
+  let html = `<div style="color:#ffffff; font-weight:bold; font-size:12px; margin-bottom:4px;">Guild Output</div>`;
+  html += `<div style="color:#AAAAAA; font-size:10px; margin-bottom:12px;">Total resource output and overall costs</div>`;
 
-  for (const r of RESOURCES) {
-    const prod = production[r];
-    const cons = consumption[r];
-    const trib = tributeValues[r] || 0;
+  const resOrder = [
+    { id: 'emeralds', name: 'Emeralds', color: '#55FF55' },
+    { id: 'ore', name: 'Ore', color: '#FFFFFF' },
+    { id: 'wood', name: 'Wood', color: '#FFAA00' },
+    { id: 'fish', name: 'Fish', color: '#55FFFF' },
+    { id: 'crops', name: 'Crops', color: '#FFFF55' }
+  ];
+
+  // Production
+  for (const r of resOrder) {
+    const prod = production[r.id];
+    html += `<div style="color:${r.color}; font-size:10px; margin-bottom:4px; display:flex; align-items:center; gap:6px;">`;
+    html += `<span>${RESOURCE_ICONS[r.id]}</span> <span>+${fmtNum(prod)} ${r.name} per Hour</span>`;
+    html += `</div>`;
+  }
+
+  html += `<div style="color:#55FF55; font-size:10px; margin-top:16px; margin-bottom:6px;">Overall Cost (per Hour):</div>`;
+
+  // Costs
+  for (const r of resOrder) {
+    const cons = consumption[r.id];
+    const prod = production[r.id];
+    const trib = tributeValues[r.id] || 0;
+    
     const net = prod - cons + trib;
     const totalIn = prod + Math.max(0, trib);
-    const pct = totalIn > 0 ? Math.min(100, (cons / totalIn) * 100) : (cons > 0 ? 100 : 0);
-    const netCls = net >= 0 ? 'pos' : 'neg';
-    const netStr = (net >= 0 ? '+' : '') + fmt(net) + '/hr';
-    const col = RESOURCE_COLORS[r];
-
-    let detail = `Prod: ${fmt(prod)}/hr &nbsp;|&nbsp; Cons: ${fmt(cons)}/hr`;
-    if (trib !== 0) detail += ` &nbsp;|&nbsp; <span style="color:${trib > 0 ? '#4ade80' : '#f87171'}">Trib: ${trib > 0 ? '+' : ''}${fmt(trib)}/hr</span>`;
-    detail += ` &nbsp;|&nbsp; ${pct.toFixed(1)}% used`;
-
-    html += `
-    <div class="res-row">
-      <div class="res-header">
-        <span class="res-icon">${RESOURCE_ICONS[r]}</span>
-        <span class="res-name">${r}</span>
-        <span class="res-net ${netCls}">${netStr}</span>
-      </div>
-      <div class="res-detail">${detail}</div>
-      <div class="progress-track">
-        <div class="progress-fill" style="width:${pct}%;background:${col};"></div>
-      </div>
-    </div>
-    <hr class="divider">`;
+    
+    const iconHtml = RESOURCE_ICONS[r.id].replace('class="res-icon-img"', 'class="res-icon-img gray-icon"');
+    
+    html += `<div style="font-size:10px; margin-bottom:4px; display:flex; align-items:center; gap:6px;">`;
+    html += `<span style="color:#55FF55;">- </span>`;
+    html += `<span>${iconHtml}</span>`;
+    
+    const netStr = net >= 0 ? `(+${fmtNum(net)})` : `(${fmtNum(net)})`;
+    const netColor = net >= 0 ? '#5555FF' : '#FF5555';
+    
+    let textHtml = `<span style="color:#AAAAAA;">${fmtNum(cons)} ${r.name} </span>` +
+                   `<span style="color:${netColor};">${netStr} </span>`;
+                   
+    if (totalIn === 0) {
+      textHtml += `<span style="color:#AA0000;">(No Output)</span>`;
+    } else {
+      const pct = Math.round((cons / totalIn) * 100);
+      const pctColor = pct <= 100 ? '#555555' : '#FF5555';
+      textHtml += `<span style="color:${pctColor};">(${pct}%)</span>`;
+    }
+    
+    html += `<span>${textHtml}</span>`;
+    html += `</div>`;
   }
   body.innerHTML = html;
 }
@@ -1276,7 +1299,7 @@ function updateModalStats() {
     html += `<div class="stat-line"><span class="stat-label">Attack Speed</span><span>${stats.atkSpd}x</span></div>`;
     html += `<div class="stat-line"><span class="stat-label">Health</span><span>${fmtNum(stats.boostedHp)}</span></div>`;
     html += `<div class="stat-line"><span class="stat-label">Defense</span><span>${stats.defPct}%</span></div>`;
-    html += `<div class="stat-line"><span class="stat-label">Rating</span><span>${stats.rating} — EHP ${fmtNum(stats.finalHp)} / DPS ${fmtNum(stats.dps)}</span></div>`;
+    html += `<div class="stat-line"><span class="stat-label">Rating</span><span>${stats.rating} — EHP ${fmt(stats.finalHp)} / DPS ${fmt(stats.dps)}</span></div>`;
   }
   if (isHQ) html += `<div class="stat-line"><span class="stat-label">Role</span><span style="color:#fbbf24;">Headquarters</span></div>`;
   const buffPct = calcTreasuryBuff(name, getHQDistances());
