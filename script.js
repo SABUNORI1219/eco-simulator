@@ -493,8 +493,7 @@ function drawTerritories() {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
 
-      const prefix = isHQ ? '' : (isAdded ? '🏴 ' : '');
-      const displayText = prefix + name;
+      const displayText = name;
 
       ctx.strokeText(displayText, cx, textY);
       ctx.fillText(displayText, cx, textY);
@@ -507,12 +506,6 @@ function drawTerritories() {
         ctx.fillStyle = '#fbbf24';
         const size = Math.max(8, scale * 50);
         ctx.fillRect(cx - size / 2, cy - size / 2, size, size);
-      } else {
-        ctx.font = `${Math.max(12, scale * 16)}px serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = '#ffffff';
-        ctx.fillText('🏴', cx, cy);
       }
     }
   }
