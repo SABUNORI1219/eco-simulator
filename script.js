@@ -953,7 +953,7 @@ function updateOverview() {
 function getTerritoryListIconHTML(name) {
   const st = addedTerritories[name];
   const t = territories[name];
-  if (!st || !t) return '🏴';
+  if (!st || !t) return '';
 
   if (st.hq) {
     return `<img src="./assets/icons/others/guild_headquarter.png" class="hq-list-icon" alt="HQ">`;
@@ -989,7 +989,7 @@ function getTerritoryListIconHTML(name) {
     }
   }
 
-  if (iconsHTML === '') return '🏴';
+  if (iconsHTML === '') return '';
 
   return `<div class="list-icon-group">${iconsHTML.replace(/class="res-icon-img"/g, 'class="list-icon"')}</div>`;
 }

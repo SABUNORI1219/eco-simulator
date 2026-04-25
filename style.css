@@ -135,7 +135,7 @@ button.danger:hover { background: #b91c1c; }
   vertical-align: middle;
 }
 .hq-list-icon {
-  width: 20px;
+  width: 16px;
   height: auto;
   object-fit: contain;
   flex-shrink: 0;
