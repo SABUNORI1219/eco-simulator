@@ -233,52 +233,6 @@ canvas.addEventListener('wheel', e => {
   draw();
 }, { passive: false });
 
-// ─── Touch support ───
-let lastTouchDist = 0;
-canvas.addEventListener('touchstart', e => {
-  e.preventDefault();
-  if (e.touches.length === 1) {
-    isDragging = true;
-    dragStart = { x: e.touches[0].clientX - panX, y: e.touches[0].clientY - panY };
-  } else if (e.touches.length === 2) {
-    isDragging = false;
-    lastTouchDist = Math.hypot(
-      e.touches[0].clientX - e.touches[1].clientX,
-      e.touches[0].clientY - e.touches[1].clientY
-    );
-  }
-}, { passive: false });
-
-canvas.addEventListener('touchmove', e => {
-  e.preventDefault();
-  if (e.touches.length === 1 && isDragging) {
-    panX = e.touches[0].clientX - dragStart.x;
-    panY = e.touches[0].clientY - dragStart.y;
-    clampPan();
-    draw();
-  } else if (e.touches.length === 2) {
-    const dist = Math.hypot(
-      e.touches[0].clientX - e.touches[1].clientX,
-      e.touches[0].clientY - e.touches[1].clientY
-    );
-    const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-    const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-    const factor = dist / lastTouchDist;
-    const newScale = Math.max(0.03, Math.min(8, scale * factor));
-    const ratio = newScale / scale;
-    panX = cx - ratio * (cx - panX);
-    panY = cy - ratio * (cy - panY);
-    scale = newScale;
-    lastTouchDist = dist;
-    clampPan();
-    draw();
-  }
-}, { passive: false });
-
-canvas.addEventListener('touchend', () => {
-  isDragging = false;
-});
-
 // ═══════════════════════════════════════════════════════════
 //  HIT DETECTION
 // ═══════════════════════════════════════════════════════════
