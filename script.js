@@ -104,7 +104,7 @@ resImages.ore.src = './assets/icons/resources/ore.png';
 resImages.crops.src = './assets/icons/resources/crop.png';
 resImages.fish.src = './assets/icons/resources/fish.png';
 resImages.wood.src = './assets/icons/resources/wood.png';
-hqImage.src = './assets/icons/others/guild_headquarter.png';
+hqImage.src = './assets/icons/other/guild_headquarter.png';
 const allImages = [...Object.values(resImages), hqImage];
 allImages.forEach(img => { img.onload = () => draw(); });
 
@@ -959,7 +959,8 @@ function updateOverview() {
     html += `<span style="color:#55FF55;">- </span>`;
     html += `<span>${iconHtml}</span>`;
     
-    const netStr = net >= 0 ? `(+${fmtNum(net)})` : `(${fmtNum(net)})`;
+    const absNet = Math.abs(net);
+    const netStr = net >= 0 ? `(+${fmt(absNet)})` : `(-${fmt(absNet)})`;
     const netColor = net >= 0 ? '#5555FF' : '#FF5555';
     
     let textHtml = `<span style="color:#AAAAAA;">${fmtNum(cons)} ${r.name} </span>` +
@@ -982,6 +983,50 @@ function updateOverview() {
 // ═══════════════════════════════════════════════════════════
 //  TERRITORY LIST
 // ═══════════════════════════════════════════════════════════
+function getTerritoryListIconHTML(name) {
+  const st = addedTerritories[name];
+  const t = territories[name];
+  if (!st || !t) return '🏴';
+
+  if (st.hq) {
+    return `<img src="./assets/icons/other/guild_headquarter.png" class="hq-list-icon" alt="HQ">`;
+  }
+
+  const res = t.resources;
+  const em = parseFloat(res.emeralds || 0);
+  const ore = parseFloat(res.ore || 0);
+  const crops = parseFloat(res.crops || 0);
+  const fish = parseFloat(res.fish || 0);
+  const wood = parseFloat(res.wood || 0);
+
+  const isCity = em >= 18000;
+  const isRainbow = ore > 0 && crops > 0 && fish > 0 && wood > 0;
+
+  let iconsHTML = '';
+
+  if (isRainbow) {
+    iconsHTML += RESOURCE_ICONS.ore + RESOURCE_ICONS.crops + RESOURCE_ICONS.fish + RESOURCE_ICONS.wood;
+  } else {
+    if (isCity) iconsHTML += RESOURCE_ICONS.emeralds;
+    
+    let mainRes = null;
+    let mainResAmount = 0;
+    if (ore > 0) { mainRes = 'ore'; mainResAmount = ore; }
+    else if (crops > 0) { mainRes = 'crops'; mainResAmount = crops; }
+    else if (fish > 0) { mainRes = 'fish'; mainResAmount = fish; }
+    else if (wood > 0) { mainRes = 'wood'; mainResAmount = wood; }
+
+    if (mainRes) {
+      iconsHTML += RESOURCE_ICONS[mainRes];
+      if (mainResAmount >= 7200) iconsHTML += RESOURCE_ICONS[mainRes];
+    }
+  }
+
+  if (iconsHTML === '') return '🏴';
+
+  return `<div class="list-icon-group">${iconsHTML.replace(/class="res-icon-img"/g, 'class="list-icon"')}</div>`;
+}
+
 function updateTerritoryList() {
   const list = document.getElementById('territory-list');
   const count = Object.keys(addedTerritories).length;
@@ -993,11 +1038,14 @@ function updateTerritoryList() {
   }
 
   list.innerHTML = Object.keys(addedTerritories).map(name => {
-    const st = addedTerritories[name];
     const isSel = listSelectedTerritories.has(name);
     const safeNameArg = escapeHtml(JSON.stringify(name));
+    const iconHTML = getTerritoryListIconHTML(name);
     return `<div class="territory-item${isSel ? ' list-selected' : ''}" onclick="toggleListSelection(${safeNameArg})">
-      <span>${st.hq ? '<span style="color:#fbbf24">[HQ]</span> ' : '🏴 '}${escapeHtml(name)}</span>
+      <div class="territory-item-left">
+        ${iconHTML}
+        <span>${escapeHtml(name)}</span>
+      </div>
       <button class="rm-btn" onclick="event.stopPropagation();removeTerritory(${safeNameArg})">✕</button>
     </div>`;
   }).join('');
