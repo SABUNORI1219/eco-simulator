@@ -104,7 +104,7 @@ resImages.ore.src = './assets/icons/resources/ore.png';
 resImages.crops.src = './assets/icons/resources/crop.png';
 resImages.fish.src = './assets/icons/resources/fish.png';
 resImages.wood.src = './assets/icons/resources/wood.png';
-hqImage.src = './assets/icons/other/guild_headquarter.png';
+hqImage.src = './assets/icons/others/guild_headquarter.png';
 const allImages = [...Object.values(resImages), hqImage];
 allImages.forEach(img => { img.onload = () => draw(); });
 
@@ -583,8 +583,8 @@ function showTooltip(mx, my, name) {
   const st = addedTerritories[name];
   const stats = calcTerritoryDefenseStats(name);
 
-  let html = `<div style="color:#ffffff; font-weight:bold; font-size:14px; margin-bottom:8px;">${name}</div>`;
-  if (st.hq) html += `<div style="color:#fbbf24;margin-bottom:8px;">[HQ] Headquarters</div>`;
+  let titleText = name + (st.hq ? ' (HQ)' : '');
+  let html = `<div style="color:#ffffff; font-weight:bold; font-size:14px; margin-bottom:8px;">${titleText}</div>`;
 
   const resStorageLv = (st.bonuses || {})['Larger Resource Storage'] || 0;
   const emStorageLv = (st.bonuses || {})['Larger Emerald Storage'] || 0;
@@ -1002,7 +1002,7 @@ function getTerritoryListIconHTML(name) {
   if (!st || !t) return '🏴';
 
   if (st.hq) {
-    return `<img src="./assets/icons/other/guild_headquarter.png" class="hq-list-icon" alt="HQ">`;
+    return `<img src="./assets/icons/others/guild_headquarter.png" class="hq-list-icon" alt="HQ">`;
   }
 
   const res = t.resources;
