@@ -38,13 +38,10 @@ body { background: #0f172a; color: #e2e8f0; font-family: 'Segoe UI', sans-serif;
   vertical-align: text-bottom;
   image-rendering: pixelated;
 }
-#overview-body {
-  font-family: 'Minecraftia', 'Segoe UI', sans-serif;
-}
 .gray-icon {
   filter: grayscale(100%) brightness(0.6);
 }
-#overview h2 { font-family: 'Minecraftia', 'Segoe UI', sans-serif; font-size: 16px; font-weight: 700; color: #ffffff; letter-spacing: normal; margin-bottom: 0; }
+#overview h2 { font-size: 16px; font-weight: 700; color: #ffffff; letter-spacing: normal; margin-bottom: 0; }
 .res-row { margin-bottom: 8px; }
 .res-header { display: flex; align-items: center; gap: 6px; font-size: 13px; margin-bottom: 3px; }
 .res-icon { font-size: 16px; }
@@ -65,7 +62,6 @@ body { background: #0f172a; color: #e2e8f0; font-family: 'Segoe UI', sans-serif;
   border: 2px solid #2C075F;
 }
 #controls h2 {
-  font-family: 'Minecraftia', 'Segoe UI', sans-serif;
   font-size: 16px;
   font-weight: 700;
   color: #ffffff;
@@ -215,7 +211,7 @@ button.danger:hover { background: #b91c1c; }
 .upgrade-item img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; padding: 4px; }
 .upgrade-level {
   position: absolute; bottom: -2px; right: 2px; color: #fff;
-  font-family: 'Minecraftia', sans-serif; font-size: 10px;
+  font-size: 10px;
   text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000; pointer-events: none;
 }
 #upgrade-desc { font-size: 11px; color: #94a3b8; margin-bottom: 14px; text-align: center; line-height: 1.4; }
@@ -224,7 +220,6 @@ button.danger:hover { background: #b91c1c; }
 #tooltip {
   display: none; position: fixed; background: #000000;
   border: 2px solid #2C075F; border-radius: 4px; padding: 12px 14px;
-  font-family: 'Minecraftia', 'Segoe UI', sans-serif;
   font-size: 12px; line-height: 1.5; max-width: 360px; pointer-events: none; z-index: 50;
 }
 
