@@ -570,7 +570,7 @@ function showTooltip(mx, my, name) {
   const st = addedTerritories[name];
   const stats = calcTerritoryDefenseStats(name);
 
-  let html = `<div style="color:#ffffff; font-weight:bold; font-size:16px; margin-bottom:8px;">${name}</div>`;
+  let html = `<div style="color:#ffffff; font-weight:bold; font-size:14px; margin-bottom:8px;">${name}</div>`;
   if (st.hq) html += `<div style="color:#fbbf24;margin-bottom:8px;">[HQ] Headquarters</div>`;
 
   const resStorageLv = (st.bonuses || {})['Larger Resource Storage'] || 0;
@@ -924,8 +924,7 @@ function updateOverview() {
 
   const { production, consumption } = calcOverallBalance();
   
-  let html = `<div style="color:#ffffff; font-weight:bold; font-size:12px; margin-bottom:4px;">Guild Output</div>`;
-  html += `<div style="color:#AAAAAA; font-size:10px; margin-bottom:12px;">Total resource output and overall costs</div>`;
+  let html = `<div style="color:#AAAAAA; font-size:11px; margin-bottom:12px;">Total resource output and overall costs</div>`;
 
   const resOrder = [
     { id: 'emeralds', name: 'Emeralds', color: '#55FF55' },
@@ -938,12 +937,12 @@ function updateOverview() {
   // Production
   for (const r of resOrder) {
     const prod = production[r.id];
-    html += `<div style="color:${r.color}; font-size:10px; margin-bottom:4px; display:flex; align-items:center; gap:6px;">`;
+    html += `<div style="color:${r.color}; font-size:12px; margin-bottom:4px; display:flex; align-items:center; gap:6px;">`;
     html += `<span>${RESOURCE_ICONS[r.id]}</span> <span>+${fmtNum(prod)} ${r.name} per Hour</span>`;
     html += `</div>`;
   }
 
-  html += `<div style="color:#55FF55; font-size:10px; margin-top:16px; margin-bottom:6px;">Overall Cost (per Hour):</div>`;
+  html += `<div style="color:#55FF55; font-size:12px; margin-top:16px; margin-bottom:6px;">Overall Cost (per Hour):</div>`;
 
   // Costs
   for (const r of resOrder) {
@@ -956,7 +955,7 @@ function updateOverview() {
     
     const iconHtml = RESOURCE_ICONS[r.id].replace('class="res-icon-img"', 'class="res-icon-img gray-icon"');
     
-    html += `<div style="font-size:10px; margin-bottom:4px; display:flex; align-items:center; gap:6px;">`;
+    html += `<div style="font-size:12px; margin-bottom:4px; display:flex; align-items:center; gap:6px;">`;
     html += `<span style="color:#55FF55;">- </span>`;
     html += `<span>${iconHtml}</span>`;
     
