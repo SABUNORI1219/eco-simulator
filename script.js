@@ -1487,47 +1487,152 @@ document.getElementById('tribute-overlay').addEventListener('click', e => {
 //  SHARE LINK
 // ═══════════════════════════════════════════════════════════
 function getShareState() {
+  const BONUS_NAME_TO_IDX = {};
+  BONUS_CONFIG.forEach((b, i) => BONUS_NAME_TO_IDX[b.name] = i);
+  const TREASURY_STR_TO_INT = { 'Very Low': 0, 'Low': 1, 'Medium': 2, 'High': 3, 'Very High': 4 };
+
   const tData = Object.entries(addedTerritories).map(([name, st]) => {
-    const d = {};
-    for (const [k, v] of Object.entries(st.defense || {})) { if (v) d[k] = v; }
+    const item = { n: name };
+    if (st.hq) item.h = 1;
+    
+    let d = [
+      (st.defense && st.defense.damage) || 0,
+      (st.defense && st.defense.attack) || 0,
+      (st.defense && st.defense.health) || 0,
+      (st.defense && st.defense.defense) || 0
+    ];
+    while (d.length > 0 && d[d.length - 1] === 0) d.pop();
+    if (d.length > 0) item.d = d;
+
     const b = {};
-    for (const [k, v] of Object.entries(st.bonuses || {})) { if (v) b[k] = v; }
-    const tl = st.treasury || 'Very Low';
-    return { n: name, hq: st.hq || false, d, b, tl };
+    let hasBonus = false;
+    for (const [k, v] of Object.entries(st.bonuses || {})) {
+      if (v) {
+        b[BONUS_NAME_TO_IDX[k]] = v;
+        hasBonus = true;
+      }
+    }
+    if (hasBonus) item.b = b;
+
+    const tl = TREASURY_STR_TO_INT[st.treasury || 'Very Low'] || 0;
+    if (tl > 0) item.t = tl;
+
+    return item;
   });
+
   const tr = {};
   for (const [k, v] of Object.entries(tributeValues)) { if (v) tr[k] = v; }
-  return { v: 2, tr, t: tData };
+  
+  const state = { v: 3, t: tData };
+  if (Object.keys(tr).length > 0) state.tr = tr;
+  return state;
 }
 
-function copyShareLink() {
-  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(getShareState()))));
-  const url = `${location.origin}${location.pathname}#s=${encoded}`;
+async function copyShareLink() {
   const btn = document.getElementById('share-btn');
-  navigator.clipboard.writeText(url).then(() => {
+  btn.textContent = '⏳';
+  
+  let url = '';
+  const stateStr = JSON.stringify(getShareState());
+
+  try {
+    if (typeof CompressionStream !== 'undefined') {
+      const stream = new Blob([stateStr]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+      const buffer = await new Response(stream).arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      const b64 = btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      url = `${location.origin}${location.pathname}#c=${b64}`;
+    } else {
+      throw new Error("CompressionStream not supported");
+    }
+  } catch (err) {
+    console.warn('Compression failed, falling back to uncompressed base64', err);
+    const encoded = btoa(unescape(encodeURIComponent(stateStr)));
+    url = `${location.origin}${location.pathname}#s=${encoded}`;
+  }
+
+  try {
+    await navigator.clipboard.writeText(url);
     btn.textContent = '✅';
-    setTimeout(() => { btn.textContent = '🔗'; }, 2000);
-  }).catch(() => { prompt('Copy this link:', url); });
+  } catch (err) {
+    prompt('Copy this link:', url);
+    btn.textContent = '✅';
+  }
+  
+  setTimeout(() => { btn.textContent = '🔗'; }, 2000);
 }
 
-function loadFromHash() {
-  if (!location.hash.startsWith('#s=')) return;
+async function loadFromHash() {
+  if (!location.hash) return;
+  
+  let stateStr = null;
+  if (location.hash.startsWith('#c=')) {
+    try {
+      let base64 = location.hash.slice(3).replace(/-/g, '+').replace(/_/g, '/');
+      while (base64.length % 4) base64 += '=';
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+      stateStr = await new Response(stream).text();
+    } catch(e) { console.warn('Decompression failed', e); }
+  } else if (location.hash.startsWith('#s=')) {
+    try {
+      stateStr = decodeURIComponent(escape(atob(location.hash.slice(3))));
+    } catch(e) { console.warn('Base64 decode failed', e); }
+  }
+  
+  if (!stateStr) return;
+
   try {
-    const state = JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(3)))));
-    if (state.v !== 1 && state.v !== 2) return;
+    const state = JSON.parse(stateStr);
+    
+    tributeValues = { emeralds: 0, ore: 0, crops: 0, fish: 0, wood: 0 };
+    addedTerritories = {};
+    
     if (state.tr) {
       for (const r of RESOURCES) tributeValues[r] = state.tr[r] || 0;
     }
+    
     if (state.t) {
-      addedTerritories = {};
+      const BONUS_IDX_TO_NAME = BONUS_CONFIG.map(b => b.name);
+      const TREASURY_INT_TO_STR = ['Very Low', 'Low', 'Medium', 'High', 'Very High'];
+
       for (const item of state.t) {
         if (!territories[item.n]) continue;
-        addedTerritories[item.n] = {
-          defense: { damage: 0, attack: 0, health: 0, defense: 0, ...item.d },
-          bonuses: item.b || {},
-          hq: item.hq || false,
-          treasury: item.tl || 'Very Low'
-        };
+        
+        if (state.v === 3) {
+          const defense = { damage: 0, attack: 0, health: 0, defense: 0 };
+          if (item.d) {
+            defense.damage = item.d[0] || 0;
+            defense.attack = item.d[1] || 0;
+            defense.health = item.d[2] || 0;
+            defense.defense = item.d[3] || 0;
+          }
+          const bonuses = {};
+          if (item.b) {
+            for (const [idx, v] of Object.entries(item.b)) {
+              if (BONUS_IDX_TO_NAME[idx]) bonuses[BONUS_IDX_TO_NAME[idx]] = v;
+            }
+          }
+          addedTerritories[item.n] = {
+            defense,
+            bonuses,
+            hq: item.h === 1,
+            treasury: TREASURY_INT_TO_STR[item.t || 0] || 'Very Low'
+          };
+        } else if (state.v === 1 || state.v === 2) {
+          addedTerritories[item.n] = {
+            defense: { damage: 0, attack: 0, health: 0, defense: 0, ...item.d },
+            bonuses: item.b || {},
+            hq: item.hq || false,
+            treasury: item.tl || 'Very Low'
+          };
+        }
       }
     }
     _hqDistanceCache = null;
@@ -1632,7 +1737,7 @@ async function init() {
   document.getElementById('loading').style.display = 'none';
 
   loadGuilds();
-  loadFromHash();
+  await loadFromHash();
   if (Object.keys(addedTerritories).length === 0) {
     updateOverview();
     updateTerritoryList();
