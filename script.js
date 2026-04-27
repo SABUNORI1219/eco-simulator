@@ -997,7 +997,37 @@ function updateTerritoryList() {
     return;
   }
 
-  list.innerHTML = Object.keys(addedTerritories).map(name => {
+  const getSortScore = (name) => {
+    const st = addedTerritories[name];
+    if (!st) return 4; // Should not happen
+
+    // Priority 1: HQ
+    if (st.hq) return 0;
+
+    // Priority 2: Has any upgrades
+    const hasDefense = st.defense && Object.values(st.defense).some(v => v > 0);
+    const hasBonuses = st.bonuses && Object.values(st.bonuses).some(v => v > 0);
+    if (hasDefense || hasBonuses) return 1;
+
+    // Priority 3: Is a city territory
+    const t = territories[name];
+    if (t && t.resources && parseInt(t.resources.emeralds || 0) >= 18000) return 2;
+
+    // Priority 4: Others
+    return 3;
+  };
+
+  const sortedNames = Object.keys(addedTerritories).sort((a, b) => {
+    const scoreA = getSortScore(a);
+    const scoreB = getSortScore(b);
+    if (scoreA !== scoreB) {
+      return scoreA - scoreB;
+    }
+    // If scores are equal, sort alphabetically
+    return a.localeCompare(b);
+  });
+
+  list.innerHTML = sortedNames.map(name => {
     const isSel = listSelectedTerritories.has(name);
     const safeNameArg = escapeHtml(JSON.stringify(name));
     const iconHTML = getTerritoryListIconHTML(name);
