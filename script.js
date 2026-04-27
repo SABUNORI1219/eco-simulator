@@ -1001,20 +1001,43 @@ function updateTerritoryList() {
     const st = addedTerritories[name];
     if (!st) return 4; // Should not happen
 
+    const t = territories[name];
+    const isCity = t && t.resources && parseInt(t.resources.emeralds || 0) >= 18000;
+    const hasDefense = st.defense && Object.values(st.defense).some(v => v > 0);
+    const hasBonuses = st.bonuses && Object.values(st.bonuses).some(v => v > 0);
+
     // Priority 1: HQ
     if (st.hq) return 0;
 
-    // Priority 2: Has any upgrades
-    const hasDefense = st.defense && Object.values(st.defense).some(v => v > 0);
-    const hasBonuses = st.bonuses && Object.values(st.bonuses).some(v => v > 0);
-    if (hasDefense || hasBonuses) return 1;
+    // Priority 2: Is a city territory
+    if (isCity) return 1;
 
-    // Priority 3: Is a city territory
-    const t = territories[name];
-    if (t && t.resources && parseInt(t.resources.emeralds || 0) >= 18000) return 2;
+    // Priority 3: Has any upgrades
+    if (hasDefense || hasBonuses) return 2;
 
     // Priority 4: Others
     return 3;
+  };
+
+  const getRatingScore = (name) => {
+    const st = addedTerritories[name];
+    if (!st) return 0;
+    
+    const hasDefense = st.defense && Object.values(st.defense).some(v => v > 0);
+    const hasBonuses = st.bonuses && Object.values(st.bonuses).some(v => v > 0);
+    if (!hasDefense && !hasBonuses && !st.hq) return 0;
+
+    const stats = calcTerritoryDefenseStats(name);
+    if (!stats) return 0;
+
+    switch (stats.rating) {
+      case "Very High": return 5;
+      case "High":      return 4;
+      case "Medium":    return 3;
+      case "Low":       return 2;
+      case "Very Low":  return 1;
+      default:          return 0;
+    }
   };
 
   const sortedNames = Object.keys(addedTerritories).sort((a, b) => {
@@ -1023,6 +1046,13 @@ function updateTerritoryList() {
     if (scoreA !== scoreB) {
       return scoreA - scoreB;
     }
+    
+    const ratingA = getRatingScore(a);
+    const ratingB = getRatingScore(b);
+    if (ratingA !== ratingB) {
+      return ratingB - ratingA; // 降順 (Very High -> Very Low)
+    }
+
     // If scores are equal, sort alphabetically
     return a.localeCompare(b);
   });
