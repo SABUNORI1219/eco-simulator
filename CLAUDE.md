@@ -112,7 +112,7 @@ npx serve .
 
 ### Bonus
 - 17種、各種ごとに最大レベルが異なる
-- コストはレベルNで `costs[1] + costs[2] + ... + costs[N]` /hr（累積加算）
+- コストはレベルNに設定されたコスト（`/hr`）のみを消費（累積加算ではない）
 
 ### 生産計算
 - 基本生産量は `territories.json` の `resources` フィールド

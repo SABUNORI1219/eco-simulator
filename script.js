@@ -790,10 +790,8 @@ function calcTerritoryConsumption(name) {
 
   for (const bcfg of BONUS_CONFIG) {
     const level = (st.bonuses || {})[bcfg.name] || 0;
-    for (let lv = 1; lv <= level; lv++) {
-      const c = calcBonusCostForLevel(bcfg, lv);
-      for (const r of RESOURCES) result[r] += c[r] || 0;
-    }
+    const c = calcBonusCostForLevel(bcfg, level);
+    for (const r of RESOURCES) result[r] += c[r] || 0;
   }
 
   return result;
