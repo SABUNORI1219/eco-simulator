@@ -436,15 +436,6 @@ function drawTerritories() {
       const isCity = em >= 18000;
       const isRainbow = ore > 0 && crops > 0 && fish > 0 && wood > 0;
       
-      let mainRes = null;
-      let mainResAmount = 0;
-      if (!isRainbow) {
-        if (ore > 0) { mainRes = 'ore'; mainResAmount = ore; }
-        else if (crops > 0) { mainRes = 'crops'; mainResAmount = crops; }
-        else if (fish > 0) { mainRes = 'fish'; mainResAmount = fish; }
-        else if (wood > 0) { mainRes = 'wood'; mainResAmount = wood; }
-      }
-
       if (isRainbow) {
         // 虹資源地 (2x2 Grid)
         const totalW = iconSize * 2 + gap;
@@ -462,9 +453,18 @@ function drawTerritories() {
         // 街または通常資源地 (横並び)
         const iconsToDraw = [];
         if (isCity) iconsToDraw.push(resImages.emeralds);
-        if (mainRes) {
-          iconsToDraw.push(resImages[mainRes]);
-          if (mainResAmount >= 7200) iconsToDraw.push(resImages[mainRes]);
+        
+        const checkRes = [
+          { img: resImages.ore, amount: ore },
+          { img: resImages.crops, amount: crops },
+          { img: resImages.fish, amount: fish },
+          { img: resImages.wood, amount: wood }
+        ];
+        for (const r of checkRes) {
+          if (r.amount > 0) {
+            iconsToDraw.push(r.img);
+            if (r.amount >= 7200) iconsToDraw.push(r.img);
+          }
         }
 
         if (iconsToDraw.length > 0) {
@@ -967,16 +967,17 @@ function getTerritoryListIconHTML(name) {
   } else {
     if (isCity) iconsHTML += RESOURCE_ICONS.emeralds;
     
-    let mainRes = null;
-    let mainResAmount = 0;
-    if (ore > 0) { mainRes = 'ore'; mainResAmount = ore; }
-    else if (crops > 0) { mainRes = 'crops'; mainResAmount = crops; }
-    else if (fish > 0) { mainRes = 'fish'; mainResAmount = fish; }
-    else if (wood > 0) { mainRes = 'wood'; mainResAmount = wood; }
-
-    if (mainRes) {
-      iconsHTML += RESOURCE_ICONS[mainRes];
-      if (mainResAmount >= 7200) iconsHTML += RESOURCE_ICONS[mainRes];
+    const checkRes = [
+      { icon: RESOURCE_ICONS.ore, amount: ore },
+      { icon: RESOURCE_ICONS.crops, amount: crops },
+      { icon: RESOURCE_ICONS.fish, amount: fish },
+      { icon: RESOURCE_ICONS.wood, amount: wood }
+    ];
+    for (const r of checkRes) {
+      if (r.amount > 0) {
+        iconsHTML += r.icon;
+        if (r.amount >= 7200) iconsHTML += r.icon;
+      }
     }
   }
 
