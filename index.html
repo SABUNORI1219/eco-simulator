@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Wynncraft Guild War Economy Simulator</title>
 <link rel="stylesheet" href="./style.css">
 </head>
@@ -66,36 +66,49 @@
 <!-- Territory Modal -->
 <div id="modal-overlay">
   <div id="modal">
-    <h2 id="modal-title">Territory Settings</h2>
-
-    <div id="modal-stats"></div>
-
-    <div id="upgrade-header">Upgrades and Bonuses for selected territory</div>
-    <div class="upgrade-container">
-      <div class="upgrade-inner" id="upgrade-inner"></div>
-    </div>
-    <div id="upgrade-desc">
-      Click on an icon to configure the level of the upgrade.<br>
-      Each upgrade requires a specific resource type to maintain its effect per hour.
-    </div>
-
-    <div class="modal-section" id="hq-section">
-      <label>Headquarters</label>
-      <div class="hq-row">
-        <input type="checkbox" id="modal-hq" onchange="updateModalStats()">
-        <span>Make this the HQ (only one allowed)</span>
+    <div class="modal-header-row">
+      <h2 id="modal-title">Territory Settings</h2>
+      <div id="modal-tabs" style="display:none;">
+        <button class="modal-tab-btn" id="modal-tab-btn-settings" onclick="switchModalTab('settings')">Settings</button>
+        <button class="modal-tab-btn" id="modal-tab-btn-data" onclick="switchModalTab('data')">Data</button>
       </div>
     </div>
 
-    <div class="modal-section">
-      <label>Treasury</label>
-      <select id="modal-treasury" onchange="updateModalStats()">
-        <option value="Very Low">Very Low (No Buff)</option>
-        <option value="Low">Low</option>
-        <option value="Medium">Medium</option>
-        <option value="High">High</option>
-        <option value="Very High">Very High</option>
-      </select>
+    <div id="modal-tab-settings">
+      <div id="modal-stats"></div>
+
+      <div id="upgrade-header">Upgrades and Bonuses for selected territory</div>
+      <div class="upgrade-container">
+        <div class="upgrade-inner" id="upgrade-inner"></div>
+      </div>
+      <div id="upgrade-desc">
+        Click on an icon to configure the level of the upgrade.<br>
+        Each upgrade requires a specific resource type to maintain its effect per hour.
+      </div>
+
+      <div class="modal-section" id="hq-section">
+        <label>Headquarters</label>
+        <div class="hq-row">
+          <input type="checkbox" id="modal-hq" onchange="updateModalStats()">
+          <span>Make this the HQ (only one allowed)</span>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <label>Treasury</label>
+        <select id="modal-treasury" onchange="updateModalStats()">
+          <option value="Very Low">Very Low (No Buff)</option>
+          <option value="Low">Low</option>
+          <option value="Medium">Medium</option>
+          <option value="High">High</option>
+          <option value="Very High">Very High</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="modal-tab-data" style="display:none;">
+      <div id="data-trading-routes"></div>
+      <div id="data-resources"></div>
     </div>
 
     <div id="modal-footer">
@@ -117,6 +130,65 @@
       <button onclick="closeTributeModal()">Cancel</button>
       <button class="primary" onclick="saveTributes()">💾 Save</button>
     </div>
+  </div>
+</div>
+
+<!-- Additional Settings Button (desktop) -->
+<button id="additional-settings-btn" onclick="openAdditionalSettings()">⚙ Additional Settings</button>
+
+<!-- Mobile Bottom Tab Bar (width <= 640px) -->
+<div id="mobile-tabbar">
+  <button class="mobile-tab-btn" data-panel="overview" onclick="toggleMobileSheet('overview')">Output</button>
+  <button class="mobile-tab-btn" data-panel="controls" onclick="toggleMobileSheet('controls')">Manager</button>
+  <button class="mobile-tab-btn" onclick="openAdditionalSettings()">⚙</button>
+</div>
+
+<!-- Additional Settings Modal -->
+<div id="additional-settings-overlay">
+  <div id="additional-settings-modal">
+
+    <div id="as-screen-menu">
+      <h2>⚙ Additional Settings</h2>
+      <hr class="divider">
+      <div id="as-menu-list"></div>
+      <hr class="divider">
+      <div class="as-footer">
+        <button onclick="closeAdditionalSettings()">Close</button>
+      </div>
+    </div>
+
+    <div id="as-screen-connections" style="display:none;">
+      <div class="as-header-row">
+        <button class="as-back-btn" onclick="showASScreen('menu')">← Back</button>
+        <h2>Connection Editor</h2>
+      </div>
+      <hr class="divider">
+      <div class="btn-row">
+        <button onclick="toggleAddConnectionForm()">+ Add New Line</button>
+        <button class="danger" onclick="clearAllCustomConnections()">Clear All Lines</button>
+      </div>
+
+      <div id="conn-add-form" style="display:none;">
+        <input id="conn-input-a" list="conn-datalist-a" placeholder="領地名を入力…">
+        <datalist id="conn-datalist-a"></datalist>
+        <div class="conn-arrow">↔</div>
+        <input id="conn-input-b" list="conn-datalist-b" placeholder="領地名を入力…">
+        <datalist id="conn-datalist-b"></datalist>
+        <div id="conn-error"></div>
+        <div class="btn-row">
+          <button class="primary" onclick="addCustomConnection()">Add</button>
+          <button onclick="toggleAddConnectionForm()">Cancel</button>
+        </div>
+      </div>
+
+      <hr class="divider">
+      <div class="connection-list" id="conn-list"></div>
+      <hr class="divider">
+      <div class="as-footer">
+        <button onclick="closeAdditionalSettings()">Close</button>
+      </div>
+    </div>
+
   </div>
 </div>
 

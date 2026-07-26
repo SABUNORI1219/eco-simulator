@@ -10,6 +10,7 @@ eco-simulator/
 ├── style.css           # スタイル
 ├── script.js           # ロジック全体
 ├── territories.json    # 全437領地のデータ（Location, Trading Routes, resources）
+├── territory-ids.json  # 共有リンク用の固定領地ID配列（末尾追記のみ・詳細は下記警告参照）
 ├── main-map.png        # マップ画像（4608×6644px）※手動配置が必要
 └── CLAUDE.md           # このファイル（.gitignore対象）
 ```
@@ -47,6 +48,7 @@ npx serve .
 - ゲーム座標 → 画像ピクセル → キャンバス画面座標 の2段変換
 - Y軸反転あり（ゲームのY負の大きい値 = 南 = 画像の下）
 - 変換式: `pixel = game + offset`（offset X=+2560, Y=+6632）
+- canvasは`devicePixelRatio`対応済み。`draw()`冒頭で`setTransform(dpr,...)`を行い、以降はCSSピクセル座標系で描画する。`clampPan()`は`window.innerWidth/innerHeight`を基準にする。
 
 ---
 
@@ -60,9 +62,12 @@ npx serve .
 | `listSelectedTerritories` | `Set` | Managerリストで選択された登録済み領地（一括編集用） |
 | `tributeValues` | `{}` | 外部資源流入/流出量 `{ emeralds, ore, crops, fish, wood }` |
 | `treasuryLevel` | `string` | Guild Treasuryレベル（Very Low〜Very High） |
-| `_hqDistanceCache` | `{}|null` | HQからの距離BFSキャッシュ（refreshUI時に無効化） |
+| `_hqPathCache` | `{}|null` | HQからの距離と経路のキャッシュ（refreshUI時に無効化） |
 | `currentModalMode` | `string` | `'single'` または `'bulk'` |
 | `currentBulkTerritories` | `[]` | 一括編集対象の領地名配列 |
+| `customConnections` | `[]` | ユーザー追加の接続線 `{a, b}` の配列。両端とも登録済みのときのみ有効 |
+| `TERRITORY_IDS` | `[]` | 共有リンク用の固定領地ID配列（index → name、`territory-ids.json`読み込み） |
+| `TERRITORY_ID_MAP` | `{}` | `TERRITORY_IDS`の逆引き（name → index） |
 
 ---
 
@@ -81,7 +86,17 @@ npx serve .
 | `calcTerritoryConsumption(name)` | Defense + ボーナスコストの合計 |
 | `calcOverallBalance()` | 全領地の生産/消費合計（Tribute含まず） |
 | `calcTerritoryDefenseStats(name)` | HP・DPS・Rating等の防衛スタッツ計算 |
-| `getHQDistances()` | HQからの全領地BFS距離（キャッシュ付き） |
+| `getHQPaths()` | HQからの距離＋最短経路を返す（登録済み領地のみ経由・キャッシュ付き） |
+| `isConnectedToHQ(name)` | 領地がHQから到達可能かを判定（HQ未設定時は登録済み全領地でtrue） |
+| `autoAssignHQ()` | 登録領地が0件の状態から追加された場合のみ、仮HQ時のEHPが最大の領地をHQに自動設定 |
+| `getNeighbors(name)` | 基本ルート＋有効な追加接続線を合わせた隣接領地一覧を返す |
+| `openAdditionalSettings()` | Additional Settingsモーダルを開く（画面1: 項目一覧） |
+| `addCustomConnection()` | 入力された2領地の接続線をバリデーション後`customConnections`に追加 |
+| `removeCustomConnection(a, b)` | 指定した接続線を`customConnections`から削除 |
+| `clearAllCustomConnections()` | 確認ダイアログの上で`customConnections`を全削除 |
+| `calcTraversingResources()` | 各領地を通過する資源量（HQと自領地分を除く中間ノード通過量）を返す（キャッシュ付き） |
+| `switchModalTab(tab)` | モーダルのSettings/Dataタブを切り替える |
+| `toggleMobileSheet(panelId)` | 幅640px以下でOutput/Managerパネルをボトムシートとして開閉する |
 | `calcTreasuryBuff(name, hqDist)` | 距離とTreasuryレベルから生産バフ率を返す |
 | `updateOverview()` | Overviewパネル更新（Tribute込みのNet表示） |
 | `updateTerritoryList()` | Managerリスト更新（list-selected状態を反映） |
@@ -96,8 +111,9 @@ npx serve .
 | `selectAll()` | 登録済み全領地をlistSelectedに追加 |
 | `selectNone()` | listSelectedをクリア |
 | `editSelected()` | 1つなら`openModal(name)`、複数なら`openModal(name, bulkNames)` |
-| `copyShareLink()` | 現在の設定をURLハッシュにエンコードしてクリップボードにコピー |
-| `loadFromHash()` | URLハッシュから設定を復元（init内で呼ばれる） |
+| `copyShareLink()` | 現在の設定を`#p=`形式（不可なら`#s=`）でURLハッシュにエンコードしてクリップボードにコピー |
+| `loadFromHash()` | URLハッシュから設定を復元（`#p=`/`#s=`/`#c=`の全形式に対応、init内で呼ばれる） |
+| `buildShareBits()` / `parseShareBits(bytes)` | `#p=`形式のビット列を組み立て／解析する（`BitWriter`/`BitReader`使用） |
 | `loadGuilds()` | Wynncraft APIからギルド一覧を取得してdatalistに反映 |
 | `addSelectedTerritories()` | マップ選択中の未登録領地を一括登録 |
 
@@ -109,6 +125,7 @@ npx serve .
 - 4種（Damage / Attack Speed / Health / Defense）それぞれ独立してLv0〜11
 - 各種の消費リソース: Damage=ore, Attack=crops, Health=wood, Defense=fish
 - コストは `DEFENSE_COST_TABLE[level]` /hr（累積ではなく現レベルのコストのみ）
+- **HQの難易度表示は通常領地の一段階上（Very Highで頭打ち）。表示ラベルのみ変化し、ステータス計算は変わらない**
 
 ### Bonus
 - 17種、各種ごとに最大レベルが異なる
@@ -123,6 +140,16 @@ npx serve .
 - HQからのBFS距離に応じてバフ率が変わる
 - 距離0〜2: 10%, 距離3: 8.5%, 距離4: 7%, 距離5: 5.5%, 距離6+: 4%（Lowの場合）
 - Medium = Low×2, High = Low×2.5, Very High = Low×3
+- **距離計算は登録済み領地のみを経由する。HQから到達できない領地はTreasuryバフ0かつOverviewの集計対象外**
+- HQ未設定時は全登録領地を集計対象とする（Treasuryバフは0）
+
+### Connections
+- 接続線は `territories.json` の基本ルートに加え、ユーザーが追加した接続線（有効なもののみ）を含む。取得は必ず `getNeighbors(name)` 経由で統一する。
+- 描画色は基本ルート＝黒、有効な追加線＝濃い黄土色、無効な追加線＝薄い黄色。
+
+### Traversing Resources
+- 各領地を通過する資源量。HQと自領地分を除いた、経路上の中間ノードとしての通過量（生産分＋消費分）。HQは常に0。
+- Trade Timeは1ホップ＝1分。最短経路が複数ある場合は経路全体の辞書順が最小のものを採用。
 
 ### Tributes
 - 外部（他ギルドからの献上等）の資源流入/流出を `/hr` 単位で設定
@@ -145,26 +172,47 @@ npx serve .
 - **Guild Treasury**: Very Low〜Very Highのセレクト
 - **Added Territories**: 登録済み領地リスト
   - クリックで青ハイライト選択（複数可）
-  - Select All / Select None / Edit Selected / Clear All ボタン
+  - Select All / Select None / Edit Selected / Reset Selected / Clear All ボタン
+  - Reset Selected: アップグレードのリセットとマップ上の青ハイライト解除を同時実行（確認ダイアログなし）
   - Edit Selected: 1つなら通常モーダル、複数なら一括編集モーダル（HQなし）
 
 ### モーダル
-- **単体モード**: Defense(4種×Lv0〜11) + HQ設定 + Bonus(17種) + リアルタイムプレビュー
-- **一括モード**: 選択領地数を表示、Defense + Bonus のみ編集、保存で全選択領地に適用
+- 右上にSettings/Dataのタブ切り替えボタンを持つ（表示条件: `currentModalMode === 'single'` かつ HQ設定済みの場合のみ。それ以外はボタン自体を非表示にしSettingsタブ固定）。開くときは常にSettingsタブから開始する。
+- **Settingsタブ（単体モード）**: Defense(4種×Lv0〜11) + HQ設定 + Bonus(17種) + リアルタイムプレビュー
+- **Settingsタブ（一括モード）**: 選択領地数を表示、Defense + Bonus のみ編集、保存で全選択領地に適用
+- **Dataタブ**: Trading Routes（HQからの経路・Trade Time）とResources（生産量・stored・traversing）を表示する読み取り専用タブ
+
+### ADDITIONAL SETTINGSモーダル（左下ボタン）
+- 画面左下固定の `⚙ Additional Settings` ボタンから開く。
+- 画面1（項目一覧）: 現状は `Connection Editor` のみ。将来項目追加を想定しループで生成。
+- 画面2（Connection Editor）: `+ Add New Line` でインライン入力フォームを展開し、2領地間の接続線を追加。追加済み接続線は `a ↔ b` 形式でリスト表示し、無効な接続（片方未登録）はグレーアウト。`Clear All Lines` で全削除（確認ダイアログあり）。
 
 ### マップ操作
 - 未登録領地クリック → 選択トグル（青アウトライン）
 - 登録済み領地クリック → モーダルを開く
-- ドラッグ: パン、ホイール: ズーム、タッチ: ピンチズーム対応
+- ドラッグ: パン、ホイール: ズーム
+- タッチ: 1本指ドラッグ＝パン、2本指＝ピンチズーム、タップ＝クリック相当、長押し500ms＝ツールチップ（登録済み領地のみ・指を離すと消える）。ブラウザ標準のダブルタップズーム／ピンチズームは無効化済み。
+
+### レスポンシブ
+- 幅640px以下ではGuild Output / Territory Manager / Additional Settingsのパネルを画面下部のボトムシート（Output / Manager / ⚙ の3タブ）に変更。初期状態は閉じた状態でマップ全画面表示。
 
 ---
 
 ## Share Link仕様
 
-- URLハッシュ形式: `http://localhost:8080/#s=<base64>`
-- エンコード内容: `{ v:1, tl:treasuryLevel, tr:tributeValues, t:[{n,hq,d,b},...] }`
-  - ゼロ値のDefense/Bonusは省略してコンパクト化
-- 読み込みは `init()` 内の `loadFromHash()` で実行
+- **生成は常に新形式 `#p=<base64url>`（ビットパック＋deflate-raw圧縮）で行う。** `CompressionStream`が使えない環境、または`territory-ids.json`が読み込めていない場合のみ、旧形式`#s=`（非圧縮base64 JSON、`getShareState()`のv3形式）にフォールバックする。
+- 旧形式 `#s=`（v1/v2/v3）と `#c=`（v3, deflate圧縮JSON）の**読み込みは読み込み専用として維持**する（`loadFromHash()`内に分岐が残る）。
+- `#p=`形式のビットレイアウト（MSBファースト、8bit境界まで0パディング後にdeflate-raw圧縮）:
+  - ヘッダ: version(4bit, 現在4固定) + territoryCount(12bit)
+  - 領地ブロック×territoryCount: id(9bit, `TERRITORY_ID_MAP`参照) + hq(1bit) + treasury(3bit) + defenseFlag(1bit)[+damage/attack/health/defense各4bit] + bonusFlag(1bit)[+bonusBitmap 17bit + 該当ビット数分のbonusLevel各4bit]
+  - 追加接続線ブロック: connCount(10bit) + (a: 9bit, b: 9bit) × connCount（有効・無効を問わず`customConnections`全件、IDが存在しないものはスキップ）
+  - Tributeブロック: tributeBitmap(5bit, emeralds/ore/crops/fish/wood順) + (sign 1bit, magnitude 24bit) × 立っているビット数
+- 読み込みは `init()` 内の `loadFromHash()` で実行。`#p=`のデコードは `parseShareBits()`、エンコードは `buildShareBits()`（`BitWriter`/`BitReader`使用）。
+
+### 警告（変更時は必ず確認すること）
+- **`territory-ids.json` は末尾追記のみ。既存要素の並び替え・削除・挿入は禁止**（配列インデックスがそのまま共有リンクのIDになるため、順序を変えると過去の共有リンクが全て壊れる）。
+- **`BONUS_CONFIG` の配列順序も共有リンクのIDとして使われる。今後の変更は末尾への追加のみとし、既存要素の並び替え・削除を行わないこと。**
+- 領地IDは9bit固定のため、`territory-ids.json`が512件を超えると`#p=`形式は破綻する。その場合は`version`を5に上げ、IDのビット数を拡張した新形式を追加すること。
 
 ---
 
