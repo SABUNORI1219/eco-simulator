@@ -111,8 +111,7 @@ button.danger:hover { background: #b91c1c; }
 }
 .territory-item:hover { background: #334155; }
 .territory-item.list-selected { background: rgba(59,130,246,0.2); border-color: #3b82f6; }
-.territory-item.disconnected .territory-item-left > span { color: #f87171; }
-.disconnected-mark { flex-shrink: 0; }
+.territory-item.disconnected .territory-item-left > span { color: #ef4444; }
 .territory-item-left {
   display: flex;
   align-items: center;
@@ -185,6 +184,11 @@ button.danger:hover { background: #b91c1c; }
 #modal-stats .stat-line { display: flex; justify-content: space-between; margin-bottom: 4px; }
 #modal-stats .stat-label { color: #64748b; }
 
+/* Data タブ */
+.data-section-label { display: block; font-size: 12px; color: #94a3b8; margin-bottom: 4px; text-transform: uppercase; letter-spacing: .05em; }
+#data-trading-routes { background: #0f172a; border-radius: 6px; padding: 10px; font-size: 12px; margin-bottom: 10px; }
+#data-resources { background: #000000; border: 2px solid #2C075F; border-radius: 4px; padding: 12px 14px; font-size: 12px; line-height: 1.5; }
+
 /* Upgrade UI */
 #upgrade-header { font-size: 12px; color: #e2e8f0; margin-bottom: 6px; font-weight: 600; text-align: center; }
 .upgrade-container {
@@ -254,37 +258,37 @@ button.danger:hover { background: #b91c1c; }
 #tribute-footer { display: flex; gap: 8px; margin-top: 16px; }
 #tribute-footer button { flex: 1; }
 
-/* Additional Settings */
-#additional-settings-btn {
+/* Custom Settings */
+#custom-settings-btn {
   position: fixed; left: 12px; bottom: 12px; z-index: 10;
   width: auto; padding: 8px 14px;
   background: #000000; border: 2px solid #2C075F; color: #e2e8f0;
   border-radius: 6px; font-size: 13px; cursor: pointer;
 }
-#additional-settings-btn:hover { background: #1e293b; }
+#custom-settings-btn:hover { background: #1e293b; }
 
-#additional-settings-overlay {
+#custom-settings-overlay {
   display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
   z-index: 100; align-items: center; justify-content: center;
 }
-#additional-settings-overlay.open { display: flex; }
-#additional-settings-modal {
+#custom-settings-overlay.open { display: flex; }
+#custom-settings-modal {
   background: #1e293b; border: 1px solid #334155; border-radius: 10px;
   padding: 20px; width: 420px; max-height: 90vh; overflow-y: auto;
 }
-#additional-settings-modal h2 { font-size: 16px; color: #e2e8f0; }
+#custom-settings-modal h2 { font-size: 16px; color: #e2e8f0; }
 
-.as-header-row { display: flex; align-items: center; gap: 10px; }
-.as-back-btn { width: auto; padding: 4px 10px; margin-top: 0; }
-.as-footer { display: flex; gap: 8px; margin-top: 12px; }
-.as-footer button { flex: 1; }
+.cs-header-row { display: flex; align-items: center; gap: 10px; }
+.cs-back-btn { width: auto; padding: 4px 10px; margin-top: 0; }
+.cs-footer { display: flex; gap: 8px; margin-top: 12px; }
+.cs-footer button { flex: 1; }
 
-.as-menu-item {
+.cs-menu-item {
   display: flex; justify-content: space-between; align-items: center;
   padding: 10px 12px; border-radius: 6px; margin-bottom: 4px;
   background: #0f172a; border: 1px solid #334155; cursor: pointer; font-size: 13px;
 }
-.as-menu-item:hover { background: #334155; }
+.cs-menu-item:hover { background: #334155; }
 
 #conn-add-form {
   background: #0f172a; border: 1px solid #334155; border-radius: 6px;
@@ -297,8 +301,9 @@ button.danger:hover { background: #b91c1c; }
 .connection-item {
   display: flex; justify-content: space-between; align-items: center;
   padding: 4px 8px; border-radius: 4px; margin-bottom: 2px;
-  background: #1e293b; font-size: 12px;
-  border: 1px solid transparent;
+  background: #0f172a;
+  border: 1px solid #334155;
+  font-size: 12px;
 }
 .connection-item.inactive { opacity: 0.45; color: #64748b; }
 .connection-item .rm-btn {
@@ -322,7 +327,7 @@ button.danger:hover { background: #b91c1c; }
 /* Responsive (<=640px): bottom sheet panels + modal sizing */
 @media (max-width: 640px) {
   #mobile-tabbar { display: flex; }
-  #additional-settings-btn { display: none; }
+  #custom-settings-btn { display: none; }
 
   #overview, #controls {
     left: 0; right: 0; top: auto; bottom: 48px; width: 100%;
@@ -331,7 +336,7 @@ button.danger:hover { background: #b91c1c; }
   }
   #overview.sheet-open, #controls.sheet-open { transform: translateY(0); }
 
-  #modal, #tribute-modal, #additional-settings-modal {
+  #modal, #tribute-modal, #custom-settings-modal {
     width: calc(100vw - 24px);
     max-height: 85vh;
     overflow-y: auto;

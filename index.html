@@ -107,7 +107,9 @@
     </div>
 
     <div id="modal-tab-data" style="display:none;">
+      <label class="data-section-label">Trading Routes</label>
       <div id="data-trading-routes"></div>
+      <label class="data-section-label">Resources</label>
       <div id="data-resources"></div>
     </div>
 
@@ -133,33 +135,33 @@
   </div>
 </div>
 
-<!-- Additional Settings Button (desktop) -->
-<button id="additional-settings-btn" onclick="openAdditionalSettings()">⚙ Additional Settings</button>
+<!-- Custom Settings Button (desktop) -->
+<button id="custom-settings-btn" onclick="openCustomSettings()">⚙ Custom Settings</button>
 
 <!-- Mobile Bottom Tab Bar (width <= 640px) -->
 <div id="mobile-tabbar">
   <button class="mobile-tab-btn" data-panel="overview" onclick="toggleMobileSheet('overview')">Output</button>
   <button class="mobile-tab-btn" data-panel="controls" onclick="toggleMobileSheet('controls')">Manager</button>
-  <button class="mobile-tab-btn" onclick="openAdditionalSettings()">⚙</button>
+  <button class="mobile-tab-btn" onclick="openCustomSettings()">⚙</button>
 </div>
 
-<!-- Additional Settings Modal -->
-<div id="additional-settings-overlay">
-  <div id="additional-settings-modal">
+<!-- Custom Settings Modal -->
+<div id="custom-settings-overlay">
+  <div id="custom-settings-modal">
 
-    <div id="as-screen-menu">
-      <h2>⚙ Additional Settings</h2>
+    <div id="cs-screen-menu">
+      <h2>⚙ Custom Settings</h2>
       <hr class="divider">
-      <div id="as-menu-list"></div>
+      <div id="cs-menu-list"></div>
       <hr class="divider">
-      <div class="as-footer">
-        <button onclick="closeAdditionalSettings()">Close</button>
+      <div class="cs-footer">
+        <button onclick="closeCustomSettings()">Close</button>
       </div>
     </div>
 
-    <div id="as-screen-connections" style="display:none;">
-      <div class="as-header-row">
-        <button class="as-back-btn" onclick="showASScreen('menu')">← Back</button>
+    <div id="cs-screen-connections" style="display:none;">
+      <div class="cs-header-row">
+        <button class="cs-back-btn" onclick="showCSScreen('menu')">← Back</button>
         <h2>Connection Editor</h2>
       </div>
       <hr class="divider">
@@ -169,10 +171,10 @@
       </div>
 
       <div id="conn-add-form" style="display:none;">
-        <input id="conn-input-a" list="conn-datalist-a" placeholder="領地名を入力…">
+        <input id="conn-input-a" list="conn-datalist-a" placeholder="Search registered territory…">
         <datalist id="conn-datalist-a"></datalist>
         <div class="conn-arrow">↔</div>
-        <input id="conn-input-b" list="conn-datalist-b" placeholder="領地名を入力…">
+        <input id="conn-input-b" list="conn-datalist-b" placeholder="Search registered territory…">
         <datalist id="conn-datalist-b"></datalist>
         <div id="conn-error"></div>
         <div class="btn-row">
@@ -184,8 +186,8 @@
       <hr class="divider">
       <div class="connection-list" id="conn-list"></div>
       <hr class="divider">
-      <div class="as-footer">
-        <button onclick="closeAdditionalSettings()">Close</button>
+      <div class="cs-footer">
+        <button onclick="closeCustomSettings()">Close</button>
       </div>
     </div>
 

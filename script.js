@@ -125,6 +125,7 @@ let tributeValues = { emeralds: 0, ore: 0, crops: 0, fish: 0, wood: 0 };
 let currentModalMode = 'single'; // 'single' | 'bulk'
 let currentBulkTerritories = [];
 let customConnections = [];  // [{ a: string, b: string }, ...]（a, bはlocaleCompare('en')昇順で正規化）
+let allTerritoryNames = [];  // Add Specified Territoryのdatalist用（territories.jsonの全領地名）
 
 // タッチ操作
 let touchDragStart = { x: 0, y: 0 };
@@ -427,6 +428,7 @@ function draw() {
   ctx.save();
 
   if (mapImage && mapImage.complete && mapImage.naturalWidth > 0) {
+    ctx.imageSmoothingEnabled = (scale < 1);
     ctx.drawImage(mapImage, panX, panY, MAP_CONFIG.imageWidth * scale, MAP_CONFIG.imageHeight * scale);
   } else {
     ctx.fillStyle = '#0a0f1e';
@@ -445,11 +447,9 @@ function draw() {
 
 function drawConnections() {
   const drawn = new Set();
-  ctx.save();
-  ctx.lineWidth = Math.max(1.5, scale * 4);
 
   // 1. 基本ルート
-  ctx.strokeStyle = 'rgba(0,0,0,0.97)';
+  const baseLines = [];
   for (const [name, t] of Object.entries(territories)) {
     if (!t['Trading Routes']) continue;
     for (const neighbor of t['Trading Routes']) {
@@ -458,42 +458,51 @@ function drawConnections() {
       drawn.add(key);
 
       if (!territories[neighbor]) continue;
+      baseLines.push([territoryCenter(name), territoryCenter(neighbor)]);
+    }
+  }
 
-      const c1 = territoryCenter(name);
-      const c2 = territoryCenter(neighbor);
+  // 2. 無効な追加線 / 3. 有効な追加線
+  const invalidLines = [];
+  const validLines = [];
+  for (const conn of customConnections) {
+    if (!territories[conn.a] || !territories[conn.b]) continue;
+    const c1 = territoryCenter(conn.a);
+    const c2 = territoryCenter(conn.b);
+    if (addedTerritories[conn.a] && addedTerritories[conn.b]) {
+      validLines.push([c1, c2]);
+    } else {
+      invalidLines.push([c1, c2]);
+    }
+  }
 
+  ctx.save();
+  const bodyWidth = Math.max(1.5, scale * 4);
+
+  // 各グループ「縁取り→本体」の順で描画（縁取りは白系・常に実線）
+  const strokeGroup = (lines, bodyColor) => {
+    if (lines.length === 0) return;
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = bodyWidth + 2;
+    for (const [c1, c2] of lines) {
       ctx.beginPath();
       ctx.moveTo(c1.x, c1.y);
       ctx.lineTo(c2.x, c2.y);
       ctx.stroke();
     }
-  }
+    ctx.strokeStyle = bodyColor;
+    ctx.lineWidth = bodyWidth;
+    for (const [c1, c2] of lines) {
+      ctx.beginPath();
+      ctx.moveTo(c1.x, c1.y);
+      ctx.lineTo(c2.x, c2.y);
+      ctx.stroke();
+    }
+  };
 
-  // 2. 無効な追加線
-  ctx.strokeStyle = 'rgba(234,179,8,0.35)';
-  for (const conn of customConnections) {
-    if (addedTerritories[conn.a] && addedTerritories[conn.b]) continue;
-    if (!territories[conn.a] || !territories[conn.b]) continue;
-    const c1 = territoryCenter(conn.a);
-    const c2 = territoryCenter(conn.b);
-    ctx.beginPath();
-    ctx.moveTo(c1.x, c1.y);
-    ctx.lineTo(c2.x, c2.y);
-    ctx.stroke();
-  }
-
-  // 3. 有効な追加線
-  ctx.strokeStyle = 'rgba(184,134,11,0.97)';
-  for (const conn of customConnections) {
-    if (!addedTerritories[conn.a] || !addedTerritories[conn.b]) continue;
-    if (!territories[conn.a] || !territories[conn.b]) continue;
-    const c1 = territoryCenter(conn.a);
-    const c2 = territoryCenter(conn.b);
-    ctx.beginPath();
-    ctx.moveTo(c1.x, c1.y);
-    ctx.lineTo(c2.x, c2.y);
-    ctx.stroke();
-  }
+  strokeGroup(baseLines, 'rgba(0,0,0,0.97)');
+  strokeGroup(invalidLines, 'rgba(236,72,153,0.35)');
+  strokeGroup(validLines, 'rgba(236,72,153,0.97)');
 
   ctx.restore();
 }
@@ -542,7 +551,7 @@ function drawTerritories() {
       } else {
         ctx.fillStyle = isHQ
           ? 'rgba(251,191,36,0.25)'
-          : isHovered ? 'rgba(74,222,128,0.28)' : 'rgba(74,222,128,0.14)';
+          : isHovered ? 'rgba(34,211,238,0.28)' : 'rgba(34,211,238,0.14)';
       }
       ctx.fillRect(x, y, w, h);
     } else if (isSelected) {
@@ -553,33 +562,46 @@ function drawTerritories() {
       ctx.fillRect(x, y, w, h);
     }
 
-    // Outline
+    // Outline（本体のスタイルを決定してから、縁取り→本体の順で描画）
+    let bodyLineWidth, bodyStrokeStyle, bodyDash;
     if (isAdded && isListSelected) {
-      ctx.setLineDash([Math.max(4, scale * 8), Math.max(4, scale * 8)]);
-      ctx.lineWidth = Math.max(2.0, scale * 2.5);
-      ctx.strokeStyle = '#3b82f6';
+      bodyDash = [Math.max(4, scale * 8), Math.max(4, scale * 8)];
+      bodyLineWidth = Math.max(2.0, scale * 2.5);
+      bodyStrokeStyle = '#3b82f6';
     } else {
-      ctx.setLineDash([]);
+      bodyDash = [];
       if (isDisconnected) {
-        ctx.lineWidth = Math.max(2.0, scale * 2.2);
-        ctx.strokeStyle = '#f87171';
+        bodyDash = [Math.max(6, scale * 6), Math.max(4, scale * 4)];
+        bodyLineWidth = Math.max(2.0, scale * 2.2);
+        bodyStrokeStyle = '#ef4444';
       } else if (isHQ) {
-        ctx.lineWidth = Math.max(2.0, scale * 2.2);
-        ctx.strokeStyle = '#fbbf24';
+        bodyLineWidth = Math.max(4.0, scale * 4.4);
+        bodyStrokeStyle = '#fbbf24';
       } else if (isAdded) {
-        ctx.lineWidth = Math.max(2.0, scale * 2.2);
-        ctx.strokeStyle = '#15803d';
+        bodyLineWidth = Math.max(2.0, scale * 2.2);
+        bodyStrokeStyle = '#22d3ee';
       } else if (isSelected) {
-        ctx.lineWidth = Math.max(1.8, scale * 2.0);
-        ctx.strokeStyle = '#3b82f6';
+        bodyLineWidth = Math.max(1.8, scale * 2.0);
+        bodyStrokeStyle = '#3b82f6';
       } else if (isHovered) {
-        ctx.lineWidth = Math.max(1.5, scale * 1.8);
-        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+        bodyLineWidth = Math.max(1.5, scale * 1.8);
+        bodyStrokeStyle = 'rgba(255,255,255,0.9)';
       } else {
-        ctx.lineWidth = Math.max(1.0, scale * 1.4);
-        ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+        bodyLineWidth = Math.max(1.0, scale * 1.4);
+        bodyStrokeStyle = 'rgba(255,255,255,0.55)';
       }
     }
+
+    // 縁取り（常に実線・黒系）
+    ctx.setLineDash([]);
+    ctx.lineWidth = bodyLineWidth + 2;
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.strokeRect(x, y, w, h);
+
+    // 本体
+    ctx.setLineDash(bodyDash);
+    ctx.lineWidth = bodyLineWidth;
+    ctx.strokeStyle = bodyStrokeStyle;
     ctx.strokeRect(x, y, w, h);
     ctx.setLineDash([]);
 
@@ -713,7 +735,18 @@ function showTooltip(mx, my, name, above = false) {
   const st = addedTerritories[name];
   const stats = calcTerritoryDefenseStats(name);
 
-  let titleText = name + (st.hq ? ' (HQ)' : '');
+  let titleSuffix = '';
+  if (st.hq) {
+    titleSuffix = '(HQ)';
+  } else {
+    const hqName = Object.keys(addedTerritories).find(n => addedTerritories[n].hq);
+    if (hqName) {
+      const dist = getHQPaths().dist[name];
+      if (dist === 1) titleSuffix = '(Conn)';
+      else if (dist === 2 || dist === 3) titleSuffix = '(External)';
+    }
+  }
+  let titleText = name + titleSuffix;
   let html = `<div style="color:#ffffff; font-weight:bold; font-size:14px; margin-bottom:8px;">${titleText}</div>`;
 
   const resStorageLv = (st.bonuses || {})['Larger Resource Storage'] || 0;
@@ -819,7 +852,10 @@ function showTooltip(mx, my, name, above = false) {
 
   tooltip.innerHTML = html;
   tooltip.style.display = 'block';
+  positionTooltip(mx, my, above);
+}
 
+function positionTooltip(mx, my, above) {
   const tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
 
   if (above) {
@@ -838,6 +874,12 @@ function showTooltip(mx, my, name, above = false) {
   if (ty + th > window.innerHeight - 10) ty = window.innerHeight - th - 10;
   tooltip.style.left = tx + 'px';
   tooltip.style.top  = ty + 'px';
+}
+
+function showUpgradeTooltip(mx, my, displayName, above) {
+  tooltip.innerHTML = `<div style="color:#ffffff;">${escapeHtml(displayName)}</div>`;
+  tooltip.style.display = 'block';
+  positionTooltip(mx, my, above);
 }
 
 function hideTooltip() {
@@ -1037,11 +1079,13 @@ function calculateTreasuryFromAcquired(acquiredStr) {
   return 'Very Low';
 }
 
+// 比較は素のコードユニット比較（`>` / `<`）で行う。localeCompareはロケールによって
+// アポストロフィ等の記号の扱いが変わるため、決定的な挙動にするために使わない。
 function comparePaths(a, b) {
   const len = Math.min(a.length, b.length);
   for (let i = 0; i < len; i++) {
-    const c = a[i].localeCompare(b[i], 'en');
-    if (c !== 0) return c;
+    if (a[i] > b[i]) return 1;
+    if (a[i] < b[i]) return -1;
   }
   return a.length - b.length;
 }
@@ -1063,7 +1107,11 @@ function getHQPaths() {
     }
   }
 
-  // 2. 距離昇順で経路を決定（同距離の親候補は path が辞書順最小のものを採用）
+  // 2. 距離昇順で経路を決定（同距離の親候補は path が辞書順最大＝アルファベット降順のものを採用）
+  // この規則はゲーム内挙動からの推定であり、公式仕様ではない（13分岐中12分岐で一致）。
+  // 「後続の領地によって経由ルートが分岐する」「送る側と送られる側で経由ルートが異なる」といった、
+  // 単一の最短経路ルールでは原理的に説明できない挙動もゲーム内には存在する。
+  // 本シミュレーターは1本の経路で近似する。将来反例が見つかった場合は変更する可能性がある。
   const path = { [hqName]: [hqName] };
   const byDist = Object.keys(dist).sort((a, b) => dist[a] - dist[b]);
   for (const v of byDist) {
@@ -1073,7 +1121,7 @@ function getHQPaths() {
     let bestParent = null;
     for (const u of neighbors) {
       if (dist[u] !== d - 1) continue;
-      if (bestParent === null || comparePaths(path[u], path[bestParent]) < 0) bestParent = u;
+      if (bestParent === null || comparePaths(path[u], path[bestParent]) > 0) bestParent = u;
     }
     path[v] = [...path[bestParent], v];
   }
@@ -1179,6 +1227,11 @@ function getTerritoryListIconHTML(name) {
     return `<img src="./assets/icons/others/guild_headquarter.png" class="hq-list-icon" alt="HQ">`;
   }
 
+  const hasHQ = Object.keys(addedTerritories).some(n => addedTerritories[n].hq);
+  if (hasHQ && !isConnectedToHQ(name)) {
+    return `<img src="./assets/icons/others/disconnected.png" class="list-icon" onerror="this.style.display='none'" alt="Disconnected">`;
+  }
+
   const res = t.resources;
   const em = parseFloat(res.emeralds || 0);
   const ore = parseFloat(res.ore || 0);
@@ -1225,64 +1278,33 @@ function updateTerritoryList() {
     return;
   }
 
-  const getSortScore = (name) => {
+  // 第1キー: 接続状態（HQ→到達可能→到達不能）、第2キー: Defense+Bonusレベル総和の降順、
+  // 第3キー: 領地名のアルファベット昇順（localeCompare('en')。Phase 1の降順ルールはここには適用しない）
+  const getGroup = (name) => {
     const st = addedTerritories[name];
-    if (!st) return 4; // Should not happen
-
-    const t = territories[name];
-    const isCity = t && t.resources && parseInt(t.resources.emeralds || 0) >= 18000;
-    const hasDefense = st.defense && Object.values(st.defense).some(v => v > 0);
-    const hasBonuses = st.bonuses && Object.values(st.bonuses).some(v => v > 0);
-
-    // Priority 1: HQ
     if (st.hq) return 0;
-
-    // Priority 2: Is a city territory
-    if (isCity) return 1;
-
-    // Priority 3: Has any upgrades
-    if (hasDefense || hasBonuses) return 2;
-
-    // Priority 4: Others
-    return 3;
+    return isConnectedToHQ(name) ? 1 : 2;
   };
 
-  const getRatingScore = (name) => {
+  const getUpgradeLevelSum = (name) => {
     const st = addedTerritories[name];
     if (!st) return 0;
-    
-    const hasDefense = st.defense && Object.values(st.defense).some(v => v > 0);
-    const hasBonuses = st.bonuses && Object.values(st.bonuses).some(v => v > 0);
-    if (!hasDefense && !hasBonuses && !st.hq) return 0;
-
-    const stats = calcTerritoryDefenseStats(name);
-    if (!stats) return 0;
-
-    switch (stats.rating) {
-      case "Very High": return 5;
-      case "High":      return 4;
-      case "Medium":    return 3;
-      case "Low":       return 2;
-      case "Very Low":  return 1;
-      default:          return 0;
-    }
+    let sum = 0;
+    if (st.defense) for (const v of Object.values(st.defense)) sum += v || 0;
+    if (st.bonuses) for (const v of Object.values(st.bonuses)) sum += v || 0;
+    return sum;
   };
 
   const sortedNames = Object.keys(addedTerritories).sort((a, b) => {
-    const scoreA = getSortScore(a);
-    const scoreB = getSortScore(b);
-    if (scoreA !== scoreB) {
-      return scoreA - scoreB;
-    }
-    
-    const ratingA = getRatingScore(a);
-    const ratingB = getRatingScore(b);
-    if (ratingA !== ratingB) {
-      return ratingB - ratingA; // 降順 (Very High -> Very Low)
-    }
+    const groupA = getGroup(a);
+    const groupB = getGroup(b);
+    if (groupA !== groupB) return groupA - groupB;
 
-    // If scores are equal, sort alphabetically
-    return a.localeCompare(b);
+    const sumA = getUpgradeLevelSum(a);
+    const sumB = getUpgradeLevelSum(b);
+    if (sumA !== sumB) return sumB - sumA;
+
+    return a.localeCompare(b, 'en');
   });
 
   const hasHQ = Object.keys(addedTerritories).some(n => addedTerritories[n].hq);
@@ -1295,7 +1317,6 @@ function updateTerritoryList() {
     const cls = 'territory-item' + (isSel ? ' list-selected' : '') + (isDisconnected ? ' disconnected' : '');
     return `<div class="${cls}" onclick="toggleListSelection(${safeNameArg})">
       <div class="territory-item-left">
-        ${isDisconnected ? '<span class="disconnected-mark">❌</span>' : ''}
         ${iconHTML}
         <span>${escapeHtml(name)}</span>
       </div>
@@ -1413,6 +1434,7 @@ function resetSelected() {
     addedTerritories[n].defense = { damage: 0, attack: 0, health: 0, defense: 0 };
     addedTerritories[n].bonuses = {};
   }
+  listSelectedTerritories.clear();
   selectedTerritories.clear();
   updateSelectedCount();
   refreshUI();
@@ -1443,11 +1465,20 @@ function editSelected() {
   openModal(names[0], names.length > 1 ? names : null);
 }
 
+function updateTerritorySelectDatalist() {
+  const sel = document.getElementById('territory-select');
+  const dl = document.getElementById('territory-list-options');
+  if (!sel || !dl) return;
+  dl.innerHTML = allTerritoryNames.includes(sel.value)
+    ? '' : allTerritoryNames.map(n => `<option value="${escapeHtml(n)}">`).join('');
+}
+
 function addSelectedTerritory() {
   const sel = document.getElementById('territory-select');
   if (!sel.value) return;
   addTerritory(sel.value);
   sel.value = '';
+  updateTerritorySelectDatalist();
 }
 
 function addGuildTerritories() {
@@ -1475,6 +1506,7 @@ function addGuildTerritories() {
   }
 
   sel.value = '';
+  updateGuildSelectDatalist();
   if (wasEmpty && Object.keys(addedTerritories).length > 0) autoAssignHQ();
   updateSelectedCount();
   refreshUI();
@@ -1601,8 +1633,6 @@ function openModal(name, bulkNames = null) {
         displayName = cfg.name;
       }
       
-      itemEl.title = `${displayName}\nClick to change level`;
-      
       const iconName = displayName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
       const iconPath = `./assets/icons/upgrades/${iconName}.png`;
       
@@ -1650,7 +1680,62 @@ function openModal(name, bulkNames = null) {
         itemEl.querySelector('.upgrade-level').textContent = val === "" ? "-" : val;
         updateModalStats();
       });
-      
+
+      // PC: ホバーでツールチップ表示（名前のみ）
+      itemEl.addEventListener('mouseenter', (e) => {
+        showUpgradeTooltip(e.clientX, e.clientY, displayName, false);
+      });
+      itemEl.addEventListener('mouseleave', () => {
+        hideTooltip();
+      });
+
+      // スマホ: 500ms長押しでツールチップ表示。移動10px以上でキャンセル、指を離すと消える。
+      // 長押しが発生した場合は <select> のピッカーを開かせない。
+      let upTouchStart = null;
+      let upTouchMoved = false;
+      let upLongPressTimer = null;
+      let upLongPressTriggered = false;
+
+      sel.addEventListener('touchstart', (e) => {
+        const t = e.touches[0];
+        upTouchStart = { x: t.clientX, y: t.clientY };
+        upTouchMoved = false;
+        upLongPressTriggered = false;
+        upLongPressTimer = setTimeout(() => {
+          upLongPressTimer = null;
+          if (upTouchMoved) return;
+          upLongPressTriggered = true;
+          showUpgradeTooltip(upTouchStart.x, upTouchStart.y, displayName, true);
+        }, 500);
+      }, { passive: true });
+
+      sel.addEventListener('touchmove', (e) => {
+        if (!upTouchStart) return;
+        const t = e.touches[0];
+        const dx = t.clientX - upTouchStart.x;
+        const dy = t.clientY - upTouchStart.y;
+        if (!upTouchMoved && Math.hypot(dx, dy) > 10) {
+          upTouchMoved = true;
+          if (upLongPressTimer !== null) { clearTimeout(upLongPressTimer); upLongPressTimer = null; }
+          hideTooltip();
+        }
+      }, { passive: true });
+
+      const endUpgradeTouch = () => {
+        if (upLongPressTimer !== null) { clearTimeout(upLongPressTimer); upLongPressTimer = null; }
+        if (upLongPressTriggered) hideTooltip();
+      };
+      sel.addEventListener('touchend', endUpgradeTouch);
+      sel.addEventListener('touchcancel', endUpgradeTouch);
+
+      sel.addEventListener('click', (e) => {
+        if (upLongPressTriggered) {
+          e.preventDefault();
+          e.stopPropagation();
+          upLongPressTriggered = false;
+        }
+      });
+
       itemEl.appendChild(sel);
       rowEl.appendChild(itemEl);
     }
@@ -1784,29 +1869,21 @@ function renderDataTab(name) {
   document.getElementById('data-resources').innerHTML = renderResourcesHTML(name);
 }
 
-function dataSectionBox(title, titleColor, inner) {
-  return `<div style="font-family:'Minecraftia', sans-serif; background:#000000; border:2px solid #2C075F; border-radius:4px; padding:12px 14px; margin-bottom:12px;">
-    <div style="color:${titleColor}; font-weight:bold; margin-bottom:6px;">${title}</div>
-    ${inner}
-  </div>`;
-}
-
 function renderTradingRoutesHTML(name) {
   const hqName = Object.keys(addedTerritories).find(n => addedTerritories[n].hq);
-  if (!hqName) return dataSectionBox('Trading Routes', '#ffffff', `<div style="color:#ffffff;">${escapeHtml(name)}</div>`);
+  if (!hqName) return `<div style="color:#ffffff;">${escapeHtml(name)}</div>`;
 
   if (name === hqName) {
-    return dataSectionBox('Trading Routes', '#ffffff', `<div style="color:#ffffff;">${escapeHtml(hqName)}(HQ)</div>`);
+    return `<div style="color:#ffffff;">${escapeHtml(hqName)}(HQ)</div>`;
   }
 
   const paths = getHQPaths();
   const dist = paths.dist[name];
 
   if (dist === undefined) {
-    const inner = `<div style="color:#ffffff;">${escapeHtml(hqName)}(HQ)</div>` +
-      `<div style="color:#FF5555;">→❌ ${escapeHtml(name)}</div>` +
+    return `<div style="color:#ffffff;">${escapeHtml(hqName)}(HQ)</div>` +
+      `<div style="color:#FF5555;">→<img src="./assets/icons/others/disconnected.png" class="list-icon" onerror="this.style.display='none'"> ${escapeHtml(name)}</div>` +
       `<div style="color:#AA0000; margin-top:4px;">This territory has no pipeline to the HQ.</div>`;
-    return dataSectionBox('Trading Routes', '#ffffff', inner);
   }
 
   const path = paths.path[name];
@@ -1815,7 +1892,7 @@ function renderTradingRoutesHTML(name) {
     inner += `<div style="color:#ffffff;">→${escapeHtml(path[i])}</div>`;
   }
   inner += `<div style="color:#ffffff; margin-top:6px;">Trade Time: ${dist} min${dist === 1 ? '' : 's'}</div>`;
-  return dataSectionBox('Trading Routes', '#ffffff', inner);
+  return inner;
 }
 
 function renderResourcesHTML(name) {
@@ -1845,19 +1922,20 @@ function renderResourcesHTML(name) {
   let inner = '';
   for (const r of ORDER) {
     const isZero = prod[r.id] === 0;
-    const color = isZero ? '#555555' : r.color;
+    const prodColor = isZero ? '#555555' : r.color;
     const stored = Math.round((prod[r.id] + cons[r.id]) / 60);
-    const storedColor = stored >= r.max ? '#FF5555' : color;
+    const storedColor = stored >= r.max ? '#FF5555' : r.color;
     const travMin = Math.round(trav[r.id] / 60);
-    const iconHtml = r.icon
+    const prodIconHtml = r.icon
       ? RESOURCE_ICONS[r.id].replace('class="res-icon-img"', `class="res-icon-img${isZero ? ' gray-icon' : ''}"`)
       : '';
+    const storedIconHtml = r.icon ? RESOURCE_ICONS[r.id] : '';
 
-    inner += `<div style="color:${color};">${iconHtml}+${fmtNum(prod[r.id])} ${r.label} per Hour</div>`;
-    inner += `<div style="color:${color};">${iconHtml}<span style="color:${storedColor};">${fmtNum(stored)}</span>/${fmtNum(r.max)} stored (${fmtNum(travMin)} traversing)</div>`;
+    inner += `<div style="color:${prodColor};">${prodIconHtml}+${fmtNum(prod[r.id])} ${r.label} per Hour</div>`;
+    inner += `<div style="color:${r.color};">${storedIconHtml}<span style="color:${storedColor};">${fmtNum(stored)}</span>/${fmtNum(r.max)} stored (${fmtNum(travMin)} traversing)</div>`;
   }
 
-  return dataSectionBox('Resources', '#55FF55', inner);
+  return inner;
 }
 
 function calcTraversingResources() {
@@ -1926,22 +2004,22 @@ const ADDITIONAL_SETTINGS_ITEMS = [
   { label: 'Connection Editor', screen: 'connections' }
 ];
 
-function openAdditionalSettings() {
-  const list = document.getElementById('as-menu-list');
+function openCustomSettings() {
+  const list = document.getElementById('cs-menu-list');
   list.innerHTML = ADDITIONAL_SETTINGS_ITEMS.map(item =>
-    `<div class="as-menu-item" onclick="showASScreen('${item.screen}')"><span>${escapeHtml(item.label)}</span><span>›</span></div>`
+    `<div class="cs-menu-item" onclick="showCSScreen('${item.screen}')"><span>${escapeHtml(item.label)}</span><span>›</span></div>`
   ).join('');
-  showASScreen('menu');
-  document.getElementById('additional-settings-overlay').classList.add('open');
+  showCSScreen('menu');
+  document.getElementById('custom-settings-overlay').classList.add('open');
 }
 
-function closeAdditionalSettings() {
-  document.getElementById('additional-settings-overlay').classList.remove('open');
+function closeCustomSettings() {
+  document.getElementById('custom-settings-overlay').classList.remove('open');
 }
 
-function showASScreen(screen) {
-  document.getElementById('as-screen-menu').style.display = screen === 'menu' ? '' : 'none';
-  document.getElementById('as-screen-connections').style.display = screen === 'connections' ? '' : 'none';
+function showCSScreen(screen) {
+  document.getElementById('cs-screen-menu').style.display = screen === 'menu' ? '' : 'none';
+  document.getElementById('cs-screen-connections').style.display = screen === 'connections' ? '' : 'none';
   if (screen === 'connections') {
     hideAddConnectionForm();
     renderConnectionList();
@@ -1980,10 +2058,10 @@ function updateConnDatalists() {
   const bVal = document.getElementById('conn-input-b').value;
   const names = Object.keys(addedTerritories).sort((x, y) => x.localeCompare(y, 'en'));
 
-  document.getElementById('conn-datalist-a').innerHTML =
-    names.filter(n => n !== bVal).map(n => `<option value="${escapeHtml(n)}">`).join('');
-  document.getElementById('conn-datalist-b').innerHTML =
-    names.filter(n => n !== aVal).map(n => `<option value="${escapeHtml(n)}">`).join('');
+  document.getElementById('conn-datalist-a').innerHTML = names.includes(aVal)
+    ? '' : names.filter(n => n !== bVal).map(n => `<option value="${escapeHtml(n)}">`).join('');
+  document.getElementById('conn-datalist-b').innerHTML = names.includes(bVal)
+    ? '' : names.filter(n => n !== aVal).map(n => `<option value="${escapeHtml(n)}">`).join('');
 }
 
 function addCustomConnection() {
@@ -2048,9 +2126,11 @@ function renderConnectionList() {
 
 document.getElementById('conn-input-a').addEventListener('input', updateConnDatalists);
 document.getElementById('conn-input-b').addEventListener('input', updateConnDatalists);
+document.getElementById('territory-select').addEventListener('input', updateTerritorySelectDatalist);
+document.getElementById('guild-select').addEventListener('input', updateGuildSelectDatalist);
 
-document.getElementById('additional-settings-overlay').addEventListener('click', e => {
-  if (e.target === document.getElementById('additional-settings-overlay')) closeAdditionalSettings();
+document.getElementById('custom-settings-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('custom-settings-overlay')) closeCustomSettings();
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -2408,10 +2488,18 @@ async function loadFromHash() {
 // ═══════════════════════════════════════════════════════════
 window.guildTerritoryMap = {};
 let guildDisplayToName = {};  // 表示文字列 → 本来のギルド名（Android Chromeのdatalistがvalueしか表示しないための対応）
+let allGuildDisplays = [];    // Add From On-map Guildのdatalist用（表示文字列一覧）
+
+function updateGuildSelectDatalist() {
+  const sel = document.getElementById('guild-select');
+  const dl = document.getElementById('guild-list-options');
+  if (!sel || !dl) return;
+  dl.innerHTML = allGuildDisplays.includes(sel.value)
+    ? '' : allGuildDisplays.map(d => `<option value="${escapeHtml(d)}">`).join('');
+}
 
 async function loadGuilds() {
   const input = document.getElementById('guild-select');
-  const dl = document.getElementById('guild-list-options');
   try {
     const res = await fetch('https://corsproxy.io/?https://api.wynncraft.com/v3/guild/list/territory');
     if (!res.ok) {
@@ -2444,16 +2532,15 @@ async function loadGuilds() {
     guildDisplayToName = {};
     const sortedGuilds = Object.keys(guildMap).sort();
 
-    if (dl) {
-      dl.innerHTML = sortedGuilds.map(g => {
-        window.guildTerritoryMap[g] = guildMap[g].territories;
-        const prefix = guildMap[g].prefix;
-        const count = guildMap[g].territories.length;
-        const display = prefix ? `[${prefix}] ${g} (${count})` : `${g} (${count})`;
-        guildDisplayToName[display] = g;
-        return `<option value="${escapeHtml(display)}">`;
-      }).join('');
-    }
+    allGuildDisplays = sortedGuilds.map(g => {
+      window.guildTerritoryMap[g] = guildMap[g].territories;
+      const prefix = guildMap[g].prefix;
+      const count = guildMap[g].territories.length;
+      const display = prefix ? `[${prefix}] ${g} (${count})` : `${g} (${count})`;
+      guildDisplayToName[display] = g;
+      return display;
+    });
+    updateGuildSelectDatalist();
     if (input) input.placeholder = "Type to search guild...";
   } catch (err) {
     const errMsg = err.message || 'Unknown Error';
@@ -2485,9 +2572,8 @@ async function init() {
     TERRITORY_ID_MAP = {};
   }
 
-  const sorted = Object.keys(territories).sort();
-  const dl = document.getElementById('territory-list-options');
-  if (dl) dl.innerHTML = sorted.map(n => `<option value="${escapeHtml(n)}">`).join('');
+  allTerritoryNames = Object.keys(territories).sort();
+  updateTerritorySelectDatalist();
 
   mapImage = new Image();
   mapImage.onload = () => {

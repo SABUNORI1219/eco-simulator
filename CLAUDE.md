@@ -12,8 +12,11 @@ eco-simulator/
 ├── territories.json    # 全437領地のデータ（Location, Trading Routes, resources）
 ├── territory-ids.json  # 共有リンク用の固定領地ID配列（末尾追記のみ・詳細は下記警告参照）
 ├── main-map.png        # マップ画像（4608×6644px）※手動配置が必要
+├── assets/icons/others/disconnected.png  # 非接続❌アイコン（16px四方）※手動配置が必要
 └── CLAUDE.md           # このファイル（.gitignore対象）
 ```
+
+**マップ画像のタイル分割は意図的に実装していない。** iPhone Safariでは`main-map.png`が約3060万ピクセルあり、ブラウザのデコード上限を超えるため間引きされて画質が落ちることがある（読み込みのたびに結果が変わる）。根本対応にはタイル分割＋低解像度の全体画像＋LRU管理が必要でコストが見合わないため、スマホ版はPC版の下位互換という割り切りで対応していない。
 
 ## 起動方法
 
@@ -49,6 +52,7 @@ npx serve .
 - Y軸反転あり（ゲームのY負の大きい値 = 南 = 画像の下）
 - 変換式: `pixel = game + offset`（offset X=+2560, Y=+6632）
 - canvasは`devicePixelRatio`対応済み。`draw()`冒頭で`setTransform(dpr,...)`を行い、以降はCSSピクセル座標系で描画する。`clampPan()`は`window.innerWidth/innerHeight`を基準にする。
+- `draw()`でマップ画像を描画する際、`scale >= 1`では`imageSmoothingEnabled = false`、`scale < 1`では`true`に切り替える。
 
 ---
 
@@ -90,7 +94,7 @@ npx serve .
 | `isConnectedToHQ(name)` | 領地がHQから到達可能かを判定（HQ未設定時は登録済み全領地でtrue） |
 | `autoAssignHQ()` | 登録領地が0件の状態から追加された場合のみ、仮HQ時のEHPが最大の領地をHQに自動設定 |
 | `getNeighbors(name)` | 基本ルート＋有効な追加接続線を合わせた隣接領地一覧を返す |
-| `openAdditionalSettings()` | Additional Settingsモーダルを開く（画面1: 項目一覧） |
+| `openCustomSettings()` | Custom Settingsモーダルを開く（画面1: 項目一覧） |
 | `addCustomConnection()` | 入力された2領地の接続線をバリデーション後`customConnections`に追加 |
 | `removeCustomConnection(a, b)` | 指定した接続線を`customConnections`から削除 |
 | `clearAllCustomConnections()` | 確認ダイアログの上で`customConnections`を全削除 |
@@ -145,11 +149,11 @@ npx serve .
 
 ### Connections
 - 接続線は `territories.json` の基本ルートに加え、ユーザーが追加した接続線（有効なもののみ）を含む。取得は必ず `getNeighbors(name)` 経由で統一する。
-- 描画色は基本ルート＝黒、有効な追加線＝濃い黄土色、無効な追加線＝薄い黄色。
+- 描画色は基本ルート＝黒、有効な追加線＝マゼンタ、無効な追加線＝薄いマゼンタ。**すべての接続線と領地矩形には、本体より2px太い縁取りを本体の下に描く（接続線は白系`rgba(255,255,255,0.5)`、領地矩形は黒系`rgba(0,0,0,0.6)`。縁取りは常に実線）。**
 
 ### Traversing Resources
 - 各領地を通過する資源量。HQと自領地分を除いた、経路上の中間ノードとしての通過量（生産分＋消費分）。HQは常に0。
-- Trade Timeは1ホップ＝1分。最短経路が複数ある場合は経路全体の辞書順が最小のものを採用。
+- Trade Timeは1ホップ＝1分。**最短経路が複数ある場合は、経路全体の辞書順が最大のもの（アルファベット降順・Z→A）を採用する。比較は素のコードユニット比較で行い、`localeCompare`は使わない。** これはゲーム内挙動からの推定であり公式仕様ではない（13分岐中12分岐で一致）。それ以外の表示順（リスト・datalist・自動HQの同値判定）は従来どおり`localeCompare('en')`の昇順を使う。
 
 ### Tributes
 - 外部（他ギルドからの献上等）の資源流入/流出を `/hr` 単位で設定
@@ -173,21 +177,31 @@ npx serve .
 - **Added Territories**: 登録済み領地リスト
   - クリックで青ハイライト選択（複数可）
   - Select All / Select None / Edit Selected / Reset Selected / Clear All ボタン
-  - Reset Selected: アップグレードのリセットとマップ上の青ハイライト解除を同時実行（確認ダイアログなし）
+  - 並び順は`HQ`→`到達可能な領地`→`到達不能な領地`の3グループ。各グループ内では**Defense と Bonus のレベル値の総和（重み付けなしの単純な合計）の降順**、同値の場合は領地名の`localeCompare('en')`昇順。到達不能な領地は❌アイコンのみを表示し、生産資源のアイコンは表示しない。
+  - Reset Selected: **アップグレードのリセット・リスト選択の解除・マップ上の青ハイライト解除の3つを同時に実行する（確認ダイアログなし）。**
   - Edit Selected: 1つなら通常モーダル、複数なら一括編集モーダル（HQなし）
 
 ### モーダル
 - 右上にSettings/Dataのタブ切り替えボタンを持つ（表示条件: `currentModalMode === 'single'` かつ HQ設定済みの場合のみ。それ以外はボタン自体を非表示にしSettingsタブ固定）。開くときは常にSettingsタブから開始する。
 - **Settingsタブ（単体モード）**: Defense(4種×Lv0〜11) + HQ設定 + Bonus(17種) + リアルタイムプレビュー
 - **Settingsタブ（一括モード）**: 選択領地数を表示、Defense + Bonus のみ編集、保存で全選択領地に適用
-- **Dataタブ**: Trading Routes（HQからの経路・Trade Time）とResources（生産量・stored・traversing）を表示する読み取り専用タブ
+- **Dataタブ**: Trading Routes（HQからの経路・Trade Time）とResources（生産量・stored・traversing）を表示する読み取り専用タブ。Settingsタブと同系統の見た目に揃えている。**Minecraftiaは使わない**（body既定のSegoe UI）。**マップ上の領地名描画のMinecraftiaは維持している。** セクション見出しは箱の外に置き、`.data-section-label`（`.modal-section label`と同スタイル。`text-transform: uppercase`により大文字表示になる）。Trading Routesの箱は`#modal-stats`と同じ（`#0f172a`／枠線なし）、Resourcesの箱はツールチップと同じ（`#000000`／`2px solid #2C075F`）。**2つの箱でスタイルが異なるのは意図的。**
 
-### ADDITIONAL SETTINGSモーダル（左下ボタン）
-- 画面左下固定の `⚙ Additional Settings` ボタンから開く。
+### CUSTOM SETTINGSモーダル（左下ボタン）
+- 画面左下固定の `⚙ Custom Settings` ボタンから開く。
+- 名称の由来: Tributesはゲーム内に存在する機能、接続線の追加はゲーム内に存在しない機能であるため、両者を混ぜず、**ゲーム内に存在しない設定であることが名前から分かるようにしている**。Tributesは Guild Output パネルの 💰 ボタンに残している。
 - 画面1（項目一覧）: 現状は `Connection Editor` のみ。将来項目追加を想定しループで生成。
-- 画面2（Connection Editor）: `+ Add New Line` でインライン入力フォームを展開し、2領地間の接続線を追加。追加済み接続線は `a ↔ b` 形式でリスト表示し、無効な接続（片方未登録）はグレーアウト。`Clear All Lines` で全削除（確認ダイアログあり）。
+- 画面2（Connection Editor）: `+ Add New Line` でインライン入力フォームを展開し、2領地間の接続線を追加。追加済み接続線は `a ↔ b` 形式でリスト表示し、無効な接続（片方未登録）はグレーアウト。`Clear All Lines` で全削除（確認ダイアログあり）。接続リストの各項目は`#0f172a`背景＋`1px solid #334155`の枠線を持つ箱として表示する（モーダル背景と同色になって項目の境界が見えなくなるのを避けるため）。
+
+### datalistの共通仕様
+入力値が候補と完全一致している場合、その入力欄のdatalistを空にする。`<datalist>`の標準挙動では完全一致していても候補が1件表示され続け、操作の邪魔になるため。対象はConnection Editorの2つの入力欄、Add Specified Territory、Add From On-map Guildの計4箇所。
+
+### ツールチップ
+- 領地ツールチップのタイトルにはHQからの関係を付記する（HQ自身＝`(HQ)`、距離1＝`(Conn)`、距離2〜3＝`(External)`、距離4以上・到達不能・HQ未設定＝付記なし）。距離1はExternalにも該当するが`(Conn)`のみを表示する。領地名と括弧の間にスペースは入れない。Territory Managerのリストとモーダルのタイトルには表示しない。
+- Upgradeアイコンはホバー（PC）／長押し500ms（スマホ）で**アップグレード名のみ**のツールチップを表示する。ブラウザ標準の`title`は使わない。長押しでツールチップが出た場合、レベル変更の`<select>`は開かない。
 
 ### マップ操作
+- **配色**: 登録済み＝シアン`#22d3ee`、HQ＝黄`#fbbf24`（線幅2倍）、非接続＝赤`#ef4444`の破線、未登録＝半透明の白。**地図に存在しない色を使うことと、色以外の手がかり（破線・線幅・縁取り）を併用することを原則とする**（赤緑色覚でも区別できるようにするため）。
 - 未登録領地クリック → 選択トグル（青アウトライン）
 - 登録済み領地クリック → モーダルを開く
 - ドラッグ: パン、ホイール: ズーム
@@ -215,6 +229,10 @@ npx serve .
 - 領地IDは9bit固定のため、`territory-ids.json`が512件を超えると`#p=`形式は破綻する。その場合は`version`を5に上げ、IDのビット数を拡張した新形式を追加すること。
 
 ---
+
+## アイコンの方針
+
+**❌のみ画像化済み**（`assets/icons/others/disconnected.png`、16px四方、読み込み失敗時は`<img>`のみ非表示にし行は残す）。💰 / ⚙ / 🔗 / 💾はゲーム内に対応するアイコンが存在せず、画像化すると何のボタンか分からなくなりUXが下がるため、絵文字のまま維持する。
 
 ## 外部API
 
