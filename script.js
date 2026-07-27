@@ -743,7 +743,7 @@ function showTooltip(mx, my, name, above = false) {
     if (hqName) {
       const dist = getHQPaths().dist[name];
       if (dist === 1) titleSuffix = '(Conn)';
-      else if (dist === 2 || dist === 3) titleSuffix = '(External)';
+      else if (dist === 2 || dist === 3) titleSuffix = '(Ext)';
     }
   }
   let titleText = name + titleSuffix;
@@ -1429,14 +1429,12 @@ function clearAllTerritories() {
 
 function resetSelected() {
   const names = [...listSelectedTerritories].filter(n => addedTerritories[n]);
-  if (names.length === 0 && selectedTerritories.size === 0) return;
+  if (names.length === 0) return;
+  if (!confirm(`Reset all upgrades for ${names.length} selected territories?`)) return;
   for (const n of names) {
     addedTerritories[n].defense = { damage: 0, attack: 0, health: 0, defense: 0 };
     addedTerritories[n].bonuses = {};
   }
-  listSelectedTerritories.clear();
-  selectedTerritories.clear();
-  updateSelectedCount();
   refreshUI();
 }
 
@@ -1455,6 +1453,8 @@ function selectAll() {
 
 function selectNone() {
   listSelectedTerritories.clear();
+  selectedTerritories.clear();
+  updateSelectedCount();
   updateTerritoryList();
   draw();
 }
@@ -1882,7 +1882,7 @@ function renderTradingRoutesHTML(name) {
 
   if (dist === undefined) {
     return `<div style="color:#ffffff;">${escapeHtml(hqName)}(HQ)</div>` +
-      `<div style="color:#FF5555;">→<img src="./assets/icons/others/disconnected.png" class="list-icon" onerror="this.style.display='none'"> ${escapeHtml(name)}</div>` +
+      `<div style="color:#FF5555;">→<img src="./assets/icons/others/disconnected.png" class="data-disconnect-icon" onerror="this.style.display='none'">${escapeHtml(name)}</div>` +
       `<div style="color:#AA0000; margin-top:4px;">This territory has no pipeline to the HQ.</div>`;
   }
 
@@ -2126,6 +2126,21 @@ function renderConnectionList() {
 
 document.getElementById('conn-input-a').addEventListener('input', updateConnDatalists);
 document.getElementById('conn-input-b').addEventListener('input', updateConnDatalists);
+
+function tryShowConnPicker(inputId, datalistId) {
+  if (Object.keys(addedTerritories).length === 0) return;
+  if (window.matchMedia('(max-width: 640px)').matches) return;
+  const input = document.getElementById(inputId);
+  const datalist = document.getElementById(datalistId);
+  if (datalist.options.length === 0) return;
+  try {
+    input.showPicker();
+  } catch (e) {
+    // 未対応環境ではdatalistの標準挙動にフォールバック
+  }
+}
+document.getElementById('conn-input-a').addEventListener('click', () => tryShowConnPicker('conn-input-a', 'conn-datalist-a'));
+document.getElementById('conn-input-b').addEventListener('click', () => tryShowConnPicker('conn-input-b', 'conn-datalist-b'));
 document.getElementById('territory-select').addEventListener('input', updateTerritorySelectDatalist);
 document.getElementById('guild-select').addEventListener('input', updateGuildSelectDatalist);
 
