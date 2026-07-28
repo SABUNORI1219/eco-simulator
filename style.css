@@ -245,7 +245,7 @@ button.danger:hover { background: #b91c1c; }
 #tooltip {
   display: none; position: fixed; background: #000000;
   border: 2px solid #2C075F; border-radius: 4px; padding: 12px 14px;
-  font-size: 12px; line-height: 1.5; max-width: 360px; pointer-events: none; z-index: 50;
+  font-size: 12px; line-height: 1.5; max-width: 360px; pointer-events: none; z-index: 300;
 }
 
 /* Tribute Modal */
@@ -277,6 +277,30 @@ button.danger:hover { background: #b91c1c; }
 }
 #custom-settings-btn:hover { background: #1e293b; }
 
+/* Filter */
+#filter-btn {
+  position: fixed; right: 12px; bottom: 12px; z-index: 10;
+  width: auto; padding: 8px 14px;
+  background: #000000; border: 2px solid #2C075F; color: #e2e8f0;
+  border-radius: 6px; font-size: 13px; cursor: pointer;
+}
+#filter-btn:hover { background: #1e293b; }
+#filter-btn.active { background: #334155; }
+
+#filter-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+  z-index: 100; align-items: center; justify-content: center;
+}
+#filter-overlay.open { display: flex; }
+#filter-modal {
+  background: #1e293b; border: 1px solid #334155; border-radius: 10px;
+  padding: 20px; width: 420px; max-height: 90vh; overflow-y: auto;
+}
+#filter-modal h2 { font-size: 16px; color: #e2e8f0; }
+.filter-mode-group, .filter-toggle-group { flex-direction: column; }
+.filter-toggle-row { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+.filter-toggle-row input { width: auto; margin: 0; }
+
 #custom-settings-overlay {
   display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
   z-index: 100; align-items: center; justify-content: center;
@@ -306,6 +330,22 @@ button.danger:hover { background: #b91c1c; }
 }
 .conn-arrow { text-align: center; font-size: 12px; color: #94a3b8; margin: 2px 0; }
 #conn-error { color: #f87171; font-size: 12px; min-height: 14px; margin: 4px 0; }
+
+#res-add-form {
+  background: #0f172a; border: 1px solid #334155; border-radius: 6px;
+  padding: 10px; margin-top: 8px;
+}
+.res-field-label { font-size: 12px; color: #94a3b8; margin-top: 10px; margin-bottom: 4px; text-transform: uppercase; letter-spacing: .05em; }
+.res-radio-group, .res-checkbox-group {
+  display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px;
+}
+.res-radio-group label, .res-checkbox-group label {
+  display: flex; align-items: center; gap: 4px; cursor: pointer;
+}
+.res-radio-group input, .res-checkbox-group input { width: auto; margin: 0; }
+.res-checkbox-group input:disabled, .res-radio-group input:disabled { cursor: not-allowed; }
+.res-checkbox-group label:has(input:disabled), .res-radio-group label:has(input:disabled) { color: #64748b; }
+#res-error { color: #f87171; font-size: 12px; min-height: 14px; margin: 8px 0 4px; }
 
 .connection-list { max-height: 220px; overflow-y: auto; margin-top: 6px; }
 .connection-item {
@@ -338,6 +378,7 @@ button.danger:hover { background: #b91c1c; }
 @media (max-width: 640px) {
   #mobile-tabbar { display: flex; }
   #custom-settings-btn { display: none; }
+  #filter-btn { display: none; }
 
   #overview, #controls {
     left: 0; right: 0; top: auto; bottom: 48px; width: 100%;
@@ -346,7 +387,7 @@ button.danger:hover { background: #b91c1c; }
   }
   #overview.sheet-open, #controls.sheet-open { transform: translateY(0); }
 
-  #modal, #tribute-modal, #custom-settings-modal {
+  #modal, #tribute-modal, #custom-settings-modal, #filter-modal {
     width: calc(100vw - 24px);
     max-height: 85vh;
     overflow-y: auto;

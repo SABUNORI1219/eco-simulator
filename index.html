@@ -138,10 +138,14 @@
 <!-- Custom Settings Button (desktop) -->
 <button id="custom-settings-btn" onclick="openCustomSettings()">⚙ Custom Settings</button>
 
+<!-- Filter Button (desktop) -->
+<button id="filter-btn" onclick="openFilterModal()">Filter</button>
+
 <!-- Mobile Bottom Tab Bar (width <= 640px) -->
 <div id="mobile-tabbar">
   <button class="mobile-tab-btn" data-panel="overview" onclick="toggleMobileSheet('overview')">Output</button>
   <button class="mobile-tab-btn" data-panel="controls" onclick="toggleMobileSheet('controls')">Manager</button>
+  <button class="mobile-tab-btn" onclick="openFilterModal()">Filter</button>
   <button class="mobile-tab-btn" onclick="openCustomSettings()">⚙</button>
 </div>
 
@@ -191,6 +195,79 @@
       </div>
     </div>
 
+    <div id="cs-screen-resources" style="display:none;">
+      <div class="cs-header-row">
+        <button class="cs-back-btn" onclick="showCSScreen('menu')">← Back</button>
+        <h2>Resource Editor</h2>
+      </div>
+      <hr class="divider">
+      <div class="btn-row">
+        <button onclick="toggleAddResourceForm()">+ Add Override</button>
+        <button class="danger" onclick="clearAllResourceOverrides()">Clear All Overrides</button>
+      </div>
+
+      <div id="res-add-form" style="display:none;">
+        <input id="res-input" list="res-datalist" placeholder="Search registered territory…">
+        <datalist id="res-datalist"></datalist>
+
+        <div class="res-field-label">Emeralds:</div>
+        <div class="res-radio-group">
+          <label><input type="radio" name="res-tier" id="res-tier-normal" value="normal" checked> Normal 9,000</label>
+          <label><input type="radio" name="res-tier" id="res-tier-city" value="city"> City 18,000</label>
+          <label><input type="radio" name="res-tier" id="res-tier-rainbow" value="rainbow"> Rainbow 1,800</label>
+        </div>
+
+        <div class="res-field-label">Resources: (max 2)</div>
+        <div class="res-checkbox-group">
+          <label><input type="checkbox" class="res-resource-cb" data-resource="ore"> Ore</label>
+          <label><input type="checkbox" class="res-resource-cb" data-resource="wood"> Wood</label>
+          <label><input type="checkbox" class="res-resource-cb" data-resource="fish"> Fish</label>
+          <label><input type="checkbox" class="res-resource-cb" data-resource="crops"> Crops</label>
+        </div>
+
+        <div class="res-field-label">Amount:</div>
+        <div class="res-radio-group">
+          <label><input type="radio" name="res-amount" id="res-amount-normal" value="normal" checked> Normal 3,600</label>
+          <label><input type="radio" name="res-amount" id="res-amount-double" value="double"> Double 7,200</label>
+        </div>
+
+        <div id="res-error"></div>
+        <div class="btn-row">
+          <button class="primary" onclick="addResourceOverride()">Add</button>
+          <button onclick="toggleAddResourceForm()">Cancel</button>
+        </div>
+      </div>
+
+      <hr class="divider">
+      <div class="connection-list" id="res-list"></div>
+      <hr class="divider">
+      <div class="cs-footer">
+        <button onclick="closeCustomSettings()">Close</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Filter Modal -->
+<div id="filter-overlay">
+  <div id="filter-modal">
+    <h2>Filter</h2>
+    <hr class="divider">
+    <div class="res-field-label">Mode:</div>
+    <div class="res-radio-group filter-mode-group">
+      <label><input type="radio" name="filter-mode" value="none" onchange="setFilterMode('none')"> None</label>
+      <label><input type="radio" name="filter-mode" value="defense" onchange="setFilterMode('defense')"> Defense</label>
+      <label><input type="radio" name="filter-mode" value="treasury" onchange="setFilterMode('treasury')"> Treasury</label>
+      <label><input type="radio" name="filter-mode" value="resource" onchange="setFilterMode('resource')"> Resource</label>
+    </div>
+    <hr class="divider">
+    <div id="filter-toggles" class="res-checkbox-group filter-toggle-group"></div>
+    <hr class="divider">
+    <div class="cs-footer">
+      <button class="danger" onclick="clearFilter()">Clear Filter</button>
+      <button onclick="closeFilterModal()">Close</button>
+    </div>
   </div>
 </div>
 

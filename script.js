@@ -82,6 +82,12 @@ const RESOURCE_ICONS  = {
 };
 const RESOURCE_COLORS = { emeralds: '#4ade80', ore: '#94a3b8', crops: '#facc15', fish: '#38bdf8', wood: '#a16207' };
 
+const FILTER_COLORS = {
+  defense: { "Very Low": "#00AA00", "Low": "#55FF55", "Medium": "#FFFF55", "High": "#FF5555", "Very High": "#AA0000" },
+  treasury: { "Very Low": "#00AA00", "Low": "#55FF55", "Medium": "#FFFF55", "High": "#00FF00", "Very High": "#55FFFF" },
+  resource: { city: "#55FF55", ore: "#FFFFFF", wood: "#FFAA00", fish: "#55FFFF", crops: "#FFFF55" }
+};
+
 // ═══════════════════════════════════════════════════════════
 //  STATE
 // ═══════════════════════════════════════════════════════════
@@ -121,10 +127,20 @@ let selectedTerritories = new Set();    // map selection (unregistered)
 let listSelectedTerritories = new Set(); // manager list selection (registered)
 let _hqPathCache = null;
 let _traversingCache = null;
+let _fullDistCache = null;
 let tributeValues = { emeralds: 0, ore: 0, crops: 0, fish: 0, wood: 0 };
 let currentModalMode = 'single'; // 'single' | 'bulk'
 let currentBulkTerritories = [];
 let customConnections = [];  // [{ a: string, b: string }, ...]（a, bはlocaleCompare('en')昇順で正規化）
+let resourceOverrides = {};  // name -> { tier: 'normal'|'city'|'rainbow', resources: string[], double: boolean }
+
+// マップオーバーレイの状態。表示状態にすぎないため共有リンクには含めない。
+let filterMode = 'none';   // 'none' | 'defense' | 'treasury' | 'resource'
+let filterToggles = {
+  defense:  { "Very Low": true, "Low": true, "Medium": true, "High": true, "Very High": true },
+  treasury: { "Very Low": true, "Low": true, "Medium": true, "High": true, "Very High": true },
+  resource: { ore: true, wood: true, fish: true, crops: true, rainbow: true, city: true },
+};
 let allTerritoryNames = [];  // Add Specified Territoryのdatalist用（territories.jsonの全領地名）
 
 // タッチ操作
@@ -478,17 +494,21 @@ function drawConnections() {
 
   ctx.save();
   const bodyWidth = Math.max(1.5, scale * 4);
+  const filterActive = filterMode !== 'none';
 
-  // 各グループ「縁取り→本体」の順で描画（縁取りは白系・常に実線）
+  // 各グループ「縁取り→本体」の順で描画（縁取りは白系・常に実線）。
+  // Map Filter中は縁取りを省略し、色を差し替える。
   const strokeGroup = (lines, bodyColor) => {
     if (lines.length === 0) return;
-    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-    ctx.lineWidth = bodyWidth + 2;
-    for (const [c1, c2] of lines) {
-      ctx.beginPath();
-      ctx.moveTo(c1.x, c1.y);
-      ctx.lineTo(c2.x, c2.y);
-      ctx.stroke();
+    if (!filterActive) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.lineWidth = bodyWidth + 2;
+      for (const [c1, c2] of lines) {
+        ctx.beginPath();
+        ctx.moveTo(c1.x, c1.y);
+        ctx.lineTo(c2.x, c2.y);
+        ctx.stroke();
+      }
     }
     ctx.strokeStyle = bodyColor;
     ctx.lineWidth = bodyWidth;
@@ -500,9 +520,15 @@ function drawConnections() {
     }
   };
 
-  strokeGroup(baseLines, 'rgba(0,0,0,0.97)');
-  strokeGroup(invalidLines, 'rgba(236,72,153,0.35)');
-  strokeGroup(validLines, 'rgba(236,72,153,0.97)');
+  if (filterActive) {
+    strokeGroup(baseLines, 'rgba(0,0,0,0.35)');
+    strokeGroup(invalidLines, 'rgba(236,72,153,0.15)');
+    strokeGroup(validLines, 'rgba(236,72,153,0.35)');
+  } else {
+    strokeGroup(baseLines, 'rgba(0,0,0,0.97)');
+    strokeGroup(invalidLines, 'rgba(236,72,153,0.35)');
+    strokeGroup(validLines, 'rgba(236,72,153,0.97)');
+  }
 
   ctx.restore();
 }
@@ -520,6 +546,47 @@ function drawIcon(img, x, y, size) {
     const dy = y + (size - h) / 2;
     ctx.drawImage(img, dx, dy, w, h);
   }
+}
+
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// 矩形(x,y,w,h)をcolors.length個の色で斜め分割して塗る（Map Filterのオーバーレイ用）。
+// 境界線は左下から右上に向かって傾く（shearの係数0.5は見た目の調整値）。
+function drawSplitFill(x, y, w, h, colors, opacity) {
+  const n = colors.length;
+  if (n === 0) return;
+  if (n === 1) {
+    ctx.fillStyle = hexToRgba(colors[0], opacity);
+    ctx.fillRect(x, y, w, h);
+    return;
+  }
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+  const shear = h * 0.5;
+  for (let i = 0; i < n; i++) {
+    let blX = x + w * i / n;
+    let brX = x + w * (i + 1) / n;
+    let tlX = blX + shear;
+    let trX = brX + shear;
+    if (i === 0) { blX = x - shear - 1; tlX = x - shear - 1; }
+    if (i === n - 1) { brX = x + w + shear + 1; trX = x + w + shear + 1; }
+    ctx.fillStyle = hexToRgba(colors[i], opacity);
+    ctx.beginPath();
+    ctx.moveTo(blX, y + h);
+    ctx.lineTo(brX, y + h);
+    ctx.lineTo(trX, y);
+    ctx.lineTo(tlX, y);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
 }
 
 function drawTerritories() {
@@ -544,8 +611,28 @@ function drawTerritories() {
 
     if (!isAdded && !isSelected && scale < 0.05) continue;
 
+    // Map Filter: 該当/非該当の判定（未登録領地は判定対象外）
+    const filterActive = filterMode !== 'none';
+    let filterMatched = [];
+    if (filterActive && isAdded) {
+      filterMatched = getFilterCategories(name).filter(c => filterToggles[filterMode][c]);
+    }
+    const isFilterHit = filterActive && isAdded && filterMatched.length > 0;
+    const isFilterDimmed = filterActive && isAdded && filterMatched.length === 0;
+
+    ctx.save();
+    if (isFilterDimmed) ctx.globalAlpha = 0.35;
+
     // Fill
-    if (isAdded) {
+    if (isFilterHit) {
+      let splitColors;
+      if (filterMode === 'resource' && filterMatched.includes('rainbow')) {
+        splitColors = [FILTER_COLORS.resource.ore, FILTER_COLORS.resource.wood, FILTER_COLORS.resource.fish, FILTER_COLORS.resource.crops];
+      } else {
+        splitColors = filterMatched.map(c => FILTER_COLORS[filterMode][c]);
+      }
+      drawSplitFill(x, y, w, h, splitColors, isHovered ? 0.6 : 0.45);
+    } else if (isAdded) {
       if (isListSelected) {
         ctx.fillStyle = isHovered ? 'rgba(59,130,246,0.4)' : 'rgba(59,130,246,0.25)';
       } else {
@@ -562,7 +649,7 @@ function drawTerritories() {
       ctx.fillRect(x, y, w, h);
     }
 
-    // Outline（本体のスタイルを決定してから、縁取り→本体の順で描画）
+    // Outline（本体のスタイルを決定してから、縁取り→本体の順で描画。フィルターの影響を受けない）
     let bodyLineWidth, bodyStrokeStyle, bodyDash;
     if (isAdded && isListSelected) {
       bodyDash = [Math.max(4, scale * 8), Math.max(4, scale * 8)];
@@ -605,6 +692,8 @@ function drawTerritories() {
     ctx.strokeRect(x, y, w, h);
     ctx.setLineDash([]);
 
+    ctx.restore();
+
     const cx = (p1.x + p2.x) / 2;
     const cy = (p1.y + p2.y) / 2;
 
@@ -618,12 +707,12 @@ function drawTerritories() {
         drawIcon(hqImage, cx - iconSize / 2, sy, iconSize);
         textY = sy + iconSize + gap + 2;
       } else {
-      const res = t.resources;
-      const em = parseFloat(res.emeralds || 0);
-      const ore = parseFloat(res.ore || 0);
-      const crops = parseFloat(res.crops || 0);
-      const fish = parseFloat(res.fish || 0);
-      const wood = parseFloat(res.wood || 0);
+      const res = getTerritoryResources(name);
+      const em = res.emeralds;
+      const ore = res.ore;
+      const crops = res.crops;
+      const fish = res.fish;
+      const wood = res.wood;
 
       const isCity = em >= 18000;
       const isRainbow = ore > 0 && crops > 0 && fish > 0 && wood > 0;
@@ -724,6 +813,35 @@ function getNeighbors(name) {
   return [...result];
 }
 
+// 全437領地＋すべてのカスタム接続線（有効・無効を問わない）を経由する隣接一覧。
+// HQのConnections/Externalsのカウント、Treasuryバフの距離計算にのみ使用する。
+function getAllNeighbors(name) {
+  const result = new Set((territories[name] && territories[name]['Trading Routes']) || []);
+  for (const conn of customConnections) {
+    if (conn.a === name) result.add(conn.b);
+    else if (conn.b === name) result.add(conn.a);
+  }
+  return [...result];
+}
+
+// HQからの距離を全437領地対象でBFS（getAllNeighbors経由）。HQ未設定時は{}を返す。
+function getFullGraphDistances() {
+  if (_fullDistCache !== null) return _fullDistCache;
+  const hqName = Object.keys(addedTerritories).find(n => addedTerritories[n].hq);
+  if (!hqName) return (_fullDistCache = {});
+
+  const dist = { [hqName]: 0 };
+  const queue = [hqName];
+  let qi = 0;
+  while (qi < queue.length) {
+    const curr = queue[qi++];
+    for (const nb of getAllNeighbors(curr)) {
+      if (dist[nb] === undefined) { dist[nb] = dist[curr] + 1; queue.push(nb); }
+    }
+  }
+  return (_fullDistCache = dist);
+}
+
 // ═══════════════════════════════════════════════════════════
 //  TOOLTIP
 // ═══════════════════════════════════════════════════════════
@@ -746,7 +864,8 @@ function showTooltip(mx, my, name, above = false) {
       else if (dist === 2 || dist === 3) titleSuffix = '(Ext)';
     }
   }
-  let titleText = name + titleSuffix;
+  const nameSuffix = hasValidResourceOverride(name) ? '*' : '';
+  let titleText = name + nameSuffix + titleSuffix;
   let html = `<div style="color:#ffffff; font-weight:bold; font-size:14px; margin-bottom:8px;">${titleText}</div>`;
 
   const resStorageLv = (st.bonuses || {})['Larger Resource Storage'] || 0;
@@ -806,7 +925,7 @@ function showTooltip(mx, my, name, above = false) {
   }
 
   // Treasury Bonus
-  const buffPct = calcTreasuryBuff(name, getHQPaths().dist);
+  const buffPct = calcTreasuryBuff(name);
   if (buffPct > 0) {
     html += `<div style="margin-top:8px;"><span style="color:#FF55FF;">♦ Treasury Bonus: </span><span style="color:#FFFFFF;">${(buffPct * 100).toFixed(1)}%</span></div>`;
   }
@@ -911,25 +1030,14 @@ function calcTerritoryDefenseStats(name) {
   let mult = 1.0;
 
   if (st.hq) {
-    const connSet = new Set();
-    const extSet = new Set();
-    const visited = new Set();
-    const queue = [{ curr: name, dist: 0 }];
-
-    while (queue.length > 0) {
-      const { curr, dist } = queue.shift();
-      if (visited.has(curr) || dist > 3) continue;
-      visited.add(curr);
-
-      if (dist === 1 && addedTerritories[curr]) connSet.add(curr);
-      if (dist > 0 && addedTerritories[curr] && curr !== name) extSet.add(curr);
-
-      for (const conn of getNeighbors(curr)) {
-        if (addedTerritories[conn] && !visited.has(conn)) queue.push({ curr: conn, dist: dist + 1 });
-      }
+    // HQのConnections/Externalsは全437領地グラフ（getFullGraphDistances）で数える。
+    // 途中の領地を他ギルドに奪われていても、3ホップ以内に自ギルドの領地があればExternalにカウントされる。
+    const dist = getFullGraphDistances();
+    for (const [n, d] of Object.entries(dist)) {
+      if (n === name || !addedTerritories[n]) continue;
+      if (d === 1) connections++;
+      if (d >= 1 && d <= 3) externals++;
     }
-    connections = connSet.size;
-    externals = extSet.size;
     mult = (1.5 + (0.25 * externals)) * (1.0 + (0.30 * connections));
   } else {
     for (const route of getNeighbors(name)) {
@@ -978,11 +1086,31 @@ function calcTerritoryDefenseStats(name) {
   return { finalHp, dps, defPct, rating, mult, connections, boostedHp, atkSpd, finalDmgMin, finalDmgMax };
 }
 
+// resourceOverridesが有効な場合はそれを、そうでなければterritories.jsonの基本資源を返す。
+// 資源を読むすべての処理はこれ経由に統一する。
+function getTerritoryResources(name) {
+  const override = resourceOverrides[name];
+  if (override && addedTerritories[name]) {
+    if (override.tier === 'rainbow') {
+      return { emeralds: 1800, ore: 900, wood: 900, fish: 900, crops: 900 };
+    }
+    const result = zeroCosts();
+    result.emeralds = override.tier === 'city' ? 18000 : 9000;
+    const amount = (override.resources.length === 1 && override.double) ? 7200 : 3600;
+    for (const r of override.resources) result[r] = amount;
+    return result;
+  }
+  const t = territories[name];
+  if (!t) return zeroCosts();
+  const result = zeroCosts();
+  for (const r of RESOURCES) result[r] = parseFloat(t.resources[r] || 0);
+  return result;
+}
+
 function calcTerritoryProduction(name) {
   const t = territories[name];
   if (!t) return zeroCosts();
-  const base = zeroCosts();
-  for (const r of RESOURCES) base[r] = parseFloat(t.resources[r] || 0);
+  const base = getTerritoryResources(name);
 
   const st = addedTerritories[name];
   if (!st || !st.bonuses) return base;
@@ -1000,7 +1128,7 @@ function calcTerritoryProduction(name) {
   const rateResSec = [4, 3, 2, 1][rateResLevel];
   const rateResMult = 4 / rateResSec;
   
-  const treasBuff = 1 + calcTreasuryBuff(name, getHQPaths().dist);
+  const treasBuff = 1 + calcTreasuryBuff(name);
 
   const result = { ...base };
   result.emeralds = Math.round(base.emeralds * effEmMult * rateEmMult * treasBuff);
@@ -1136,14 +1264,115 @@ function isConnectedToHQ(name) {
   return getHQPaths().dist[name] !== undefined;
 }
 
-function calcTreasuryBuff(name, hqDist) {
+function calcTreasuryBuff(name) {
   const level = (addedTerritories[name] && addedTerritories[name].treasury) || 'Very Low';
   const mult = TREASURY_LEVEL_MULT[level];
-  if (!mult || !hqDist) return 0;
-  const dist = hqDist[name];
+  if (!mult) return 0;
+  const dist = getFullGraphDistances()[name];
   if (dist === undefined) return 0;
   return TREASURY_BASE_PCTS[Math.min(dist, 6)] * mult;
 }
+
+// ═══════════════════════════════════════════════════════════
+//  MAP FILTER
+// ═══════════════════════════════════════════════════════════
+// 判定対象は登録済み領地のみ。未登録領地は常に空配列を返す。
+function getFilterCategories(name) {
+  if (!addedTerritories[name]) return [];
+
+  if (filterMode === 'defense') {
+    const stats = calcTerritoryDefenseStats(name);
+    return [stats ? stats.rating : 'Very Low'];
+  }
+
+  if (filterMode === 'treasury') {
+    return [addedTerritories[name].treasury || 'Very Low'];
+  }
+
+  if (filterMode === 'resource') {
+    const res = getTerritoryResources(name);
+    if (res.ore > 0 && res.wood > 0 && res.fish > 0 && res.crops > 0) return ['rainbow'];
+    const cats = [];
+    if (res.emeralds >= 18000) cats.push('city');
+    if (res.ore > 0) cats.push('ore');
+    if (res.wood > 0) cats.push('wood');
+    if (res.fish > 0) cats.push('fish');
+    if (res.crops > 0) cats.push('crops');
+    return cats;
+  }
+
+  return [];
+}
+
+// Territory Managerリスト・Select All・Clear Allで使う表示判定。HQは常にtrue。
+function isFilterVisible(name) {
+  if (filterMode === 'none') return true;
+  if (addedTerritories[name] && addedTerritories[name].hq) return true;
+  return getFilterCategories(name).some(c => filterToggles[filterMode][c]);
+}
+
+function openFilterModal() {
+  renderFilterModal();
+  document.getElementById('filter-overlay').classList.add('open');
+}
+
+function closeFilterModal() {
+  document.getElementById('filter-overlay').classList.remove('open');
+}
+
+function setFilterMode(mode) {
+  filterMode = mode;
+  document.getElementById('filter-btn').classList.toggle('active', filterMode !== 'none');
+  renderFilterModal();
+  refreshUI();
+}
+
+function toggleFilterValue(mode, key) {
+  filterToggles[mode][key] = !filterToggles[mode][key];
+  refreshUI();
+}
+
+function clearFilter() {
+  filterMode = 'none';
+  document.getElementById('filter-btn').classList.remove('active');
+  renderFilterModal();
+  refreshUI();
+}
+
+const FILTER_MODE_LABELS = { none: 'None', defense: 'Defense', treasury: 'Treasury', resource: 'Resource' };
+const FILTER_TOGGLE_LABELS = {
+  defense: ['Very Low', 'Low', 'Medium', 'High', 'Very High'],
+  treasury: ['Very Low', 'Low', 'Medium', 'High', 'Very High'],
+  resource: [
+    { key: 'ore', label: 'Ore' }, { key: 'wood', label: 'Wood' }, { key: 'fish', label: 'Fish' },
+    { key: 'crops', label: 'Crops' }, { key: 'rainbow', label: 'Rainbow' }, { key: 'city', label: 'City' }
+  ]
+};
+
+function renderFilterModal() {
+  document.querySelectorAll('input[name="filter-mode"]').forEach(r => {
+    r.checked = r.value === filterMode;
+  });
+
+  const box = document.getElementById('filter-toggles');
+  if (filterMode === 'none') {
+    box.innerHTML = '';
+    box.style.display = 'none';
+    return;
+  }
+  box.style.display = '';
+
+  const keys = filterMode === 'resource' ? FILTER_TOGGLE_LABELS.resource : FILTER_TOGGLE_LABELS[filterMode].map(k => ({ key: k, label: k }));
+  box.innerHTML = keys.map(({ key, label }) => {
+    const checked = filterToggles[filterMode][key] ? 'checked' : '';
+    const safeKey = escapeHtml(JSON.stringify(key));
+    return `<label class="filter-toggle-row"><input type="checkbox" ${checked} onchange="toggleFilterValue('${filterMode}', ${safeKey})"> ${escapeHtml(label)}</label>`;
+  }).join('');
+}
+
+document.getElementById('filter-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('filter-overlay')) closeFilterModal();
+});
 
 // ═══════════════════════════════════════════════════════════
 //  OVERVIEW PANEL
@@ -1218,6 +1447,10 @@ function updateOverview() {
 // ═══════════════════════════════════════════════════════════
 //  TERRITORY LIST
 // ═══════════════════════════════════════════════════════════
+function hasValidResourceOverride(name) {
+  return !!(resourceOverrides[name] && addedTerritories[name]);
+}
+
 function getTerritoryListIconHTML(name) {
   const st = addedTerritories[name];
   const t = territories[name];
@@ -1232,12 +1465,12 @@ function getTerritoryListIconHTML(name) {
     return `<img src="./assets/icons/others/disconnected.png" class="list-icon" onerror="this.style.display='none'" alt="Disconnected">`;
   }
 
-  const res = t.resources;
-  const em = parseFloat(res.emeralds || 0);
-  const ore = parseFloat(res.ore || 0);
-  const crops = parseFloat(res.crops || 0);
-  const fish = parseFloat(res.fish || 0);
-  const wood = parseFloat(res.wood || 0);
+  const res = getTerritoryResources(name);
+  const em = res.emeralds;
+  const ore = res.ore;
+  const crops = res.crops;
+  const fish = res.fish;
+  const wood = res.wood;
 
   const isCity = em >= 18000;
   const isRainbow = ore > 0 && crops > 0 && fish > 0 && wood > 0;
@@ -1270,10 +1503,10 @@ function getTerritoryListIconHTML(name) {
 
 function updateTerritoryList() {
   const list = document.getElementById('territory-list');
-  const count = Object.keys(addedTerritories).length;
-  document.getElementById('added-count').textContent = count;
+  const totalCount = Object.keys(addedTerritories).length;
 
-  if (count === 0) {
+  if (totalCount === 0) {
+    document.getElementById('added-count').textContent = '0';
     list.innerHTML = '<div style="color:#64748b;font-size:12px;padding:4px;">No territories added.</div>';
     return;
   }
@@ -1309,16 +1542,26 @@ function updateTerritoryList() {
 
   const hasHQ = Object.keys(addedTerritories).some(n => addedTerritories[n].hq);
 
-  list.innerHTML = sortedNames.map(name => {
+  const visibleNames = filterMode === 'none' ? sortedNames : sortedNames.filter(isFilterVisible);
+  document.getElementById('added-count').textContent = filterMode === 'none'
+    ? `${totalCount}` : `${visibleNames.length} / ${totalCount}`;
+
+  if (visibleNames.length === 0) {
+    list.innerHTML = '<div style="color:#64748b;font-size:12px;padding:4px;">No territories match the current filter.</div>';
+    return;
+  }
+
+  list.innerHTML = visibleNames.map(name => {
     const isSel = listSelectedTerritories.has(name);
     const isDisconnected = hasHQ && !isConnectedToHQ(name);
     const safeNameArg = escapeHtml(JSON.stringify(name));
     const iconHTML = getTerritoryListIconHTML(name);
     const cls = 'territory-item' + (isSel ? ' list-selected' : '') + (isDisconnected ? ' disconnected' : '');
+    const nameSuffix = hasValidResourceOverride(name) ? '*' : '';
     return `<div class="${cls}" onclick="toggleListSelection(${safeNameArg})">
       <div class="territory-item-left">
         ${iconHTML}
-        <span>${escapeHtml(name)}</span>
+        <span>${escapeHtml(name)}${nameSuffix}</span>
       </div>
       <button class="rm-btn" onclick="event.stopPropagation();removeTerritory(${safeNameArg})">✕</button>
     </div>`;
@@ -1421,9 +1664,21 @@ function removeTerritory(name) {
 }
 
 function clearAllTerritories() {
-  if (!confirm('Remove all territories?')) return;
-  addedTerritories = {};
-  listSelectedTerritories.clear();
+  if (filterMode === 'none') {
+    if (!confirm('Remove all territories?')) return;
+    addedTerritories = {};
+    listSelectedTerritories.clear();
+    refreshUI();
+    return;
+  }
+
+  const namesToRemove = Object.keys(addedTerritories).filter(n => !addedTerritories[n].hq && isFilterVisible(n));
+  if (namesToRemove.length === 0) return;
+  if (!confirm(`Remove ${namesToRemove.length} filtered territories?`)) return;
+  for (const n of namesToRemove) {
+    delete addedTerritories[n];
+    listSelectedTerritories.delete(n);
+  }
   refreshUI();
 }
 
@@ -1446,7 +1701,10 @@ function toggleListSelection(name) {
 }
 
 function selectAll() {
-  listSelectedTerritories = new Set(Object.keys(addedTerritories));
+  const names = filterMode === 'none'
+    ? Object.keys(addedTerritories)
+    : Object.keys(addedTerritories).filter(isFilterVisible);
+  listSelectedTerritories = new Set(names);
   updateTerritoryList();
   draw();
 }
@@ -1528,6 +1786,7 @@ function toggleMobileSheet(panelId) {
 function refreshUI() {
   _hqPathCache = null;
   _traversingCache = null;
+  _fullDistCache = null;
   updateOverview();
   updateTerritoryList();
   draw();
@@ -1580,7 +1839,7 @@ function openModal(name, bulkNames = null) {
   const st = addedTerritories[name] || { defense: {}, bonuses: {}, hq: false, treasury: 'Very Low' };
   document.getElementById('modal-title').textContent = isBulk
     ? `Editing ${bulkNames.length} territories`
-    : name;
+    : name + (hasValidResourceOverride(name) ? '*' : '');
 
   const count = isBulk ? bulkNames.length : 1;
   document.getElementById('upgrade-header').textContent = `Upgrades and Bonuses for selected territory (${count})`;
@@ -1784,7 +2043,7 @@ function updateModalStats() {
     html += `<div class="stat-line"><span class="stat-label">Rating</span><span>${stats.rating} — EHP ${fmt(stats.finalHp)} / DPS ${fmt(stats.dps)}</span></div>`;
   }
   if (isHQ) html += `<div class="stat-line"><span class="stat-label">Role</span><span style="color:#fbbf24;">Headquarters</span></div>`;
-  const buffPct = calcTreasuryBuff(name, getHQPaths().dist);
+  const buffPct = calcTreasuryBuff(name);
   if (buffPct > 0) {
     html += `<div class="stat-line"><span class="stat-label">Treasury Buff</span><span style="color:#4ade80">+${(buffPct * 100).toFixed(1)}%</span></div>`;
   }
@@ -2001,7 +2260,8 @@ document.getElementById('tribute-overlay').addEventListener('click', e => {
 //  ADDITIONAL SETTINGS / CONNECTION EDITOR
 // ═══════════════════════════════════════════════════════════
 const ADDITIONAL_SETTINGS_ITEMS = [
-  { label: 'Connection Editor', screen: 'connections' }
+  { label: 'Connection Editor', screen: 'connections' },
+  { label: 'Resource Editor', screen: 'resources' }
 ];
 
 function openCustomSettings() {
@@ -2020,9 +2280,13 @@ function closeCustomSettings() {
 function showCSScreen(screen) {
   document.getElementById('cs-screen-menu').style.display = screen === 'menu' ? '' : 'none';
   document.getElementById('cs-screen-connections').style.display = screen === 'connections' ? '' : 'none';
+  document.getElementById('cs-screen-resources').style.display = screen === 'resources' ? '' : 'none';
   if (screen === 'connections') {
     hideAddConnectionForm();
     renderConnectionList();
+  } else if (screen === 'resources') {
+    hideAddResourceForm();
+    renderResourceOverrideList();
   }
 }
 
@@ -2149,13 +2413,150 @@ document.getElementById('custom-settings-overlay').addEventListener('click', e =
 });
 
 // ═══════════════════════════════════════════════════════════
+//  ADDITIONAL SETTINGS / RESOURCE EDITOR
+// ═══════════════════════════════════════════════════════════
+function toggleAddResourceForm() {
+  const form = document.getElementById('res-add-form');
+  if (form.style.display === 'none' || !form.style.display) {
+    document.getElementById('res-input').value = '';
+    document.getElementById('res-tier-normal').checked = true;
+    document.querySelectorAll('.res-resource-cb').forEach(cb => cb.checked = false);
+    document.getElementById('res-amount-normal').checked = true;
+    document.getElementById('res-error').textContent = '';
+    updateResourceFormState();
+    updateResourceDatalist();
+    form.style.display = '';
+  } else {
+    hideAddResourceForm();
+  }
+}
+
+function hideAddResourceForm() {
+  const form = document.getElementById('res-add-form');
+  form.style.display = 'none';
+  document.getElementById('res-error').textContent = '';
+}
+
+function updateResourceDatalist() {
+  const val = document.getElementById('res-input').value;
+  const names = Object.keys(addedTerritories).sort((x, y) => x.localeCompare(y, 'en'));
+  document.getElementById('res-datalist').innerHTML = names.includes(val)
+    ? '' : names.map(n => `<option value="${escapeHtml(n)}">`).join('');
+}
+
+function tryShowResPicker() {
+  if (Object.keys(addedTerritories).length === 0) return;
+  if (window.matchMedia('(max-width: 640px)').matches) return;
+  const input = document.getElementById('res-input');
+  const datalist = document.getElementById('res-datalist');
+  if (datalist.options.length === 0) return;
+  try {
+    input.showPicker();
+  } catch (e) {
+    // 未対応環境ではdatalistの標準挙動にフォールバック
+  }
+}
+
+// Rainbow選択時は資源・Amountを無効化。資源が2つ選択されている間はAmountをNormal固定で無効化し、
+// 残りのチェックボックスも無効化する（3つ目を選べないようにする）。
+function updateResourceFormState() {
+  const tierInput = document.querySelector('input[name="res-tier"]:checked');
+  const isRainbow = tierInput && tierInput.value === 'rainbow';
+  const checkedBoxes = [...document.querySelectorAll('.res-resource-cb')].filter(cb => cb.checked);
+  const twoSelected = checkedBoxes.length >= 2;
+
+  document.querySelectorAll('.res-resource-cb').forEach(cb => {
+    cb.disabled = isRainbow || (twoSelected && !cb.checked);
+  });
+
+  const amountDisabled = isRainbow || twoSelected;
+  document.getElementById('res-amount-normal').disabled = amountDisabled;
+  document.getElementById('res-amount-double').disabled = amountDisabled;
+  if (amountDisabled) document.getElementById('res-amount-normal').checked = true;
+}
+
+function addResourceOverride() {
+  const errEl = document.getElementById('res-error');
+  const name = document.getElementById('res-input').value.trim();
+
+  if (!name) { errEl.textContent = 'Please enter a territory.'; return; }
+  if (!territories[name]) { errEl.textContent = 'Territory not found.'; return; }
+  if (!addedTerritories[name]) { errEl.textContent = 'The territory must be registered.'; return; }
+
+  const tier = document.querySelector('input[name="res-tier"]:checked').value;
+  const checkedBoxes = [...document.querySelectorAll('.res-resource-cb')].filter(cb => cb.checked);
+  const resources = tier === 'rainbow' ? [] : checkedBoxes.map(cb => cb.dataset.resource);
+
+  if (tier !== 'rainbow' && resources.length === 0) { errEl.textContent = 'Select at least one resource.'; return; }
+  if (resources.length > 2) { errEl.textContent = 'You can select up to two resources.'; return; }
+
+  const double = resources.length === 1 && document.getElementById('res-amount-double').checked;
+
+  resourceOverrides[name] = { tier, resources, double };
+
+  errEl.textContent = '';
+  hideAddResourceForm();
+  renderResourceOverrideList();
+  refreshUI();
+}
+
+function removeResourceOverride(name) {
+  delete resourceOverrides[name];
+  renderResourceOverrideList();
+  refreshUI();
+}
+
+function clearAllResourceOverrides() {
+  if (!confirm('Remove all resource overrides?')) return;
+  resourceOverrides = {};
+  renderResourceOverrideList();
+  refreshUI();
+}
+
+function formatResourceOverrideLabel(override) {
+  if (override.tier === 'rainbow') return 'Rainbow';
+  const amount = (override.resources.length === 1 && override.double) ? 7200 : 3600;
+  const resLabel = { ore: 'Ore', wood: 'Wood', fish: 'Fish', crops: 'Crops' };
+  const parts = [];
+  if (override.tier === 'city') parts.push('City');
+  parts.push(...override.resources.map(r => `${resLabel[r]} ${amount.toLocaleString('en-US')}`));
+  return parts.join(' + ');
+}
+
+function renderResourceOverrideList() {
+  const list = document.getElementById('res-list');
+  const names = Object.keys(resourceOverrides);
+  if (names.length === 0) {
+    list.innerHTML = '<div style="color:#64748b;font-size:12px;padding:4px;">No resource overrides.</div>';
+    return;
+  }
+  const sorted = names.sort((a, b) => a.localeCompare(b, 'en'));
+  list.innerHTML = sorted.map(name => {
+    const inactive = !addedTerritories[name];
+    const safeName = escapeHtml(JSON.stringify(name));
+    const label = formatResourceOverrideLabel(resourceOverrides[name]);
+    return `<div class="connection-item${inactive ? ' inactive' : ''}">
+      <span>${escapeHtml(name)} → ${label}</span>
+      <button class="rm-btn" onclick="removeResourceOverride(${safeName})">✕</button>
+    </div>`;
+  }).join('');
+}
+
+document.getElementById('res-input').addEventListener('input', updateResourceDatalist);
+document.getElementById('res-input').addEventListener('click', tryShowResPicker);
+document.querySelectorAll('input[name="res-tier"]').forEach(r => r.addEventListener('change', updateResourceFormState));
+document.querySelectorAll('.res-resource-cb').forEach(cb => cb.addEventListener('change', updateResourceFormState));
+
+// ═══════════════════════════════════════════════════════════
 //  SHARE LINK
 // ═══════════════════════════════════════════════════════════
-// ビットレイアウトの詳細はdocs/REQUIREMENTS.md 付録Aを参照。
-// 領地IDは9bit固定のため、territory-ids.jsonの要素数が512を超えるとversion 4形式は破綻する。
-// その場合はversionを5に上げ、IDのビット数を拡張した新形式を追加すること。
+// ビットレイアウトの詳細はCLAUDE.mdのShare Link仕様を参照。
+// 領地IDは9bit固定のため、territory-ids.jsonの要素数が512を超えるとversion 5形式は破綻する。
+// その場合はversionを上げ、IDのビット数を拡張した新形式を追加すること。
 // bonusBitmapは17bit固定（BONUS_CONFIGの要素数と一致）。BONUS_CONFIGに要素を追加する場合は
 // bonusBitmapのビット数も同時に更新し、versionを上げること。
+// 資源オーバーライドのtier(2bit)とresourceMap(4bit)のビット割り当ても共有リンクの一部である。
+// 値の意味を変更する場合はversionを上げること。
 class BitWriter {
   constructor() {
     this.bytes = [];
@@ -2207,9 +2608,13 @@ const TREASURY_STR_TO_INT_MAP = { 'Very Low': 0, 'Low': 1, 'Medium': 2, 'High': 
 const TREASURY_INT_TO_STR_MAP = ['Very Low', 'Low', 'Medium', 'High', 'Very High'];
 const TRIBUTE_ORDER = ['emeralds', 'ore', 'crops', 'fish', 'wood'];
 
+const RESOURCE_OVERRIDE_ORDER = ['ore', 'wood', 'fish', 'crops'];
+const TIER_STR_TO_INT_MAP = { normal: 0, city: 1, rainbow: 2 };
+const TIER_INT_TO_STR_MAP = ['normal', 'city', 'rainbow'];
+
 function buildShareBits() {
   const w = new BitWriter();
-  w.writeBits(4, 4); // version
+  w.writeBits(5, 4); // version
 
   const entries = Object.entries(addedTerritories).filter(([name]) => TERRITORY_ID_MAP[name] !== undefined);
   const skipped = Object.keys(addedTerritories).length - entries.length;
@@ -2258,12 +2663,30 @@ function buildShareBits() {
     }
   }
 
+  // 資源オーバーライド（無効なオーバーライドも保存する。IDが存在しない領地はスキップ）
+  const overrideEntries = Object.entries(resourceOverrides).filter(([name]) => TERRITORY_ID_MAP[name] !== undefined);
+  const skippedOverrides = Object.keys(resourceOverrides).length - overrideEntries.length;
+  if (skippedOverrides > 0) console.warn(`${skippedOverrides}件の資源オーバーライドがterritory-ids.jsonに存在しないためShare Linkから除外されました`);
+
+  w.writeBits(overrideEntries.length, 10);
+  for (const [name, ov] of overrideEntries) {
+    w.writeBits(TERRITORY_ID_MAP[name], 9);
+    w.writeBits(TIER_STR_TO_INT_MAP[ov.tier] || 0, 2);
+    if (ov.tier === 'rainbow') {
+      for (let i = 0; i < 4; i++) w.writeBits(0, 1);
+      w.writeBits(0, 1);
+    } else {
+      for (const res of RESOURCE_OVERRIDE_ORDER) w.writeBits(ov.resources.includes(res) ? 1 : 0, 1);
+      w.writeBits(ov.double ? 1 : 0, 1);
+    }
+  }
+
   return w.toUint8Array();
 }
 
 function parseShareBits(bytes) {
   const r = new BitReader(bytes);
-  r.readBits(4); // version（現状 v4 のみ）
+  const version = r.readBits(4); // v4以前は資源オーバーライドのセクションを持たない
   const territoryCount = r.readBits(12);
 
   const newAdded = {};
@@ -2315,7 +2738,31 @@ function parseShareBits(bytes) {
     }
   }
 
-  return { addedTerritories: newAdded, customConnections: newConns, tributeValues: newTribute };
+  // 資源オーバーライド（v5以降のみ。v4以前のリンクは空として扱う）
+  const newOverrides = {};
+  if (version >= 5) {
+    const overrideCount = r.readBits(10);
+    for (let i = 0; i < overrideCount; i++) {
+      const id = r.readBits(9);
+      const tierInt = r.readBits(2);
+      const resourceBits = [];
+      for (let b = 0; b < 4; b++) resourceBits.push(r.readBits(1) === 1);
+      const doubleFlag = r.readBits(1) === 1;
+
+      const name = TERRITORY_IDS[id];
+      if (name === undefined || !territories[name]) continue;
+
+      const tier = TIER_INT_TO_STR_MAP[tierInt] || 'normal';
+      if (tier === 'rainbow') {
+        newOverrides[name] = { tier, resources: [], double: false };
+      } else {
+        const resources = RESOURCE_OVERRIDE_ORDER.filter((_, idx) => resourceBits[idx]);
+        newOverrides[name] = { tier, resources, double: doubleFlag };
+      }
+    }
+  }
+
+  return { addedTerritories: newAdded, customConnections: newConns, tributeValues: newTribute, resourceOverrides: newOverrides };
 }
 
 function getShareState() {
@@ -2414,8 +2861,10 @@ async function loadFromHash() {
       addedTerritories = parsed.addedTerritories;
       customConnections = parsed.customConnections;
       tributeValues = parsed.tributeValues;
+      resourceOverrides = parsed.resourceOverrides;
       _hqPathCache = null;
       _traversingCache = null;
+      _fullDistCache = null;
       refreshUI();
     } catch (e) {
       console.warn('Failed to load #p= hash:', e);
@@ -2448,6 +2897,7 @@ async function loadFromHash() {
     tributeValues = { emeralds: 0, ore: 0, crops: 0, fish: 0, wood: 0 };
     addedTerritories = {};
     customConnections = [];
+    resourceOverrides = {};
 
     if (state.tr) {
       for (const r of RESOURCES) tributeValues[r] = state.tr[r] || 0;
@@ -2492,6 +2942,7 @@ async function loadFromHash() {
     }
     _hqPathCache = null;
     _traversingCache = null;
+    _fullDistCache = null;
     refreshUI();
   } catch (e) {
     console.warn('Failed to load from hash:', e);
