@@ -82,9 +82,13 @@ const RESOURCE_ICONS  = {
 };
 const RESOURCE_COLORS = { emeralds: '#4ade80', ore: '#94a3b8', crops: '#facc15', fish: '#38bdf8', wood: '#a16207' };
 
+// フィルター専用の配色。showTooltip()のratingColor（難易度の文字色）とは独立しており、共有しない。
+// Very LowはratingColorの#00AA00より濃い#006600にして、Lowの黄緑との判別を明確にしている。
+// Treasury Highはratingtreasury側の#00FF00だとLowの黄緑と45%不透明度で判別できなかったため、
+// Defense Highと同じ赤#FF5555に変更した。
 const FILTER_COLORS = {
-  defense: { "Very Low": "#00AA00", "Low": "#55FF55", "Medium": "#FFFF55", "High": "#FF5555", "Very High": "#AA0000" },
-  treasury: { "Very Low": "#00AA00", "Low": "#55FF55", "Medium": "#FFFF55", "High": "#00FF00", "Very High": "#55FFFF" },
+  defense: { "Very Low": "#006600", "Low": "#55FF55", "Medium": "#FFFF55", "High": "#FF5555", "Very High": "#AA0000" },
+  treasury: { "Very Low": "#006600", "Low": "#55FF55", "Medium": "#FFFF55", "High": "#FF5555", "Very High": "#55FFFF" },
   resource: { city: "#55FF55", ore: "#FFFFFF", wood: "#FFAA00", fish: "#55FFFF", crops: "#FFFF55" }
 };
 
@@ -557,6 +561,7 @@ function hexToRgba(hex, alpha) {
 
 // 矩形(x,y,w,h)をcolors.length個の色で斜め分割して塗る（Map Filterのオーバーレイ用）。
 // 境界線は左下から右上に向かって傾く（shearの係数0.5は見た目の調整値）。
+// 各帯は「面積」が等しくなるように境界を決める（x軸等分だと先頭が大きく末尾が小さくなるため）。
 function drawSplitFill(x, y, w, h, colors, opacity) {
   const n = colors.length;
   if (n === 0) return;
@@ -569,23 +574,42 @@ function drawSplitFill(x, y, w, h, colors, opacity) {
   ctx.beginPath();
   ctx.rect(x, y, w, h);
   ctx.clip();
-  const shear = h * 0.5;
+
+  const s     = h * 0.5;
+  const p     = Math.min(s, w);
+  const q     = Math.abs(w - s);
+  const hmax  = h * Math.min(1, w / s);
+  const total = w * h;
+
+  const t = new Array(n + 1);
+  t[0] = x - s;
+  t[n] = x + w;
+  for (let i = 1; i < n; i++) {
+    const A = total * i / n;
+    let u;
+    if (A <= hmax * p / 2) {
+      u = Math.sqrt(2 * p * A / hmax);
+    } else if (A <= hmax * p / 2 + hmax * q) {
+      u = p + (A - hmax * p / 2) / hmax;
+    } else {
+      u = 2 * p + q - Math.sqrt(2 * p * (total - A) / hmax);
+    }
+    t[i] = x - s + u;
+  }
+
   for (let i = 0; i < n; i++) {
-    let blX = x + w * i / n;
-    let brX = x + w * (i + 1) / n;
-    let tlX = blX + shear;
-    let trX = brX + shear;
-    if (i === 0) { blX = x - shear - 1; tlX = x - shear - 1; }
-    if (i === n - 1) { brX = x + w + shear + 1; trX = x + w + shear + 1; }
+    const t0 = (i === 0)     ? t[0] - 1 : t[i];
+    const t1 = (i === n - 1) ? t[n] + 1 : t[i + 1];
     ctx.fillStyle = hexToRgba(colors[i], opacity);
     ctx.beginPath();
-    ctx.moveTo(blX, y + h);
-    ctx.lineTo(brX, y + h);
-    ctx.lineTo(trX, y);
-    ctx.lineTo(tlX, y);
+    ctx.moveTo(t0,     y + h);
+    ctx.lineTo(t1,     y + h);
+    ctx.lineTo(t1 + s, y);
+    ctx.lineTo(t0 + s, y);
     ctx.closePath();
     ctx.fill();
   }
+
   ctx.restore();
 }
 
@@ -859,7 +883,7 @@ function showTooltip(mx, my, name, above = false) {
   } else {
     const hqName = Object.keys(addedTerritories).find(n => addedTerritories[n].hq);
     if (hqName) {
-      const dist = getHQPaths().dist[name];
+      const dist = getFullGraphDistances()[name];
       if (dist === 1) titleSuffix = '(Conn)';
       else if (dist === 2 || dist === 3) titleSuffix = '(Ext)';
     }
@@ -927,7 +951,7 @@ function showTooltip(mx, my, name, above = false) {
   // Treasury Bonus
   const buffPct = calcTreasuryBuff(name);
   if (buffPct > 0) {
-    html += `<div style="margin-top:8px;"><span style="color:#FF55FF;">♦ Treasury Bonus: </span><span style="color:#FFFFFF;">${(buffPct * 100).toFixed(1)}%</span></div>`;
+    html += `<div style="margin-top:8px;"><span style="color:#FF55FF;">♦ Treasury Bonus: </span><span style="color:#FFFFFF;">${fmtPct1(buffPct * 100)}%</span></div>`;
   }
 
   // Upgrades
@@ -1184,6 +1208,12 @@ function fmt(n) {
 
 function fmtNum(n) {
   return Math.round(n).toLocaleString('en-US');
+}
+
+// 小数第1位まで丸めたうえで、末尾の.0を落とす（Treasuryのバフ率表示用）
+function fmtPct1(n) {
+  const s = n.toFixed(1);
+  return s.endsWith('.0') ? s.slice(0, -2) : s;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2045,7 +2075,7 @@ function updateModalStats() {
   if (isHQ) html += `<div class="stat-line"><span class="stat-label">Role</span><span style="color:#fbbf24;">Headquarters</span></div>`;
   const buffPct = calcTreasuryBuff(name);
   if (buffPct > 0) {
-    html += `<div class="stat-line"><span class="stat-label">Treasury Buff</span><span style="color:#4ade80">+${(buffPct * 100).toFixed(1)}%</span></div>`;
+    html += `<div class="stat-line"><span class="stat-label">Treasury Buff</span><span style="color:#4ade80">+${fmtPct1(buffPct * 100)}%</span></div>`;
   }
 
   document.getElementById('modal-stats').innerHTML = html;
