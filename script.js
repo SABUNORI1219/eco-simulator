@@ -1,4 +1,13 @@
 // ═══════════════════════════════════════════════════════════
+//  eco-logic.js からの計算ロジックimport
+//  定数・Treasury/生産/守備ステータス計算・BFSグラフ探索はeco-logic.js側に
+//  実装がある（DOM非依存の純粋関数）。今後、計算式を変更する場合はeco-logic.js
+//  側を編集すること。script.jsはUIと状態管理のみを担う。
+// ═══════════════════════════════════════════════════════════
+import * as EcoLogic from './eco-logic.js';
+const { DEFENSE_LEVEL_STATS, DEFENSE_COST_TABLE, DEFENSE_TYPES, BONUS_CONFIG, RESOURCES } = EcoLogic;
+
+// ═══════════════════════════════════════════════════════════
 //  CONFIGURATION
 // ═══════════════════════════════════════════════════════════
 const MAP_CONFIG = {
@@ -11,68 +20,6 @@ const MAP_CONFIG = {
   gameMaxY: -200,   // north (top of map)
 };
 
-const DEFENSE_LEVEL_STATS = [
-  { health: 300000,  defense: 10.0, damageMin: 1000, damageMax: 1500, attackSpeed: 0.5 },
-  { health: 450000,  defense: 40.0, damageMin: 1400, damageMax: 2100, attackSpeed: 0.75 },
-  { health: 600000,  defense: 55.0, damageMin: 1800, damageMax: 2700, attackSpeed: 1.0 },
-  { health: 750000,  defense: 62.5, damageMin: 2200, damageMax: 3300, attackSpeed: 1.25 },
-  { health: 960000,  defense: 70.0, damageMin: 2600, damageMax: 3900, attackSpeed: 1.6 },
-  { health: 1200000, defense: 75.0, damageMin: 3000, damageMax: 4500, attackSpeed: 2.0 },
-  { health: 1500000, defense: 79.0, damageMin: 3400, damageMax: 5100, attackSpeed: 2.5 },
-  { health: 1860000, defense: 82.0, damageMin: 3800, damageMax: 5700, attackSpeed: 3.0 },
-  { health: 2220000, defense: 84.0, damageMin: 4200, damageMax: 6300, attackSpeed: 3.6 },
-  { health: 2580000, defense: 86.0, damageMin: 4600, damageMax: 6900, attackSpeed: 3.8 },
-  { health: 2940000, defense: 88.0, damageMin: 5000, damageMax: 7500, attackSpeed: 4.2 },
-  { health: 3300000, defense: 90.0, damageMin: 5400, damageMax: 8100, attackSpeed: 4.7 }
-];
-
-const DEFENSE_COST_TABLE = [0, 100, 300, 600, 1200, 2400, 4800, 8400, 12000, 15600, 19200, 22800];
-
-const DEFENSE_TYPES = [
-  { id: "damage", name: "Damage", resource: "ore" },
-  { id: "attack", name: "Attack Speed", resource: "crops" },
-  { id: "health", name: "Health", resource: "wood" },
-  { id: "defense", name: "Defense", resource: "fish" }
-];
-
-const BONUS_CONFIG = [
-  { name: "Stronger Minions",        resource: "wood",     maxLevel: 4, costs: [0, 200, 400, 800, 1600], desc: "Minion Damage",
-    levels: ["+0%", "+150%", "+200%", "+250%", "+300%"] },
-  { name: "Tower Multi-Attacks",     resource: "fish",     maxLevel: 1, costs: [0, 4800], desc: "Max Targets",
-    levels: ["1 Target", "2 Targets"] },
-  { name: "Tower Aura",              resource: "crops",    maxLevel: 3, costs: [0, 800, 1600, 3200], desc: "Frequency",
-    levels: ["Disabled", "24s", "18s", "12s"] },
-  { name: "Tower Volley",            resource: "ore",      maxLevel: 3, costs: [0, 200, 400, 800], desc: "Frequency",
-    levels: ["Disabled", "20s", "15s", "10s"] },
-  { name: "Gathering Experience",    resource: "wood",     maxLevel: 8, costs: [0, 600, 1300, 2000, 2700, 3400, 5500, 10000, 20000], desc: "Gathering XP",
-    levels: ["+0%", "+10%", "+20%", "+30%", "+40%", "+50%", "+60%", "+80%", "+100%"] },
-  { name: "Mob Experience",          resource: "fish",     maxLevel: 8, costs: [0, 600, 1200, 1800, 2400, 3000, 5000, 10000, 20000], desc: "XP Bonus",
-    levels: ["+0%", "+10%", "+20%", "+30%", "+40%", "+50%", "+60%", "+80%", "+100%"] },
-  { name: "Mob Damage",              resource: "crops",    maxLevel: 8, costs: [0, 600, 1200, 1800, 2400, 3000, 5000, 10000, 20000], desc: "Damage Bonus",
-    levels: ["+0%", "+10%", "+20%", "+40%", "+60%", "+80%", "+120%", "+160%", "+200%"] },
-  { name: "PvP Damage",              resource: "ore",      maxLevel: 8, costs: [0, 600, 1200, 1800, 2400, 3000, 5000, 10000, 20000], desc: "Damage Bonus",
-    levels: ["+0%", "+5%", "+10%", "+15%", "+20%", "+25%", "+40%", "+65%", "+80%"] },
-  { name: "XP Seeking",              resource: "emeralds", maxLevel: 9, costs: [0, 100, 200, 400, 800, 1600, 3200, 6400, 9600, 12800], desc: "Guild XP",
-    levels: ["+0/h", "+36K/h", "+66K/h", "+120K/h", "+228K/h", "+456K/h", "+900K/h", "+1.74M/h", "+2.58M/h", "+3.36M/h"] },
-  { name: "Tome Seeking",            resource: "fish",     maxLevel: 3, costs: [0, 400, 3200, 6400], desc: "Drop Chance",
-    levels: ["0%/h", "0.15%/h", "1.2%/h", "2.4%/h"] },
-  { name: "Emerald Seeking",         resource: "wood",     maxLevel: 5, costs: [0, 200, 800, 1600, 3200, 6400], desc: "Drop Chance",
-    levels: ["0%/h", "0.3%/h", "3%/h", "6%/h", "12%/h", "24%/h"] },
-  { name: "Larger Resource Storage", resource: "emeralds", maxLevel: 6, costs: [0, 400, 800, 2000, 5000, 16000, 48000], desc: "Storage Bonus",
-    levels: ["+0%", "+100%", "+300%", "+700%", "+1400%", "+3300%", "+7900%"] },
-  { name: "Larger Emerald Storage",  resource: "wood",     maxLevel: 6, costs: [0, 200, 400, 1000, 2500, 8000, 24000], desc: "Storage Bonus",
-    levels: ["+0%", "+100%", "+300%", "+700%", "+1400%", "+3300%", "+7900%"] },
-  { name: "Efficient Resources",     resource: "emeralds", maxLevel: 6, costs: [0, 6000, 12000, 24000, 48000, 96000, 192000], desc: "Gathering Bonus",
-    levels: ["+0%", "+50%", "+100%", "+150%", "+200%", "+250%", "+300%"] },
-  { name: "Efficient Emeralds",      resource: "ore",      maxLevel: 3, costs: [0, 2000, 8000, 32000], desc: "Emerald Bonus",
-    levels: ["+0%", "+35%", "+100%", "+300%"] },
-  { name: "Resource Rate",           resource: "emeralds", maxLevel: 3, costs: [0, 6000, 18000, 32000], desc: "Gather Rate",
-    levels: ["4s", "3s", "2s", "1s"] },
-  { name: "Emerald Rate",            resource: "crops",    maxLevel: 3, costs: [0, 2000, 8000, 32000], desc: "Gather Rate",
-    levels: ["4s", "3s", "2s", "1s"] }
-];
-
-const RESOURCES = ['emeralds', 'ore', 'crops', 'fish', 'wood'];
 const RESOURCE_ICONS  = {
   emeralds: '<img src="./assets/icons/resources/emerald.png" class="res-icon-img" alt="emeralds">',
   ore: '<img src="./assets/icons/resources/ore.png" class="res-icon-img" alt="ore">',
@@ -146,6 +93,17 @@ let filterToggles = {
   resource: { ore: true, wood: true, fish: true, crops: true, rainbow: true, city: true },
 };
 let allTerritoryNames = [];  // Add Specified Territoryのdatalist用（territories.jsonの全領地名）
+
+// Live モードの状態。表示レイヤーであり、addedTerritoriesは書き換えない（書き換えるのはPhase 6の取り込み操作のみ）。
+// 共有リンクには含めない（ページを開き直せばOFFに戻る）。
+let liveMode = false;
+let liveData = null;       // 直近取得した /v3/guild/list/territory のレスポンス（{ [territoryName]: {...} }、生の形のまま保持）
+let liveHistory = [];      // [{ timestamp, data }, ...] 最大20件。stored の変化を追うための直近サンプル（メモリ上のみ）
+let guildColorMap = {};    // prefix -> "#RRGGBB"（Liveモードを ON にした時に1回だけ取得）
+let _livePollTimer = null;
+let _liveFetchError = null;
+let liveGuildDisplayToUuid = {};  // Import This Guild用。表示文字列 → ギルドuuid
+let allLiveGuildDisplays = [];    // Import This Guild用のdatalist（liveData更新のたびに再構築）
 
 // タッチ操作
 let touchDragStart = { x: 0, y: 0 };
@@ -234,7 +192,7 @@ canvas.addEventListener('mousemove', e => {
     hoveredTerritory = hit;
     draw();
   }
-  if (hit && addedTerritories[hit]) {
+  if (hit && isTooltipTarget(hit)) {
     showTooltip(e.clientX, e.clientY, hit);
   } else {
     hideTooltip();
@@ -303,7 +261,7 @@ canvas.addEventListener('touchstart', e => {
       longPressTimer = null;
       if (touchMoved) return;
       const hit = hitTestAll(touchStartPos.x, touchStartPos.y);
-      if (hit && addedTerritories[hit]) {
+      if (hit && isTooltipTarget(hit)) {
         longPressTriggered = true;
         showTooltip(touchStartPos.x, touchStartPos.y, hit, true);
       }
@@ -460,7 +418,11 @@ function draw() {
   }
 
   drawConnections();
-  drawTerritories();
+  if (liveMode) {
+    drawTerritoriesLive();
+  } else {
+    drawTerritories();
+  }
 
   ctx.restore();
 }
@@ -817,6 +779,126 @@ function drawTerritories() {
   ctx.restore();
 }
 
+// Liveモード用の描画。全437領地を所有ギルドのカラーで塗り分ける。addedTerritoriesに基づく描画は行わない。
+function drawTerritoriesLive() {
+  ctx.save();
+  for (const [name, t] of Object.entries(territories)) {
+    if (!t.Location) continue;
+    const loc = t.Location;
+    const p1 = gameToCanvas(loc.start[0], loc.start[1]);
+    const p2 = gameToCanvas(loc.end[0], loc.end[1]);
+    const x = Math.min(p1.x, p2.x);
+    const y = Math.min(p1.y, p2.y);
+    const w = Math.abs(p2.x - p1.x);
+    const h = Math.abs(p2.y - p1.y);
+
+    const info = liveData ? liveData[name] : null;
+    const isOwned = !!(info && info.guild && info.guild.name);
+    const isHQ = isOwned && info.hq === true;
+    const guildColor = isOwned ? getGuildColor(info.guild.prefix) : null;
+    const isHovered = name === hoveredTerritory;
+    const isSelected = selectedTerritories.has(name);
+
+    // Map Filter: 該当/非該当の判定（無所属領地は判定対象外）
+    const filterActive = filterMode !== 'none';
+    let filterMatched = [];
+    if (filterActive && isOwned) {
+      filterMatched = getFilterCategoriesLive(name).filter(c => filterToggles[filterMode][c]);
+    }
+    const isFilterHit = filterActive && isOwned && filterMatched.length > 0;
+    const isFilterDimmed = filterActive && isOwned && filterMatched.length === 0;
+
+    ctx.save();
+    if (isFilterDimmed) ctx.globalAlpha = 0.35;
+
+    // Fill
+    if (isFilterHit) {
+      let splitColors;
+      if (filterMode === 'resource' && filterMatched.includes('rainbow')) {
+        splitColors = [FILTER_COLORS.resource.ore, FILTER_COLORS.resource.wood, FILTER_COLORS.resource.fish, FILTER_COLORS.resource.crops];
+      } else {
+        splitColors = filterMatched.map(c => FILTER_COLORS[filterMode][c]);
+      }
+      drawSplitFill(x, y, w, h, splitColors, isHovered ? 0.6 : 0.45);
+    } else if (isSelected) {
+      ctx.fillStyle = isHovered ? 'rgba(96,165,250,0.28)' : 'rgba(96,165,250,0.16)';
+      ctx.fillRect(x, y, w, h);
+    } else if (isOwned) {
+      ctx.fillStyle = hexToRgba(guildColor, isHQ ? (isHovered ? 0.35 : 0.22) : (isHovered ? 0.28 : 0.14));
+      ctx.fillRect(x, y, w, h);
+    } else if (isHovered) {
+      ctx.fillStyle = 'rgba(255,255,255,0.12)';
+      ctx.fillRect(x, y, w, h);
+    }
+
+    // Outline（縁取り→本体の順で描画。フィルターの影響を受けない）
+    let bodyLineWidth, bodyStrokeStyle;
+    if (isSelected) {
+      bodyLineWidth = Math.max(1.8, scale * 2.0);
+      bodyStrokeStyle = '#3b82f6';
+    } else if (isHQ) {
+      bodyLineWidth = Math.max(4.0, scale * 4.4);
+      bodyStrokeStyle = guildColor;
+    } else if (isOwned) {
+      bodyLineWidth = Math.max(2.0, scale * 2.2);
+      bodyStrokeStyle = guildColor;
+    } else if (isHovered) {
+      bodyLineWidth = Math.max(1.5, scale * 1.8);
+      bodyStrokeStyle = 'rgba(255,255,255,0.9)';
+    } else {
+      bodyLineWidth = Math.max(1.0, scale * 1.4);
+      bodyStrokeStyle = 'rgba(255,255,255,0.55)';
+    }
+
+    ctx.setLineDash([]);
+    ctx.lineWidth = bodyLineWidth + 2;
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.strokeRect(x, y, w, h);
+
+    ctx.lineWidth = bodyLineWidth;
+    ctx.strokeStyle = bodyStrokeStyle;
+    ctx.strokeRect(x, y, w, h);
+
+    ctx.restore();
+
+    const cx = (p1.x + p2.x) / 2;
+    const cy = (p1.y + p2.y) / 2;
+
+    if (scale > 0.25) {
+      const iconSize = Math.max(18, Math.min(36, scale * 18));
+      const gap = 2;
+      let textY = cy;
+
+      if (isHQ) {
+        const sy = cy - iconSize * 0.8;
+        drawIcon(hqImage, cx - iconSize / 2, sy, iconSize);
+        textY = sy + iconSize + gap + 2;
+      }
+
+      const fontSize = Math.min(18, Math.max(9, scale * 13));
+      ctx.font = `${fontSize}px 'Minecraftia', sans-serif`;
+      ctx.shadowBlur = 4;
+      ctx.shadowColor = 'rgba(0,0,0,0.9)';
+      ctx.lineWidth = Math.max(2, fontSize * 0.15);
+      ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+      ctx.fillStyle = isOwned ? '#ffffff' : isSelected ? '#93c5fd' : 'rgba(255,255,255,0.82)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+
+      ctx.strokeText(name, cx, textY);
+      ctx.fillText(name, cx, textY);
+
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
+    } else if (isHQ && scale > 0.06) {
+      ctx.fillStyle = guildColor;
+      const size = Math.max(8, scale * 50);
+      ctx.fillRect(cx - size / 2, cy - size / 2, size, size);
+    }
+  }
+  ctx.restore();
+}
+
 function territoryCenter(name) {
   const t = territories[name];
   if (!t || !t.Location) return { x: 0, y: 0 };
@@ -828,42 +910,19 @@ function territoryCenter(name) {
 //  CONNECTIONS（基本ルート＋ユーザー追加の接続線）
 // ═══════════════════════════════════════════════════════════
 function getNeighbors(name) {
-  const result = new Set((territories[name] && territories[name]['Trading Routes']) || []);
-  for (const conn of customConnections) {
-    if (!addedTerritories[conn.a] || !addedTerritories[conn.b]) continue;
-    if (conn.a === name) result.add(conn.b);
-    else if (conn.b === name) result.add(conn.a);
-  }
-  return [...result];
+  return EcoLogic.getNeighbors(name, territories, addedTerritories, customConnections);
 }
 
 // 全437領地＋すべてのカスタム接続線（有効・無効を問わない）を経由する隣接一覧。
 // HQのConnections/Externalsのカウント、Treasuryバフの距離計算にのみ使用する。
 function getAllNeighbors(name) {
-  const result = new Set((territories[name] && territories[name]['Trading Routes']) || []);
-  for (const conn of customConnections) {
-    if (conn.a === name) result.add(conn.b);
-    else if (conn.b === name) result.add(conn.a);
-  }
-  return [...result];
+  return EcoLogic.getAllNeighbors(name, territories, customConnections);
 }
 
 // HQからの距離を全437領地対象でBFS（getAllNeighbors経由）。HQ未設定時は{}を返す。
 function getFullGraphDistances() {
   if (_fullDistCache !== null) return _fullDistCache;
-  const hqName = Object.keys(addedTerritories).find(n => addedTerritories[n].hq);
-  if (!hqName) return (_fullDistCache = {});
-
-  const dist = { [hqName]: 0 };
-  const queue = [hqName];
-  let qi = 0;
-  while (qi < queue.length) {
-    const curr = queue[qi++];
-    for (const nb of getAllNeighbors(curr)) {
-      if (dist[nb] === undefined) { dist[nb] = dist[curr] + 1; queue.push(nb); }
-    }
-  }
-  return (_fullDistCache = dist);
+  return (_fullDistCache = EcoLogic.getFullGraphDistances(territories, addedTerritories, customConnections));
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -871,7 +930,31 @@ function getFullGraphDistances() {
 // ═══════════════════════════════════════════════════════════
 const tooltip = document.getElementById('tooltip');
 
+// Very Low/Low/Medium/High/Very High の難易度ラベルに対応する文字色。
+// showTooltip（守備ステータス）とshowLiveTooltip（実データのdefences）で共有する。
+function ratingColor(rating) {
+  switch (rating) {
+    case "Very Low": return '#00AA00';
+    case "Low": return '#55FF55';
+    case "Medium": return '#FFFF55';
+    case "High": return '#FF5555';
+    case "Very High": return '#AA0000';
+    default: return '#55FF55';
+  }
+}
+
+// マウスホバー/長押しでツールチップを表示する対象かどうか。
+// 通常モードは登録済み領地のみ、Liveモードはliveデータを持つ領地のみが対象。
+function isTooltipTarget(name) {
+  if (liveMode) return !!(liveData && liveData[name]);
+  return !!addedTerritories[name];
+}
+
 function showTooltip(mx, my, name, above = false) {
+  if (liveMode) {
+    showLiveTooltip(mx, my, name, above);
+    return;
+  }
   const prod = calcTerritoryProduction(name);
   const cons = calcTerritoryConsumption(name);
   const st = addedTerritories[name];
@@ -977,15 +1060,7 @@ function showTooltip(mx, my, name, above = false) {
 
   // Total Stats
   if (stats) {
-    let ratingColor = '#55FF55';
-    switch(stats.rating) {
-      case "Very Low": ratingColor = '#00AA00'; break;
-      case "Low": ratingColor = '#55FF55'; break;
-      case "Medium": ratingColor = '#FFFF55'; break;
-      case "High": ratingColor = '#FF5555'; break;
-      case "Very High": ratingColor = '#AA0000'; break;
-    }
-    html += `<div style="margin-top:8px;"><span style="color:#FF55FF;">Total Stats (</span><span style="color:${ratingColor};">${stats.rating}</span><span style="color:#FF55FF;">):</span></div>`;
+    html += `<div style="margin-top:8px;"><span style="color:#FF55FF;">Total Stats (</span><span style="color:${ratingColor(stats.rating)};">${stats.rating}</span><span style="color:#FF55FF;">):</span></div>`;
     html += `<div><span style="color:#FF55FF;">- </span><span style="color:#AAAAAA;">Damage: ${fmtNum(stats.finalDmgMin)} - ${fmtNum(stats.finalDmgMax)}</span></div>`;
     html += `<div><span style="color:#FF55FF;">- </span><span style="color:#AAAAAA;">Attacks per Second: ${stats.atkSpd}</span></div>`;
     html += `<div><span style="color:#FF55FF;">- </span><span style="color:#AAAAAA;">Health: ${fmtNum(stats.boostedHp)}</span></div>`;
@@ -996,6 +1071,301 @@ function showTooltip(mx, my, name, above = false) {
   tooltip.innerHTML = html;
   tooltip.style.display = 'block';
   positionTooltip(mx, my, above);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  LIVE TOOLTIP（Phase 4: 実データの表示。Phase 5で推定値を追加する）
+// ═══════════════════════════════════════════════════════════
+const LIVE_RATING_MAP = { VERY_LOW: 'Very Low', LOW: 'Low', MEDIUM: 'Medium', HIGH: 'High', VERY_HIGH: 'Very High' };
+
+// ストレージレベル判定用テーブル（showTooltip/renderResourcesHTMLと同じ値。CLAUDE.md「生産資源のプリセット」隣接の表を参照）
+const LIVE_STORAGE_LEVELS = {
+  emeralds: { normal: [3000, 6000, 12000, 24000, 45000, 102000, 240000], hq: [5000, 10000, 20000, 40000, 75000, 170000, 400000] },
+  resource: { normal: [300, 600, 1200, 2400, 4500, 10200, 24000], hq: [1500, 3000, 6000, 12000, 22500, 51000, 120000] }
+};
+
+function detectStorageLevel(limit, isHQ, isEmerald) {
+  const table = isEmerald ? LIVE_STORAGE_LEVELS.emeralds : LIVE_STORAGE_LEVELS.resource;
+  const arr = isHQ ? table.hq : table.normal;
+  const idx = arr.indexOf(limit);
+  return idx === -1 ? null : idx;
+}
+
+// Efficient Emeralds(Lv0-3) × Emerald Rate(Lv0-3)、Efficient Resources(Lv0-6) × Resource Rate(Lv0-3)の
+// 全組み合わせの積と、実測倍率(generation ÷ (baseGeneration × (1+treasuryBuff)))を照合する。
+// 一致する組み合わせが複数残る場合は「倍率のみ確定」として扱う（CLAUDE.md 4.4(A)参照）。
+const LIVE_EFF_EMERALD_MULTS = [1, 1.35, 2.0, 4.0];
+const LIVE_RATE_MULTS = [1, 4 / 3, 2, 4]; // Emerald Rate / Resource Rate 共通（4s/3s/2s/1s）
+const LIVE_EFF_RESOURCE_MULTS = [1, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0];
+
+function detectRateBonusCombo(generation, baseGeneration, treasuryBuff, isEmerald) {
+  if (!baseGeneration || generation <= 0) return null;
+  const denom = baseGeneration * (1 + treasuryBuff);
+  if (denom <= 0) return null;
+  const observedMult = generation / denom;
+
+  const effMults = isEmerald ? LIVE_EFF_EMERALD_MULTS : LIVE_EFF_RESOURCE_MULTS;
+  const effName = isEmerald ? 'Efficient Emeralds' : 'Efficient Resources';
+  const rateName = isEmerald ? 'Emerald Rate' : 'Resource Rate';
+
+  const matches = [];
+  for (let e = 0; e < effMults.length; e++) {
+    for (let r = 0; r < LIVE_RATE_MULTS.length; r++) {
+      const combo = effMults[e] * LIVE_RATE_MULTS[r];
+      if (Math.abs(combo - observedMult) / Math.max(combo, observedMult) < 0.005) {
+        matches.push({ [effName]: e, [rateName]: r });
+      }
+    }
+  }
+  return { multiplier: observedMult, matches };
+}
+
+const LIVE_RESOURCE_ROW_ORDER = [
+  { key: 'emeralds', type: 'EMERALD', color: '#55FF55', label: 'Emeralds', icon: '' },
+  { key: 'ore',      type: 'ORE',     color: '#FFFFFF', label: 'Ore',      icon: RESOURCE_ICONS.ore },
+  { key: 'wood',     type: 'WOOD',    color: '#FFAA00', label: 'Wood',     icon: RESOURCE_ICONS.wood },
+  { key: 'fish',     type: 'FISH',    color: '#55FFFF', label: 'Fish',     icon: RESOURCE_ICONS.fish },
+  { key: 'crops',    type: 'CROP',    color: '#FFFF55', label: 'Crops',    icon: RESOURCE_ICONS.crops }
+];
+
+// 実データから「確定できるアップグレード」を算出する共通処理（CLAUDE.md 4.4参照）。
+// showLiveTooltip（表示）・getDefenseEstimate（推定のconfirmedExtra）・importLiveGuild（Phase 6の取り込み）で共有する。
+function computeLiveConfirmedInfo(name, info) {
+  const guildHqName = info.guild.hq;
+  const hqDist = (guildHqName && territories[guildHqName])
+    ? EcoLogic.bfsDistancesFrom(guildHqName, territories, [])[name]
+    : undefined;
+
+  const treasuryLabel = LIVE_RATING_MAP[info.treasury] || info.treasury;
+  const defenceLabel = LIVE_RATING_MAP[info.defences] || info.defences;
+  const treasuryBuff = EcoLogic.calcTreasuryBuff(treasuryLabel, hqDist);
+
+  const resByType = {};
+  for (const r of info.resources || []) resByType[r.type] = r;
+
+  let emStorageLv = null, resStorageLv = null;
+  let emComboMatches = null;  // Efficient Emeralds / Emerald Rate
+  let resCombo = null;        // Efficient Resources / Resource Rate（ore/wood/fish/crops全てに一様にかかる単一のボーナスのため1回だけ検出する）
+  const resourceSnapshot = {}; // ore/crops/wood/fish の {stored, limit, generation}（推定エンジンに渡す）
+
+  for (const row of LIVE_RESOURCE_ROW_ORDER) {
+    const data = resByType[row.type];
+    if (!data) continue;
+    const { generation, stored, limit } = data;
+    // API側にbaseGenerationが無い場合はterritories.jsonの基礎生成量にフォールバックする
+    const baseGeneration = (data.baseGeneration !== undefined && data.baseGeneration !== null)
+      ? data.baseGeneration
+      : parseFloat((territories[name] && territories[name].resources[row.key]) || 0);
+
+    if (row.key !== 'emeralds') resourceSnapshot[row.key] = { stored, limit, generation };
+
+    const isEmerald = row.key === 'emeralds';
+    const lv = detectStorageLevel(limit, info.hq, isEmerald);
+    if (lv !== null) {
+      if (isEmerald) emStorageLv = lv;
+      else if (resStorageLv === null) resStorageLv = lv;
+    }
+
+    if (isEmerald) {
+      emComboMatches = detectRateBonusCombo(generation, baseGeneration, treasuryBuff, true);
+    } else if (resCombo === null) {
+      resCombo = detectRateBonusCombo(generation, baseGeneration, treasuryBuff, false);
+    }
+  }
+
+  return { guildHqName, hqDist, treasuryLabel, defenceLabel, treasuryBuff, resByType, resourceSnapshot, emStorageLv, resStorageLv, emComboMatches, resCombo };
+}
+
+// Damage/Attack/Health/Defense消費（ore/crops/wood/fish）の確定分。一意に確定した組み合わせのみを反映する。
+function buildConfirmedExtraFromLiveInfo(confirmed) {
+  const confirmedExtra = { ore: 0, crops: 0, wood: 0, fish: 0 };
+  if (confirmed.emComboMatches && confirmed.emComboMatches.matches.length === 1) {
+    const m = confirmed.emComboMatches.matches[0];
+    if (m['Efficient Emeralds'] !== undefined) confirmedExtra.ore = getBonusConfig('Efficient Emeralds').costs[m['Efficient Emeralds']];
+    if (m['Emerald Rate'] !== undefined) confirmedExtra.crops = getBonusConfig('Emerald Rate').costs[m['Emerald Rate']];
+  }
+  if (confirmed.emStorageLv !== null) confirmedExtra.wood = getBonusConfig('Larger Emerald Storage').costs[confirmed.emStorageLv];
+  return confirmedExtra;
+}
+
+function showLiveTooltip(mx, my, name, above) {
+  const info = liveData && liveData[name];
+  if (!info) { hideTooltip(); return; }
+
+  const isOwned = !!(info.guild && info.guild.name);
+  if (!isOwned) {
+    tooltip.innerHTML = `<div style="color:#ffffff; font-weight:bold; font-size:14px;">${escapeHtml(name)}</div>` +
+      `<div style="color:#94a3b8; margin-top:6px;">Unclaimed</div>`;
+    tooltip.style.display = 'block';
+    positionTooltip(mx, my, above);
+    return;
+  }
+
+  const confirmed = computeLiveConfirmedInfo(name, info);
+  const { hqDist, treasuryLabel, defenceLabel, treasuryBuff, resByType, resourceSnapshot, emStorageLv, resStorageLv, emComboMatches, resCombo } = confirmed;
+
+  let titleSuffix = '';
+  if (info.hq) {
+    titleSuffix = '(HQ)';
+  } else if (hqDist === 1) {
+    titleSuffix = '(Conn)';
+  } else if (hqDist === 2 || hqDist === 3) {
+    titleSuffix = '(Ext)';
+  }
+
+  let html = `<div style="color:#ffffff; font-weight:bold; font-size:14px; margin-bottom:2px;">${escapeHtml(name)}${titleSuffix}</div>`;
+  const prefixText = info.guild.prefix ? `[${info.guild.prefix}] ` : '';
+  html += `<div style="color:#94a3b8; margin-bottom:8px;">${escapeHtml(prefixText + info.guild.name)}</div>`;
+
+  for (const row of LIVE_RESOURCE_ROW_ORDER) {
+    const data = resByType[row.type];
+    if (!data) continue;
+    const { generation, stored, limit } = data;
+    if (generation > 0 || stored > 0) {
+      if (generation > 0) html += `<div style="color:${row.color};">${row.icon}+${fmtNum(generation)} ${row.label} per Hour</div>`;
+      const storedColor = stored >= limit ? '#FF5555' : row.color;
+      html += `<div style="color:${row.color};">${row.icon}<span style="color:${storedColor};">${fmtNum(stored)}</span>/${fmtNum(limit)} stored</div>`;
+    }
+  }
+
+  const confirmedLines = [];
+  if (emComboMatches && emComboMatches.matches.length === 1) {
+    for (const [bonusName, bonusLv] of Object.entries(emComboMatches.matches[0])) {
+      confirmedLines.push(`${bonusName} Lv.${bonusLv}`);
+    }
+  } else if (emComboMatches && emComboMatches.matches.length > 1) {
+    confirmedLines.push(`Emeralds ×${emComboMatches.multiplier.toFixed(1)} (multiple combinations)`);
+  }
+  if (resCombo && resCombo.matches.length === 1) {
+    for (const [bonusName, bonusLv] of Object.entries(resCombo.matches[0])) {
+      confirmedLines.push(`${bonusName} Lv.${bonusLv}`);
+    }
+  } else if (resCombo && resCombo.matches.length > 1) {
+    confirmedLines.push(`Resources ×${resCombo.multiplier.toFixed(1)} (multiple combinations)`);
+  }
+
+  html += `<div style="margin-top:8px;"><span style="color:#FF55FF;">♦ Treasury: </span><span style="color:#FFFFFF;">${escapeHtml(treasuryLabel)}</span>`;
+  if (treasuryBuff > 0) html += ` <span style="color:#FFFFFF;">(+${fmtPct1(treasuryBuff * 100)}%)</span>`;
+  html += `</div>`;
+  html += `<div><span style="color:#FF55FF;">♦ Defence: </span><span style="color:${ratingColor(defenceLabel)};">${escapeHtml(defenceLabel)}</span></div>`;
+
+  if (emStorageLv !== null) confirmedLines.unshift(`Larger Emerald Storage Lv.${emStorageLv}`);
+  if (resStorageLv !== null) confirmedLines.unshift(`Larger Resource Storage Lv.${resStorageLv}`);
+
+  html += `<div style="color:#FF55FF; margin-top:8px;">Confirmed Bonuses:</div>`;
+  if (confirmedLines.length > 0) {
+    for (const line of confirmedLines) {
+      html += `<div><span style="color:#FF55FF;">- </span><span style="color:#AAAAAA;">${escapeHtml(line)}</span></div>`;
+    }
+  } else {
+    html += `<div style="color:#AAAAAA;">None detected</div>`;
+  }
+
+  // Phase 5: 守備ステータスの推定（EstimatedはPhase 4の確定値とは視覚的に区別する）
+  const confirmedExtra = buildConfirmedExtraFromLiveInfo(confirmed);
+  const estimate = getDefenseEstimate(name, info, defenceLabel, confirmedExtra, resourceSnapshot);
+  html += renderDefenseEstimateHTML(estimate);
+
+  tooltip.innerHTML = html;
+  tooltip.style.display = 'block';
+  positionTooltip(mx, my, above);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  LIVE DEFENSE ESTIMATE（Phase 5: オンデマンド計算・領地ごとにキャッシュ）
+//  推定ロジック本体（候補列挙・スコアリング）はeco-logic.jsにある。
+//  ここではliveData/liveHistoryから入力を組み立てるだけの薄いオーケストレーション。
+// ═══════════════════════════════════════════════════════════
+let _defenseEstimateCache = {}; // name -> { key, result }
+
+// この領地を所有するギルドが所有する全領地名のSet（addedTerritoriesの代わりに使う）
+function getOwnedNamesForGuild(guildUuid) {
+  const result = new Set();
+  if (!liveData) return result;
+  for (const [n, info] of Object.entries(liveData)) {
+    if (info.guild && info.guild.uuid === guildUuid) result.add(n);
+  }
+  return result;
+}
+
+// liveHistoryからこの領地のore/crops/wood/fishのΔstored（1分あたり）を算出する。
+// resourcesの更新は1分間隔で、30秒ごとのポーリングでは同じ値が連続するため、
+// 値が実際に変化した直近のサンプル間でのみ計算する（CLAUDE.md「ローリングバッファ」参照）。
+function computeLiveTransitions(name) {
+  const result = { ore: null, crops: null, wood: null, fish: null };
+  const points = { ore: [], crops: [], wood: [], fish: [] };
+
+  for (const sample of liveHistory) {
+    const info = sample.data[name];
+    if (!info || !info.resources) continue;
+    for (const r of info.resources) {
+      const key = LIVE_RESOURCE_TYPE_MAP[r.type];
+      if (!key || key === 'emeralds') continue;
+      points[key].push({ ts: sample.timestamp, stored: r.stored });
+    }
+  }
+
+  for (const key of Object.keys(points)) {
+    const series = points[key];
+    for (let i = series.length - 1; i > 0; i--) {
+      if (series[i].stored !== series[i - 1].stored) {
+        const elapsedMin = (series[i].ts - series[i - 1].ts) / 60000;
+        if (elapsedMin > 0) {
+          result[key] = { deltaPerMinute: (series[i].stored - series[i - 1].stored) / elapsedMin };
+        }
+        break;
+      }
+    }
+  }
+  return result;
+}
+
+function getDefenseEstimate(name, info, defenceLabel, confirmedExtra, resourceSnapshot) {
+  const cacheKey = JSON.stringify({ defenceLabel, hq: info.hq, confirmedExtra });
+  const cached = _defenseEstimateCache[name];
+  if (cached && cached.key === cacheKey) return cached.result;
+
+  const ownedNames = getOwnedNamesForGuild(info.guild.uuid);
+  const { mult } = EcoLogic.calcLiveDefenseMult(name, territories, ownedNames, info.hq, []);
+  const transitions = computeLiveTransitions(name);
+  const sampleCount = liveHistory.filter(s => !!s.data[name]).length;
+
+  const result = EcoLogic.estimateDefenseStats({
+    observedRating: defenceLabel, isHQ: info.hq, mult, confirmedExtra, resourceSnapshot, transitions, sampleCount
+  });
+
+  _defenseEstimateCache[name] = { key: cacheKey, result };
+  return result;
+}
+
+function renderDefenseEstimateHTML(estimate) {
+  let html = `<div style="color:#FF55FF; margin-top:8px;">Estimated Defense:</div>`;
+
+  if (estimate.insufficientSamples) {
+    html += `<div style="color:#64748b;">Not enough samples yet (${estimate.samples}/3). Keep Live Mode on and wait.</div>`;
+    return html;
+  }
+
+  if (!estimate.levels) {
+    html += `<div style="color:#64748b;">No candidates matched (unexpected).</div>`;
+    return html;
+  }
+
+  const L = estimate.levels;
+  const line = (label, lv) => `<div><span style="color:#FF55FF;">- </span><span style="color:#94a3b8;">${label} </span><span style="color:#64748b;">Lv.${lv.min} 〜 ${lv.max}</span></div>`;
+  html += line('Damage', L.damage);
+  html += line('Attack Speed', L.attack);
+  html += line('Health', L.health);
+  html += line('Defense', L.defense);
+  html += `<div style="color:#64748b; font-size:11px; margin-top:2px;">${fmtNum(estimate.candidates)} candidates / ${estimate.samples} samples</div>`;
+
+  if (estimate.ehp && estimate.dps) {
+    html += `<div style="margin-top:6px;"><span style="color:#FF55FF;">Estimated Stats:</span></div>`;
+    html += `<div><span style="color:#FF55FF;">- </span><span style="color:#94a3b8;">EHP </span><span style="color:#64748b;">${fmt(estimate.ehp.min)} 〜 ${fmt(estimate.ehp.max)}</span></div>`;
+    html += `<div><span style="color:#FF55FF;">- </span><span style="color:#94a3b8;">DPS </span><span style="color:#64748b;">${fmt(estimate.dps.min)} 〜 ${fmt(estimate.dps.max)}</span></div>`;
+  }
+
+  return html;
 }
 
 function positionTooltip(mx, my, above) {
@@ -1031,158 +1401,30 @@ function hideTooltip() {
 
 // ═══════════════════════════════════════════════════════════
 //  RESOURCE CALCULATIONS
+//  計算の実体はeco-logic.jsにある。ここでは状態（territories等）を
+//  引数として渡す薄いラッパーのみを持つ。
 // ═══════════════════════════════════════════════════════════
 function zeroCosts() {
-  return { emeralds: 0, ore: 0, crops: 0, fish: 0, wood: 0 };
-}
-
-function calcBonusCostForLevel(bonusCfg, level) {
-  if (level === 0 || !bonusCfg.costs || level >= bonusCfg.costs.length) return zeroCosts();
-  const result = zeroCosts();
-  result[bonusCfg.resource] = bonusCfg.costs[level];
-  return result;
+  return EcoLogic.zeroCosts();
 }
 
 function calcTerritoryDefenseStats(name) {
-  const st = addedTerritories[name];
-  if (!st || !st.defense) return null;
-  const t = territories[name];
-  if (!t) return null;
-
-  let connections = 0;
-  let externals = 0;
-  let mult = 1.0;
-
-  if (st.hq) {
-    // HQのConnections/Externalsは全437領地グラフ（getFullGraphDistances）で数える。
-    // 途中の領地を他ギルドに奪われていても、3ホップ以内に自ギルドの領地があればExternalにカウントされる。
-    const dist = getFullGraphDistances();
-    for (const [n, d] of Object.entries(dist)) {
-      if (n === name || !addedTerritories[n]) continue;
-      if (d === 1) connections++;
-      if (d >= 1 && d <= 3) externals++;
-    }
-    mult = (1.5 + (0.25 * externals)) * (1.0 + (0.30 * connections));
-  } else {
-    for (const route of getNeighbors(name)) {
-      if (addedTerritories[route]) connections++;
-    }
-    mult = 1.0 + (0.3 * connections);
-  }
-  
-  const hLevel = st.defense.health || 0;
-  const dLevel = st.defense.damage || 0;
-  const aLevel = st.defense.attack || 0;
-  const defLevel = st.defense.defense || 0;
-
-  const baseHp = DEFENSE_LEVEL_STATS[hLevel].health;
-  const defPct = DEFENSE_LEVEL_STATS[defLevel].defense;
-  const dmgMin = DEFENSE_LEVEL_STATS[dLevel].damageMin;
-  const dmgMax = DEFENSE_LEVEL_STATS[dLevel].damageMax;
-  const atkSpd = DEFENSE_LEVEL_STATS[aLevel].attackSpeed;
-
-  const boostedHp = Math.round(baseHp * mult);
-  const finalHp = Math.round(boostedHp / (1 - defPct / 100));
-  const finalDmgMin = Math.round(dmgMin * mult);
-  const finalDmgMax = Math.round(dmgMax * mult);
-  const avgDmg = (dmgMin + dmgMax) / 2;
-  const finalAvgDmg = avgDmg * mult;
-  const dps = Math.round(finalAvgDmg * atkSpd);
-
-  const auraLevel = (st.bonuses || {})["Tower Aura"] || 0;
-  const volleyLevel = (st.bonuses || {})["Tower Volley"] || 0;
-  let difficulty = hLevel + dLevel + aLevel + defLevel;
-  difficulty += auraLevel > 0 ? auraLevel + 5 : 0;
-  difficulty += volleyLevel > 0 ? volleyLevel + 3 : 0;
-
-  let rating = "Very Low";
-  if (difficulty >= 49) rating = "Very High";
-  else if (difficulty >= 31) rating = "High";
-  else if (difficulty >= 19) rating = "Medium";
-  else if (difficulty >= 6) rating = "Low";
-
-  if (st.hq) {
-    const RATING_ORDER = ["Very Low", "Low", "Medium", "High", "Very High"];
-    const idx = RATING_ORDER.indexOf(rating);
-    rating = RATING_ORDER[Math.min(idx + 1, RATING_ORDER.length - 1)];
-  }
-
-  return { finalHp, dps, defPct, rating, mult, connections, boostedHp, atkSpd, finalDmgMin, finalDmgMax };
+  return EcoLogic.calcTerritoryDefenseStats(name, territories, addedTerritories, customConnections);
 }
 
 // resourceOverridesが有効な場合はそれを、そうでなければterritories.jsonの基本資源を返す。
 // 資源を読むすべての処理はこれ経由に統一する。
 function getTerritoryResources(name) {
-  const override = resourceOverrides[name];
-  if (override && addedTerritories[name]) {
-    if (override.tier === 'rainbow') {
-      return { emeralds: 1800, ore: 900, wood: 900, fish: 900, crops: 900 };
-    }
-    const result = zeroCosts();
-    result.emeralds = override.tier === 'city' ? 18000 : 9000;
-    const amount = (override.resources.length === 1 && override.double) ? 7200 : 3600;
-    for (const r of override.resources) result[r] = amount;
-    return result;
-  }
-  const t = territories[name];
-  if (!t) return zeroCosts();
-  const result = zeroCosts();
-  for (const r of RESOURCES) result[r] = parseFloat(t.resources[r] || 0);
-  return result;
+  return EcoLogic.getTerritoryResources(name, territories, resourceOverrides, addedTerritories);
 }
 
 function calcTerritoryProduction(name) {
-  const t = territories[name];
-  if (!t) return zeroCosts();
-  const base = getTerritoryResources(name);
-
-  const st = addedTerritories[name];
-  if (!st || !st.bonuses) return base;
-
-  const effEmLevel = st.bonuses["Efficient Emeralds"] || 0;
-  const rateEmLevel = st.bonuses["Emerald Rate"] || 0;
-  const effResLevel = st.bonuses["Efficient Resources"] || 0;
-  const rateResLevel = st.bonuses["Resource Rate"] || 0;
-
-  const effEmMult = 1 + [0, 0.35, 1.0, 3.0][effEmLevel];
-  const rateEmSec = [4, 3, 2, 1][rateEmLevel];
-  const rateEmMult = 4 / rateEmSec;
-
-  const effResMult = 1 + [0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0][effResLevel];
-  const rateResSec = [4, 3, 2, 1][rateResLevel];
-  const rateResMult = 4 / rateResSec;
-  
-  const treasBuff = 1 + calcTreasuryBuff(name);
-
-  const result = { ...base };
-  result.emeralds = Math.round(base.emeralds * effEmMult * rateEmMult * treasBuff);
-  for (const r of ['ore', 'crops', 'wood', 'fish']) {
-    result[r] = Math.round(base[r] * effResMult * rateResMult * treasBuff);
-  }
-
-  return result;
+  const buff = calcTreasuryBuff(name);
+  return EcoLogic.calcTerritoryProduction(name, territories, addedTerritories, resourceOverrides, buff);
 }
 
 function calcTerritoryConsumption(name) {
-  const st = addedTerritories[name];
-  if (!st) return zeroCosts();
-
-  const result = zeroCosts();
-
-  if (st.defense) {
-    for (const dt of DEFENSE_TYPES) {
-      const level = st.defense[dt.id] || 0;
-      result[dt.resource] += DEFENSE_COST_TABLE[level] || 0;
-    }
-  }
-
-  for (const bcfg of BONUS_CONFIG) {
-    const level = (st.bonuses || {})[bcfg.name] || 0;
-    const c = calcBonusCostForLevel(bcfg, level);
-    for (const r of RESOURCES) result[r] += c[r] || 0;
-  }
-
-  return result;
+  return EcoLogic.calcTerritoryConsumption(addedTerritories[name]);
 }
 
 function calcOverallBalance() {
@@ -1219,10 +1461,6 @@ function fmtPct1(n) {
 // ═══════════════════════════════════════════════════════════
 //  TREASURY
 // ═══════════════════════════════════════════════════════════
-// dist 0-2: 10%, dist 3: 8.5%, dist 4: 7%, dist 5: 5.5%, dist 6+: 4%
-const TREASURY_BASE_PCTS = [0.10, 0.10, 0.10, 0.085, 0.07, 0.055, 0.04];
-const TREASURY_LEVEL_MULT = { 'Very Low': 0, 'Low': 1, 'Medium': 2, 'High': 2.5, 'Very High': 3 };
-
 function calculateTreasuryFromAcquired(acquiredStr) {
   if (!acquiredStr) return 'Very Low';
   const acquiredDate = new Date(acquiredStr).getTime();
@@ -1237,70 +1475,19 @@ function calculateTreasuryFromAcquired(acquiredStr) {
   return 'Very Low';
 }
 
-// 比較は素のコードユニット比較（`>` / `<`）で行う。localeCompareはロケールによって
-// アポストロフィ等の記号の扱いが変わるため、決定的な挙動にするために使わない。
-function comparePaths(a, b) {
-  const len = Math.min(a.length, b.length);
-  for (let i = 0; i < len; i++) {
-    if (a[i] > b[i]) return 1;
-    if (a[i] < b[i]) return -1;
-  }
-  return a.length - b.length;
-}
-
 function getHQPaths() {
   if (_hqPathCache !== null) return _hqPathCache;
-  const hqName = Object.keys(addedTerritories).find(n => addedTerritories[n].hq);
-  if (!hqName) return (_hqPathCache = { dist: {}, path: {} });
-
-  // 1. BFS（登録済み領地のみ経由）で距離を確定
-  const dist = { [hqName]: 0 };
-  const queue = [hqName];
-  let qi = 0;
-  while (qi < queue.length) {
-    const curr = queue[qi++];
-    for (const nb of getNeighbors(curr)) {
-      if (!addedTerritories[nb]) continue;
-      if (dist[nb] === undefined) { dist[nb] = dist[curr] + 1; queue.push(nb); }
-    }
-  }
-
-  // 2. 距離昇順で経路を決定（同距離の親候補は path が辞書順最大＝アルファベット降順のものを採用）
-  // この規則はゲーム内挙動からの推定であり、公式仕様ではない（13分岐中12分岐で一致）。
-  // 「後続の領地によって経由ルートが分岐する」「送る側と送られる側で経由ルートが異なる」といった、
-  // 単一の最短経路ルールでは原理的に説明できない挙動もゲーム内には存在する。
-  // 本シミュレーターは1本の経路で近似する。将来反例が見つかった場合は変更する可能性がある。
-  const path = { [hqName]: [hqName] };
-  const byDist = Object.keys(dist).sort((a, b) => dist[a] - dist[b]);
-  for (const v of byDist) {
-    if (v === hqName) continue;
-    const d = dist[v];
-    const neighbors = getNeighbors(v);
-    let bestParent = null;
-    for (const u of neighbors) {
-      if (dist[u] !== d - 1) continue;
-      if (bestParent === null || comparePaths(path[u], path[bestParent]) > 0) bestParent = u;
-    }
-    path[v] = [...path[bestParent], v];
-  }
-
-  return (_hqPathCache = { dist, path });
+  return (_hqPathCache = EcoLogic.getHQPaths(territories, addedTerritories, customConnections));
 }
 
 function isConnectedToHQ(name) {
-  if (!addedTerritories[name]) return false;
-  const hasHQ = Object.keys(addedTerritories).some(n => addedTerritories[n].hq);
-  if (!hasHQ) return true;
-  return getHQPaths().dist[name] !== undefined;
+  return EcoLogic.isConnectedToHQ(name, addedTerritories, getHQPaths());
 }
 
 function calcTreasuryBuff(name) {
   const level = (addedTerritories[name] && addedTerritories[name].treasury) || 'Very Low';
-  const mult = TREASURY_LEVEL_MULT[level];
-  if (!mult) return 0;
   const dist = getFullGraphDistances()[name];
-  if (dist === undefined) return 0;
-  return TREASURY_BASE_PCTS[Math.min(dist, 6)] * mult;
+  return EcoLogic.calcTreasuryBuff(level, dist);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1328,6 +1515,41 @@ function getFilterCategories(name) {
     if (res.wood > 0) cats.push('wood');
     if (res.fish > 0) cats.push('fish');
     if (res.crops > 0) cats.push('crops');
+    return cats;
+  }
+
+  return [];
+}
+
+// Liveモード用。全437領地が判定対象（「登録済みのみ」という制約が意味を持たないため）。
+// 無所属の領地は常に空配列を返す（未登録領地の扱いと同様、フィルターの判定対象外）。
+function getFilterCategoriesLive(name) {
+  const info = liveData && liveData[name];
+  if (!info || !info.guild || !info.guild.name) return [];
+
+  if (filterMode === 'defense') {
+    return [LIVE_RATING_MAP[info.defences] || 'Very Low'];
+  }
+
+  if (filterMode === 'treasury') {
+    return [LIVE_RATING_MAP[info.treasury] || 'Very Low'];
+  }
+
+  if (filterMode === 'resource') {
+    const gen = {};
+    let emBaseGeneration = 0;
+    for (const r of info.resources || []) {
+      const key = LIVE_RESOURCE_TYPE_MAP[r.type];
+      if (key) gen[key] = r.generation;
+      if (r.type === 'EMERALD') emBaseGeneration = r.baseGeneration || 0;
+    }
+    if (gen.ore > 0 && gen.wood > 0 && gen.fish > 0 && gen.crops > 0) return ['rainbow'];
+    const cats = [];
+    if (emBaseGeneration >= 18000) cats.push('city');
+    if (gen.ore > 0) cats.push('ore');
+    if (gen.wood > 0) cats.push('wood');
+    if (gen.fish > 0) cats.push('fish');
+    if (gen.crops > 0) cats.push('crops');
     return cats;
   }
 
@@ -2291,7 +2513,8 @@ document.getElementById('tribute-overlay').addEventListener('click', e => {
 // ═══════════════════════════════════════════════════════════
 const ADDITIONAL_SETTINGS_ITEMS = [
   { label: 'Connection Editor', screen: 'connections' },
-  { label: 'Resource Editor', screen: 'resources' }
+  { label: 'Resource Editor', screen: 'resources' },
+  { label: 'Live Data', screen: 'live' }
 ];
 
 function openCustomSettings() {
@@ -2311,12 +2534,15 @@ function showCSScreen(screen) {
   document.getElementById('cs-screen-menu').style.display = screen === 'menu' ? '' : 'none';
   document.getElementById('cs-screen-connections').style.display = screen === 'connections' ? '' : 'none';
   document.getElementById('cs-screen-resources').style.display = screen === 'resources' ? '' : 'none';
+  document.getElementById('cs-screen-live').style.display = screen === 'live' ? '' : 'none';
   if (screen === 'connections') {
     hideAddConnectionForm();
     renderConnectionList();
   } else if (screen === 'resources') {
     hideAddResourceForm();
     renderResourceOverrideList();
+  } else if (screen === 'live') {
+    renderLiveDataScreen();
   }
 }
 
@@ -2576,6 +2802,8 @@ document.getElementById('res-input').addEventListener('input', updateResourceDat
 document.getElementById('res-input').addEventListener('click', tryShowResPicker);
 document.querySelectorAll('input[name="res-tier"]').forEach(r => r.addEventListener('change', updateResourceFormState));
 document.querySelectorAll('.res-resource-cb').forEach(cb => cb.addEventListener('change', updateResourceFormState));
+document.getElementById('live-import-guild-select').addEventListener('input', updateLiveImportGuildDatalist);
+document.getElementById('live-import-guild-select').addEventListener('click', tryShowLiveGuildPicker);
 
 // ═══════════════════════════════════════════════════════════
 //  SHARE LINK
@@ -3044,6 +3272,245 @@ async function loadGuilds() {
     console.warn('Guild API error:', err);
   }
 }
+
+// ═══════════════════════════════════════════════════════════
+//  LIVE DATA
+//  公式APIから全437領地の実データを取得し、表示レイヤーとして反映するモード。
+//  addedTerritories等のシミュレーション状態は一切書き換えない（Phase 6の取り込み操作を除く）。
+// ═══════════════════════════════════════════════════════════
+const LIVE_RESOURCE_TYPE_MAP = { EMERALD: 'emeralds', ORE: 'ore', WOOD: 'wood', FISH: 'fish', CROP: 'crops' };
+const LIVE_POLL_INTERVAL_MS = 30000;
+const LIVE_HISTORY_MAX = 20;
+
+function formatClockTime(ts) {
+  return new Date(ts).toLocaleTimeString();
+}
+
+// API取得失敗時は直前のliveData/liveHistoryを保持したまま次のポーリングを待つ（画面を空にしない）。
+async function fetchLiveTerritoryData() {
+  try {
+    const res = await fetch('https://corsproxy.io/?https://api.wynncraft.com/v3/guild/list/territory');
+    if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`);
+    const data = await res.json();
+
+    liveData = data;
+    _liveFetchError = null;
+    liveHistory.push({ timestamp: Date.now(), data });
+    if (liveHistory.length > LIVE_HISTORY_MAX) liveHistory.shift();
+    updateLiveGuildOptions();
+  } catch (err) {
+    _liveFetchError = err.message || 'Unknown Error';
+    console.warn('Live territory fetch error:', err);
+  }
+  renderLiveDataScreen();
+  if (liveMode) draw();
+}
+
+// ギルドカラーはLiveモードをONにした時の1回のみ取得する（ほぼ変化しないため）。
+async function fetchGuildColors() {
+  try {
+    const res = await fetch('https://corsproxy.io/?https://athena.wynntils.com/cache/get/guildList');
+    if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`);
+    const list = await res.json();
+    const map = {};
+    for (const g of list) {
+      if (g && g.prefix) map[g.prefix] = g.color || '#FFFFFF';
+    }
+    guildColorMap = map;
+  } catch (err) {
+    console.warn('Guild color API error:', err);
+    guildColorMap = {};
+  }
+}
+
+function getGuildColor(prefix) {
+  return (prefix && guildColorMap[prefix]) || '#FFFFFF';
+}
+
+function startLivePolling() {
+  stopLivePollingTimer();
+  fetchLiveTerritoryData();
+  _livePollTimer = setInterval(fetchLiveTerritoryData, LIVE_POLL_INTERVAL_MS);
+}
+
+function stopLivePollingTimer() {
+  if (_livePollTimer !== null) {
+    clearInterval(_livePollTimer);
+    _livePollTimer = null;
+  }
+}
+
+async function onLiveModeToggle() {
+  const checked = document.getElementById('live-mode-toggle').checked;
+  if (checked) {
+    liveMode = true;
+    document.getElementById('live-badge').style.display = '';
+    renderLiveDataScreen();
+    await fetchGuildColors();
+    startLivePolling();
+  } else {
+    liveMode = false;
+    stopLivePollingTimer();
+    liveData = null;
+    liveHistory = [];
+    _liveFetchError = null;
+    _defenseEstimateCache = {};
+    allLiveGuildDisplays = [];
+    liveGuildDisplayToUuid = {};
+    document.getElementById('live-badge').style.display = 'none';
+    renderLiveDataScreen();
+    refreshUI();
+  }
+}
+
+function manualRefreshLive() {
+  if (!liveMode) return;
+  fetchLiveTerritoryData();
+}
+
+function renderLiveDataScreen() {
+  const toggle = document.getElementById('live-mode-toggle');
+  const statusEl = document.getElementById('live-status');
+  if (!toggle || !statusEl) return;
+  toggle.checked = liveMode;
+
+  if (!liveMode) {
+    statusEl.innerHTML = 'Live Mode is off.';
+    return;
+  }
+
+  const sampleCount = liveHistory.length;
+  const lastTs = sampleCount > 0 ? liveHistory[liveHistory.length - 1].timestamp : null;
+
+  let html = '';
+  if (_liveFetchError) {
+    html += `<div class="live-error">⚠ ${escapeHtml(_liveFetchError)}</div>`;
+    if (lastTs) html += `<div>Showing last data from ${formatClockTime(lastTs)}.</div>`;
+  } else if (lastTs) {
+    html += `<div class="live-ok">Connected</div>`;
+    html += `<div>Last updated ${formatClockTime(lastTs)}</div>`;
+  } else {
+    html += `<div>Connecting…</div>`;
+  }
+  html += `<div>Samples: ${sampleCount} / ${LIVE_HISTORY_MAX}</div>`;
+  statusEl.innerHTML = html;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  GUILD IMPORT（Phase 6）
+// ═══════════════════════════════════════════════════════════
+function updateLiveGuildOptions() {
+  liveGuildDisplayToUuid = {};
+  if (!liveData) { allLiveGuildDisplays = []; return; }
+
+  const guildMap = {};
+  for (const info of Object.values(liveData)) {
+    if (!info.guild || !info.guild.name || !info.guild.uuid) continue;
+    const uuid = info.guild.uuid;
+    if (!guildMap[uuid]) guildMap[uuid] = { name: info.guild.name, prefix: info.guild.prefix || '', count: 0 };
+    guildMap[uuid].count++;
+  }
+
+  const sortedUuids = Object.keys(guildMap).sort((a, b) => guildMap[a].name.localeCompare(guildMap[b].name, 'en'));
+  allLiveGuildDisplays = sortedUuids.map(uuid => {
+    const g = guildMap[uuid];
+    const display = g.prefix ? `[${g.prefix}] ${g.name} (${g.count})` : `${g.name} (${g.count})`;
+    liveGuildDisplayToUuid[display] = uuid;
+    return display;
+  });
+
+  updateLiveImportGuildDatalist();
+}
+
+function updateLiveImportGuildDatalist() {
+  const sel = document.getElementById('live-import-guild-select');
+  const dl = document.getElementById('live-import-guild-options');
+  if (!sel || !dl) return;
+  dl.innerHTML = allLiveGuildDisplays.includes(sel.value)
+    ? '' : allLiveGuildDisplays.map(d => `<option value="${escapeHtml(d)}">`).join('');
+}
+
+function tryShowLiveGuildPicker() {
+  if (allLiveGuildDisplays.length === 0) return;
+  if (window.matchMedia('(max-width: 640px)').matches) return;
+  const input = document.getElementById('live-import-guild-select');
+  const datalist = document.getElementById('live-import-guild-options');
+  if (datalist.options.length === 0) return;
+  try {
+    input.showPicker();
+  } catch (e) {
+    // 未対応環境ではdatalistの標準挙動にフォールバック
+  }
+}
+
+// Liveデータを使って実際のギルド構成をシミュレーターへ取り込む。
+// Defenseレベルは推定であり範囲でしか出ない。範囲の中央値等を勝手に代入すると、
+// シミュレーション結果が「実測っぽい嘘の数字」になり、ユーザーが自分で設定した値と
+// 区別できなくなる。そのためDefenseは常に0のまま登録し、ユーザーが自分で入力する方針とする。
+// 生産ボーナスもPhase 4で一意に確定したものだけを入れ、複数候補が残るものは0のままとする。
+function importLiveGuild() {
+  const sel = document.getElementById('live-import-guild-select');
+  const uuid = liveGuildDisplayToUuid[sel.value];
+  if (!uuid || !liveData) return;
+
+  const entries = Object.entries(liveData).filter(([n, info]) => info.guild && info.guild.uuid === uuid && territories[n]);
+  if (entries.length === 0) return;
+
+  if (!confirm('This will replace all currently registered territories. Continue?')) return;
+
+  addedTerritories = {};
+  for (const [name, info] of entries) {
+    addedTerritories[name] = {
+      defense: { damage: 0, attack: 0, health: 0, defense: 0 },
+      bonuses: {},
+      hq: info.hq === true,
+      treasury: LIVE_RATING_MAP[info.treasury] || 'Very Low'
+    };
+  }
+
+  for (const [name, info] of entries) {
+    const confirmed = computeLiveConfirmedInfo(name, info);
+    const bonuses = addedTerritories[name].bonuses;
+    if (confirmed.emComboMatches && confirmed.emComboMatches.matches.length === 1) {
+      const m = confirmed.emComboMatches.matches[0];
+      if (m['Efficient Emeralds'] !== undefined) bonuses['Efficient Emeralds'] = m['Efficient Emeralds'];
+      if (m['Emerald Rate'] !== undefined) bonuses['Emerald Rate'] = m['Emerald Rate'];
+    }
+    if (confirmed.resCombo && confirmed.resCombo.matches.length === 1) {
+      const m = confirmed.resCombo.matches[0];
+      if (m['Efficient Resources'] !== undefined) bonuses['Efficient Resources'] = m['Efficient Resources'];
+      if (m['Resource Rate'] !== undefined) bonuses['Resource Rate'] = m['Resource Rate'];
+    }
+    if (confirmed.emStorageLv !== null) bonuses['Larger Emerald Storage'] = confirmed.emStorageLv;
+    if (confirmed.resStorageLv !== null) bonuses['Larger Resource Storage'] = confirmed.resStorageLv;
+  }
+
+  sel.value = '';
+  updateLiveImportGuildDatalist();
+
+  // 取り込み後はLiveモードを自動的にOFFにする（表示がLiveデータのままだと取り込んだ内容が確認できないため）
+  document.getElementById('live-mode-toggle').checked = false;
+  onLiveModeToggle();
+
+  closeCustomSettings();
+  refreshUI();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  GLOBAL EXPORTS
+//  index.html / script.js内で生成されるHTMLのonclick等の属性から呼ばれる関数は、
+//  type="module"化によりグローバルスコープへ自動で出ないため、明示的にwindowへ公開する。
+// ═══════════════════════════════════════════════════════════
+Object.assign(window, {
+  openTributeModal, copyShareLink, addSelectedTerritory, addGuildTerritories, addSelectedTerritories,
+  selectAll, selectNone, editSelected, resetSelected, clearAllTerritories, switchModalTab, closeModal,
+  saveModal, closeTributeModal, saveTributes, openCustomSettings, openFilterModal, toggleMobileSheet,
+  showCSScreen, toggleAddConnectionForm, clearAllCustomConnections, addCustomConnection,
+  toggleAddResourceForm, clearAllResourceOverrides, addResourceOverride, setFilterMode, updateModalStats,
+  clearFilter, closeFilterModal, closeCustomSettings, toggleListSelection, removeTerritory,
+  removeCustomConnection, removeResourceOverride, toggleFilterValue,
+  onLiveModeToggle, manualRefreshLive, importLiveGuild
+});
 
 // ═══════════════════════════════════════════════════════════
 //  INITIALISATION

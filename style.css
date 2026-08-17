@@ -17,7 +17,7 @@ body { background: #0f172a; color: #e2e8f0; font-family: 'Segoe UI', sans-serif;
 
 /* Overview */
 #overview {
-  top: 12px; left: 12px; width: 300px; max-height: calc(100vh - 24px);
+  top: 12px; left: 12px; width: 300px; max-height: calc(100vh - 88px);
   overflow-y: auto;
   background: #000000;
   border: 2px solid #2C075F;
@@ -56,7 +56,7 @@ body { background: #0f172a; color: #e2e8f0; font-family: 'Segoe UI', sans-serif;
 
 /* Controls */
 #controls {
-  top: 12px; right: 12px; width: 300px; max-height: calc(100vh - 24px);
+  top: 12px; right: 12px; width: 300px; max-height: calc(100vh - 88px);
   overflow-y: auto;
   background: #000000;
   border: 2px solid #2C075F;
@@ -346,6 +346,19 @@ button.danger:hover { background: #b91c1c; }
 .res-checkbox-group input:disabled, .res-radio-group input:disabled { cursor: not-allowed; }
 .res-checkbox-group label:has(input:disabled), .res-radio-group label:has(input:disabled) { color: #64748b; }
 #res-error { color: #f87171; font-size: 12px; min-height: 14px; margin: 8px 0 4px; }
+
+.live-enable-row { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 10px; cursor: pointer; }
+.live-enable-row input { width: auto; margin: 0; }
+#live-status { font-size: 12px; color: #94a3b8; line-height: 1.6; background: #0f172a; border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; min-height: 14px; }
+#live-status .live-error { color: #f87171; }
+#live-status .live-ok { color: #4ade80; }
+
+#live-badge {
+  position: fixed; right: 12px; bottom: 60px; z-index: 15;
+  background: #dc2626; color: #fff; border: 2px solid #7f1d1d;
+  border-radius: 6px; padding: 4px 10px; font-size: 12px; font-weight: 700;
+  letter-spacing: .05em; pointer-events: none;
+}
 
 .connection-list { max-height: 220px; overflow-y: auto; margin-top: 6px; }
 .connection-item {

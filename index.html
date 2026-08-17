@@ -246,8 +246,37 @@
       </div>
     </div>
 
+    <div id="cs-screen-live" style="display:none;">
+      <div class="cs-header-row">
+        <button class="cs-back-btn" onclick="showCSScreen('menu')">← Back</button>
+        <h2>Live Data</h2>
+      </div>
+      <hr class="divider">
+      <label class="live-enable-row">
+        <input type="checkbox" id="live-mode-toggle" onchange="onLiveModeToggle()">
+        <span>Enable Live Mode</span>
+      </label>
+
+      <div id="live-status"></div>
+      <button onclick="manualRefreshLive()">Refresh Now</button>
+
+      <hr class="divider">
+      <div class="res-field-label">Guild:</div>
+      <input id="live-import-guild-select" list="live-import-guild-options" placeholder="Search guild…">
+      <datalist id="live-import-guild-options"></datalist>
+      <button class="primary" onclick="importLiveGuild()">Import This Guild</button>
+
+      <hr class="divider">
+      <div class="cs-footer">
+        <button onclick="closeCustomSettings()">Close</button>
+      </div>
+    </div>
+
   </div>
 </div>
+
+<!-- LIVE Badge (visible only while Live Mode is ON) -->
+<div id="live-badge" style="display:none;">● LIVE</div>
 
 <!-- Filter Modal -->
 <div id="filter-overlay">
@@ -274,6 +303,6 @@
 <!-- Tooltip -->
 <div id="tooltip"></div>
 
-<script src="./script.js"></script>
+<script type="module" src="./script.js"></script>
 </body>
 </html>

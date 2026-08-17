@@ -8,13 +8,18 @@ WynncraftのGuild Warにおける領地管理（Economy/Eco）をブラウザ上
 eco-simulator/
 ├── index.html          # HTML構造
 ├── style.css           # スタイル
-├── script.js           # ロジック全体
+├── script.js           # UIと状態管理（eco-logic.jsをimportして使う）
+├── eco-logic.js         # DOM非依存の純粋ロジック（定数・Treasury/生産/守備ステータス計算・BFSグラフ探索）
 ├── territories.json    # 全437領地のデータ（Location, Trading Routes, resources）
 ├── territory-ids.json  # 共有リンク用の固定領地ID配列（末尾追記のみ・詳細は下記警告参照）
 ├── main-map.png        # マップ画像（4608×6644px）※手動配置が必要
 ├── assets/icons/others/disconnected.png  # 非接続❌アイコン（16px四方）※手動配置が必要
 └── CLAUDE.md           # このファイル（.gitignore対象）
 ```
+
+**今後、計算式（Treasury バフ・生産量・守備ステータス・BFSグラフ探索）を変更する場合は`eco-logic.js`側を編集すること。`script.js`はUIと状態管理のみを担う。** `eco-logic.js`はグローバル変数を持たず、必要な状態（`territories`/`addedTerritories`/`customConnections`/`resourceOverrides`）はすべて引数で受け取る純関数のみで構成されている。DOM・`fetch`・`localStorage`は一切参照しない。`script.js`側は同名の関数（`getNeighbors`/`getFullGraphDistances`/`getHQPaths`/`calcTreasuryBuff`/`getTerritoryResources`/`calcTerritoryProduction`/`calcTerritoryConsumption`/`calcTerritoryDefenseStats`等）を薄いラッパーとして保持し、グローバル状態の受け渡しとキャッシュ（`_hqPathCache`/`_fullDistCache`）のみを担当する。
+
+**`index.html`の`<script>`タグは`type="module"`で読み込んでいる。** そのため`script.js`内のトップレベル関数はグローバルスコープに自動で出ない。`index.html`の`onclick`属性および`script.js`が生成する動的HTMLの`onclick`/`onchange`属性から呼ばれる関数は、`script.js`末尾の`Object.assign(window, {...})`で明示的にグローバル公開している。新しくonclick等から呼ぶ関数を追加した場合は、この公開リストにも追加すること。
 
 **マップ画像のタイル分割は意図的に実装していない。** iPhone Safariでは`main-map.png`が約3060万ピクセルあり、ブラウザのデコード上限を超えるため間引きされて画質が落ちることがある（読み込みのたびに結果が変わる）。根本対応にはタイル分割＋低解像度の全体画像＋LRU管理が必要でコストが見合わないため、スマホ版はPC版の下位互換という割り切りで対応していない。
 
@@ -34,17 +39,20 @@ npx serve .
 
 ---
 
-## 定数（script.js 先頭）
+## 定数
 
-| 定数 | 内容 |
-|---|---|
-| `MAP_CONFIG` | マップ画像サイズ・ゲーム座標範囲 |
-| `DEFENSE_LEVEL_STATS` | Defenseレベル0〜11ごとのHP/DPS/攻撃速度 |
-| `DEFENSE_COST_TABLE` | Defenseレベルごとのコスト（/hr） |
-| `DEFENSE_TYPES` | damage / attack / health / defense の4種とそれぞれの消費リソース |
-| `BONUS_CONFIG` | ボーナス17種のリソース・最大レベル・コスト・効果テキスト |
-| `TREASURY_BASE_PCTS` | Treasuryバフの距離別基本パーセンテージ |
-| `TREASURY_LEVEL_MULT` | TreasuryレベルごとのBAFED乗数 |
+`script.js`先頭で`eco-logic.js`からimportして使う。`MAP_CONFIG`のみ`script.js`固有（マップ描画専用のためeco-logic.jsには置いていない）。
+
+| 定数 | 定義場所 | 内容 |
+|---|---|---|
+| `MAP_CONFIG` | script.js | マップ画像サイズ・ゲーム座標範囲 |
+| `DEFENSE_LEVEL_STATS` | eco-logic.js | Defenseレベル0〜11ごとのHP/DPS/攻撃速度 |
+| `DEFENSE_COST_TABLE` | eco-logic.js | Defenseレベルごとのコスト（/hr） |
+| `DEFENSE_TYPES` | eco-logic.js | damage / attack / health / defense の4種とそれぞれの消費リソース |
+| `BONUS_CONFIG` | eco-logic.js | ボーナス17種のリソース・最大レベル・コスト・効果テキスト |
+| `TREASURY_BASE_PCTS` | eco-logic.js | Treasuryバフの距離別基本パーセンテージ |
+| `TREASURY_LEVEL_MULT` | eco-logic.js | TreasuryレベルごとのBAFED乗数 |
+| `RESOURCES` | eco-logic.js | リソースID一覧（`emeralds`/`ore`/`crops`/`fish`/`wood`） |
 
 ## 座標系
 
@@ -76,6 +84,12 @@ npx serve .
 | `resourceOverrides` | `{}` | 領地ごとの生産資源オーバーライド `name → { tier, resources, double }`。登録済み（`addedTerritories`に存在）のときのみ有効。無効でも保持し、再登録で自動復活 |
 | `filterMode` | `string` | マップオーバーレイのモード（`'none'\|'defense'\|'treasury'\|'resource'`）。表示状態にすぎないため共有リンクには含めない |
 | `filterToggles` | `{}` | モードごとのカテゴリON/OFF状態。初期値はすべて`true`。モード切替時も保持される。共有リンクには含めない |
+| `liveMode` | `boolean` | LiveモードのON/OFF。共有リンクには含めない（ページを開き直せばOFFに戻る） |
+| `liveData` | `{}\|null` | 直近取得した`/v3/guild/list/territory`のレスポンス（生の形のまま） |
+| `liveHistory` | `[]` | `[{ timestamp, data }, ...]`最大20件のローリングバッファ（メモリ上のみ。`localStorage`にも共有リンクにも保存しない。Liveモードを OFF にしたらクリアする） |
+| `guildColorMap` | `{}` | `prefix → "#RRGGBB"`。Liveモードを ON にした時の1回のみ取得 |
+
+**Live モードは「表示レイヤー」であり、シミュレーションの状態（`addedTerritories`等）は一切書き換えない。** 書き換えるのは「Import This Guild」によるギルド取り込み操作のみ。
 
 ---
 
@@ -135,6 +149,27 @@ npx serve .
 | `setFilterMode(mode)` | `filterMode`を切り替えて`refreshUI()` |
 | `toggleFilterValue(mode, key)` | 指定モードの指定カテゴリのON/OFFをトグルして`refreshUI()` |
 | `clearFilter()` | `filterMode`を`'none'`に戻す（トグル状態はリセットしない） |
+| `onLiveModeToggle()` | Live Modeチェックボックスのon/offを処理。ONでギルドカラー取得＋ポーリング開始、OFFでポーリング停止＋`liveData`/`liveHistory`クリア |
+| `fetchLiveTerritoryData()` | `/v3/guild/list/territory`を取得し`liveData`/`liveHistory`を更新。失敗時は直前のデータを保持したままエラー表示 |
+| `fetchGuildColors()` | ギルドカラーを取得して`guildColorMap`を更新（Liveモード ON 時の1回のみ呼ばれる） |
+| `getGuildColor(prefix)` | `guildColorMap`からカラーコードを返す（未取得/不明時は`#FFFFFF`） |
+| `startLivePolling()` / `stopLivePollingTimer()` | 30秒間隔のポーリングを開始/停止（`_livePollTimer`） |
+| `manualRefreshLive()` | Refresh Nowボタン用。Liveモード ON 時に即座に`fetchLiveTerritoryData()`を実行 |
+| `renderLiveDataScreen()` | Custom SettingsのLive Data画面のステータス表示（接続状態・最終更新時刻・サンプル数）を更新 |
+| `drawTerritoriesLive()` | Liveモード時のマップ描画（`draw()`から`drawTerritories()`の代わりに呼ばれる） |
+| `getFilterCategoriesLive(name)` | Liveモード時のMap Filter判定（全437領地が対象、実データの`defences`/`treasury`/`resources`を使う） |
+| `showLiveTooltip(mx, my, name, above)` | Liveモード時のツールチップ内容を構築（実データ＋確定できるボーナス＋推定値を表示） |
+| `isTooltipTarget(name)` | ホバー/長押しでツールチップを表示すべき対象かを判定（通常時は登録済み領地、Liveモード時は`liveData`を持つ領地） |
+| `ratingColor(rating)` | Very Low〜Very Highの難易度ラベルに対応する文字色を返す（showTooltip/showLiveTooltipで共有） |
+| `detectStorageLevel(limit, isHQ, isEmerald)` | `resources[].limit`からLarger Emerald/Resource Storageのレベルを一意に確定する |
+| `detectRateBonusCombo(generation, baseGeneration, treasuryBuff, isEmerald)` | 生産量の倍率からEfficient×Rate系ボーナスの組み合わせを逆算する（複数候補が残る場合はその旨を返す） |
+| `getDefenseEstimate(name, info, defenceLabel, confirmedExtra, resourceSnapshot)` | Liveモードの守備ステータス推定のオーケストレーション。`EcoLogic.estimateDefenseStats()`を呼び出し、領地ごとにキャッシュする |
+| `computeLiveTransitions(name)` | `liveHistory`からore/crops/wood/fishのΔstored（1分あたり）を算出する。値が実際に変化したサンプル間でのみ計算する |
+| `getOwnedNamesForGuild(guildUuid)` | `liveData`から指定ギルドが所有する全領地名のSetを返す（`addedTerritories`の代わりに使う） |
+| `renderDefenseEstimateHTML(estimate)` | 推定結果（レベル範囲・EHP/DPS範囲・候補数/サンプル数）のHTMLを構築する |
+| `computeLiveConfirmedInfo(name, info)` | 実データから確定できるボーナス（ストレージレベル・Efficient/Rate系の組み合わせ）を算出する共通処理。showLiveTooltip/getDefenseEstimate/importLiveGuildで共有する |
+| `updateLiveGuildOptions()` | `liveData`からギルド一覧を再構築し、Import This Guild用のdatalistを更新する |
+| `importLiveGuild()` | Liveデータを使って指定ギルドの全領地を`addedTerritories`へ取り込む。取り込み後はLiveモードを自動OFFにする |
 
 ---
 
@@ -150,6 +185,27 @@ npx serve .
 ### Bonus
 - 17種、各種ごとに最大レベルが異なる
 - コストはレベルNに設定されたコスト（`/hr`）のみを消費（累積加算ではない）
+
+### 守備ステータスの推定（Liveモード専用）
+
+**`defences`レーティングだけでは個別のDefenseレベルが一切絞れない。** difficultyは4レベルの単純な合計（`difficulty = Damage + Attack + Health + Defense + (TowerAura>0 ? TowerAura+5 : 0) + (TowerVolley>0 ? TowerVolley+3 : 0)`、HQはレーティングを算出後に1段階上げる）であるため、全組み合わせ331,776通り（12⁴ × Aura 4 × Volley 4）を列挙して検証した結果、**HIGHで172,476通り（52%）、VERY_HIGHでも3,302通り（1%）が該当し、各レベルは0〜11の全域を取りうる。** レーティングは候補集合を作るためだけに使い、絞り込みの主役にはならない。
+
+**そこで資源消費量の観測を制約として使う。** 手順（`EcoLogic.estimateDefenseStats()`、実体は`eco-logic.js`）:
+
+1. Damage/Attack/Health/Defense各0〜11 × TowerAura/TowerVolley各0〜3を列挙し、`defences`（HQなら1段階上げた後の値）と一致する組み合わせのみ残す（rating足切り）。
+2. 残った候補ごとに資源消費量（ore=Damage+TowerVolley+確定済みEfficient Emeralds、crops=Attack+TowerAura+確定済みEmerald Rate、wood=Health+確定済みLarger Emerald Storage、fish=Defenseのみ）を算出し、`liveHistory`から得た観測（`resources[].stored/limit`比、Δstoredの1分あたり変化量）と照合してスコアリングする。**除外ではなく減点方式**にしており、観測にノイズがある場合でも候補が全滅しないようにしている。
+3. スコア上位30%（最低50件）の候補群から、Damage/Attack/Health/Defense各レベルの範囲と、EHP/DPSの範囲を算出する。**個別レベルはこの範囲でしか出ない。**
+
+**推定はホバー/長押しでツールチップを表示した領地についてのみオンデマンドで実行し、結果を領地ごとにキャッシュする（`_defenseEstimateCache`）。** キャッシュは`defences`または確定済みボーナス構成（`confirmedExtra`）が変化したときのみ再計算する。全437領地に対して定期実行はしない。サンプル数（`liveHistory`中でその領地のデータが存在したサンプル数）が3件未満のときは「サンプル不足」と表示し、範囲を出さない。推定値（`Lv.? 〜 ?`の範囲表記、`Estimated Defense`/`Estimated Stats`の見出し）は、確定値（`Confirmed Bonuses`）と色を変えて視覚的に区別している。
+
+**5.4の未検証の仮定と検証結果（2026-08時点、実データで検証済み）**
+
+1. `stored`は「その領地に現在ある資源」であり、通過中の資源は含まない → **未検証**（API側の定義がブラックボックスのため確認できない）
+2. 消費は毎分1回、`stored`から差し引かれる → **実データで概ね裏付けられた。** 437領地×5資源＝2,185系列を11.7分間隔で観測した結果、98.5%（2,152/2,185）が観測window内で最低1回`stored`が変化しており、変化と変化の間隔は中央値61.4秒・平均80.8秒で、60秒付近に最も集中していた（1分間隔という仮定と概ね一致）。33系列（1.5%）は変化が観測されなかった（生産・消費とも極小、またはネットワークの端で供給が届いていない等の可能性）。
+3. HQからの供給も毎分1回、`stored`に加算される → **部分的に裏付けられた。** `generation: 0`（そのリソースを産出しない領地）でも`stored`が増加するケースを複数確認した（例: 実測ログでWOOD `generation: 0`のある領地の`stored`が8→23→37→52→66と増加）。これはHQ/ネットワークからの供給が`stored`に反映されていることを示すが、供給が「毎分1回」という周期性そのものは変化の粒度（上記2と同様の~60秒間隔）から間接的に推測しているにとどまる。
+4. API の `resources` 更新（1分間隔）は、ゲーム内の資源移動周期と固定の位相差を持つ → **未検証**（ゲーム内側のtickを直接観測する手段がないため）
+
+**この検証結果を踏まえ、Step 2（消費量による絞り込み）は実装した近似モデルのまま採用している。** 仮定1・4が崩れた場合の影響（`stored`に通過中の資源が混入している、位相差が大きくばらつく等）は、Δstoredベースの制約の精度を下げる方向にしか働かないため、**候補を除外ではなく減点にとどめる設計は、この不確実性への保険としても機能している。**
 
 ### 生産計算
 - 基本生産量は `territories.json` の `resources` フィールド
@@ -194,6 +250,14 @@ npx serve .
 
 対応案として、都市領地のみ経由先を手動指定できる機能（誤差の主要因が都市に集中しているため、都市だけ直せば十分に精度が上がる）を検討したが、指定すべき正解を観測できる状況が現状では無いため、**実装は見送っている。** 将来ゲーム内で都市領地のtraversingを再度観測できた場合に着手する。
 
+### 守備ステータス推定の既知の限界
+
+`defences`レーティングは4つのDefenseレベルの単純な合計から決まるため、**レーティングからは個別レベルが一切絞れない**（HIGHの場合172,476通り、各レベル0〜11）。絞り込みには資源消費量の観測が必須である。
+
+消費量の観測は`stored`の時系列差分に依存するが、**HQからの供給量と上流への送出量が観測できない**ため、消費量を一意に逆算することはできない。現在の実装は不等式による制約とスコアリングで候補を絞る近似であり、**個別レベルは範囲でしか出ない。**
+
+実用上はEHP/DPSの範囲が最も価値のある出力である。詳細は「守備ステータスの推定」の節を参照。
+
 ### Tributes
 - 外部（他ギルドからの献上等）の資源流入/流出を `/hr` 単位で設定
 - Overviewの Net = 生産 - 消費 + Tribute として計算・表示
@@ -213,9 +277,36 @@ npx serve .
 
 **City は資源タイプではなく「エメラルドの段」である。** Resource Editor の UI は「エメラルド段」と「資源」の2軸で構成する。資源は最大2種まで選択可能。**Rainbow は他の設定（資源・Double）と併用不可**（選択すると資源・Amountが無効化される）。
 
+### Live モード
+
+**Live モード中はマップ・Map Filter・ツールチップが実データに切り替わる。`addedTerritories` ベースの描画は一切行わない。** クリック時のモーダル編集（`handleClick()`）自体はLiveモード中も従来どおり動作する（Liveは表示レイヤーであり、シミュレーション状態の編集操作をブロックするものではないため）。
+
+- マップ描画（`drawTerritoriesLive()`）: 所有ギルドのカラー（`guildColorMap`、`getGuildColor(prefix)`）で塗り・枠線を描く。無所属は白。`hq: true` の領地には既存のHQアイコンを表示する。マップ選択（`selectedTerritories`）のハイライトは維持する。
+- Map Filter（`getFilterCategoriesLive(name)`）: 判定対象は全437領地。`defense`は実データの`defences`、`treasury`は実データの`treasury`、`resource`は`resources[].generation`（0より大きいものを産出していると判定）と`EMERALD`の`baseGeneration`（18,000以上をCityと判定）を使う。配色・斜め分割塗り・非該当領地の不透明度0.35は既存仕様のまま。判定対象外（無所属）の領地は暗くしない。
+- ツールチップ（`showLiveTooltip()`）: 実データ（所有ギルド・生産量・貯蔵量・Treasury・Defence）を表示する。`(Conn)`/`(Ext)`の判定は、そのギルドの`guild.hq`領地を起点に全437領地グラフをBFSした距離を使う（`EcoLogic.bfsDistancesFrom(guildHqName, territories, [])`。**customConnectionsは含めない**——ユーザーが追加した接続線はシミュレーション専用の設定であり、実データの表示には反映しないため）。無所属の領地は`Unclaimed`とだけ表示する。ホバー/長押しでのツールチップ表示対象も、Liveモード中は「`liveData`を持つ領地すべて」に切り替わる（`isTooltipTarget(name)`）。
+
+**確定できるアップグレード（一意に確定するもの。個別レベルの範囲推定は別節「守備ステータスの推定」を参照）**
+
+- ストレージ系（`Larger Emerald/Resource Storage`）: `resources[].limit`から一意に確定する（`detectStorageLevel()`）。
+
+  | レベル | エメラルド（非HQ） | 資源（非HQ） | エメラルド（HQ） | 資源（HQ） |
+  |---|---|---|---|---|
+  | 0 | 3,000 | 300 | 5,000 | 1,500 |
+  | 1 | 6,000 | 600 | 10,000 | 3,000 |
+  | 2 | 12,000 | 1,200 | 20,000 | 6,000 |
+  | 3 | 24,000 | 2,400 | 40,000 | 12,000 |
+  | 4 | 45,000 | 4,500 | 75,000 | 22,500 |
+  | 5 | 102,000 | 10,200 | 170,000 | 51,000 |
+  | 6 | 240,000 | 24,000 | 400,000 | 120,000 |
+
+- 生産系ボーナス（`Efficient Emeralds`×`Emerald Rate`、`Efficient Resources`×`Resource Rate`）: `倍率 = generation ÷ (baseGeneration × (1 + Treasuryバフ))`から逆算する（`detectRateBonusCombo()`）。**倍率から組み合わせが一意に決まる場合と、複数候補が残る場合がある**（`×2.0`/`×3.0`/`×4.0`等のキリのいい倍率は複数候補）。一意なら`Efficient Emeralds Lv.n` / `Emerald Rate Lv.n`のように組み合わせを表示し、複数候補なら`Resources ×4.0 (multiple combinations)`のように倍率のみを表示する。
+- **基礎生成量は`resources[].baseGeneration`を使う。** 実測（2026-08時点）でAPIレスポンスに存在することを確認済み。値が欠けている場合のみ`territories.json`の基礎生成量にフォールバックする。
+
 ---
 
 ## UI構成
+
+デスクトップ表示では、両パネル（Overview / Territory Manager）の`max-height`は下部固定ボタン（Custom Settings / Filter）との衝突を避けるため`calc(100vh - 88px)`にしている（内訳: 上余白12px + 下部ボタン約40px + 余白24px + 下余白12px）。`@media (max-width: 640px)`内のボトムシートには適用しない（`bottom: 48px`でタブバーの上に出るため衝突しない）。
 
 ### OVERVIEWパネル（左上）
 - 各リソースの生産/消費/Tribute込みのNet収支をプログレスバーつきで表示
@@ -248,10 +339,12 @@ npx serve .
 ### CUSTOM SETTINGSモーダル（左下ボタン）
 - 画面左下固定の `⚙ Custom Settings` ボタンから開く。
 - 名称の由来: Tributesはゲーム内に存在する機能、接続線の追加・生産資源の変更はゲーム内に存在しない機能であるため、両者を混ぜず、**ゲーム内に存在しない設定であることが名前から分かるようにしている**。Tributesは Guild Output パネルの 💰 ボタンに残している。
-- 画面1（項目一覧）: `Connection Editor` と `Resource Editor` の2項目。将来項目追加を想定しループで生成。
+- 画面1（項目一覧）: `Connection Editor` / `Resource Editor` / `Live Data` の3項目。将来項目追加を想定しループで生成。
 - 画面2（Connection Editor）: `+ Add New Line` でインライン入力フォームを展開し、2領地間の接続線を追加。追加済み接続線は `a ↔ b` 形式でリスト表示し、無効な接続（片方未登録）はグレーアウト。`Clear All Lines` で全削除（確認ダイアログあり）。接続リストの各項目は`#0f172a`背景＋`1px solid #334155`の枠線を持つ箱として表示する（モーダル背景と同色になって項目の境界が見えなくなるのを避けるため）。
 - Connection Editorの2つの入力欄は、クリック時に`showPicker()`で候補を表示する。ただし「登録済み領地が0件」「datalistが空」「画面幅640px以下」のいずれかに該当する場合は呼ばない。未対応ブラウザでの例外は`try`/`catch`で握りつぶし、`<datalist>`の標準挙動にフォールバックする。
 - 画面3（Resource Editor）: Connection Editorと同じ構造・スタイルで実装。`+ Add Override` でインライン入力フォームを展開し、領地名（登録済みのみ、input+datalist）・エメラルド段（Normal/City/Rainbowのラジオ）・資源（Ore/Wood/Fish/Cropsのチェックボックス、最大2つ）・Amount（Normal/Doubleのラジオ）を設定して追加する。Rainbow選択時は資源・Amountを無効化し、資源を2つ選択している間はAmountをNormal固定で無効化・残りのチェックボックスも無効化する。追加済みオーバーライドは `Detlas → City + Ore 3,600` の形式でリスト表示し、対象領地が未登録のものはグレーアウト。`Clear All Overrides` で全削除（確認ダイアログあり）。領地名入力欄もConnection Editorと同じ`showPicker()`仕様。
+- 画面4（Live Data）: `Enable Live Mode`チェックボックス、ステータス表示（接続状態・最終更新時刻・サンプル数、`renderLiveDataScreen()`）、`Refresh Now`ボタン（`manualRefreshLive()`）で構成する。ONにするとギルドカラーを1回だけ取得し、30秒間隔のポーリングを開始する（`onLiveModeToggle()`）。取得失敗時は直前のデータを保持したままエラーをステータス欄に表示する。**Liveモードが ON のときは、マップ上に常時「LIVE」バッジを表示する**（`#live-badge`、右下のFilterボタンの上・`position: fixed`）。モードに気づかず「自分の設定と違う」と混乱するのを防ぐため。
+  - **ギルド取り込み**: Guild名検索欄（input+datalist、`liveData`から取得できたギルド一覧を`updateLiveGuildOptions()`が都度再構築、`[prefix] name (領地数)`形式で表示）と`Import This Guild`ボタン（`importLiveGuild()`）を持つ。実行すると確認ダイアログ（`現在の登録済み領地をすべて置き換えます。よろしいですか？`）の上で`addedTerritories`を全置換し、そのギルドの全領地を登録する。`treasury`と`hq`は実データをそのまま設定するが、**`defense`は常にすべて0のまま登録し、推定値は一切入れない。** Defenseレベルは推定であり範囲でしか出ないため、範囲の中央値等を代入すると「実測っぽい嘘の数字」になり、ユーザーが自分で入力した値と区別できなくなる。ユーザーが自分でDefenseを設定する方針とする。生産ボーナス（Efficient Emeralds/Emerald Rate/Efficient Resources/Resource Rate/Larger Emerald Storage/Larger Resource Storage）は**一意に確定したものだけ**を設定し、複数候補が残るものは0のままとする（`computeLiveConfirmedInfo()`を再利用）。取り込み後はLiveモードを自動的にOFFにし（表示がLiveデータのままだと取り込んだ内容が確認できないため）、Custom Settingsモーダルを閉じて`refreshUI()`する。カスタム接続線・資源オーバーライドはクリアしない。共有リンクへの影響は無い（取り込み結果は通常の登録状態として扱われる）。
 
 ### FILTERモーダル（右下ボタン／モバイルはタブバー）
 - 画面右下固定の `Filter` ボタン（`#custom-settings-btn`と同スタイル）から開く。**`filterMode !== 'none'`のときは背景を`#334155`にしてハイライトする。** 幅640px以下では非表示になり、モバイルタブバーの`Filter`タブから開く（ボトムシートではなくモーダル）。
@@ -326,8 +419,30 @@ npx serve .
 ## 外部API
 
 - `https://corsproxy.io/?https://api.wynncraft.com/v3/guild/list/territory`
-  - レスポンス形式: `{ [territoryName]: { guild: { name, prefix, uuid } } }`
-  - APIが使えない場合はプレースホルダーにエラー表示してグレースフルデグラデーション
+  - `loadGuilds()`（Add From On-map Guild用）と Live モード（`fetchLiveTerritoryData()`）の両方がこのURLを叩く。新しいエンドポイントではない。
+  - レスポンス形式（実測、437領地全件）:
+    ```json
+    "Ragni": {
+      "guild": { "uuid": "...", "name": "...", "prefix": "...", "hq": "<HQ領地名>" },
+      "acquired": "2026-08-14T13:50:03.968000Z",
+      "location": { "start": [x, y], "end": [x, y] },
+      "hq": false,
+      "resources": [
+        { "type": "EMERALD", "generation": 9720, "baseGeneration": 9000, "stored": 64, "limit": 3000 },
+        { "type": "ORE", "generation": 0, "baseGeneration": 3600, "stored": 5, "limit": 300 }
+      ],
+      "links": ["Monte's Village", "Iboju Village", "Troms Lake"],
+      "treasury": "MEDIUM",
+      "defences": "MEDIUM"
+    }
+    ```
+  - `resources[].type`は`EMERALD`/`ORE`/`WOOD`/`FISH`/`CROP`。内部表現（`emeralds`/`ore`/`wood`/`fish`/`crops`）へは`LIVE_RESOURCE_TYPE_MAP`でマッピングする（特に`CROP`→`crops`に注意）。
+  - **`resources[].baseGeneration`が実際のレスポンスに存在する（2026-08時点で確認済み）。** 領地固有の基礎生成量をこのフィールドから直接取得できる。
+  - APIが使えない場合はプレースホルダー（`loadGuilds()`側）またはステータス表示（Liveモード側）にエラーを出し、グレースフルデグラデーションする。
+- `https://corsproxy.io/?https://athena.wynntils.com/cache/get/guildList`
+  - ギルドカラー取得用。Liveモードを ON にした時の1回のみ取得する（`fetchGuildColors()`。ポーリングのたびには叩かない）。
+  - レスポンス形式: `[{ "_id": "...", "prefix": "SEQ", "color": "#RRGGBB" }, ...]`（配列、2700件超）。`color`が無い要素は`#FFFFFF`にフォールバックする（`getGuildColor()`）。
+  - 取得に失敗した場合は全ギルドを`#FFFFFF`として続行する。
 
 ---
 
