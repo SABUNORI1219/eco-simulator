@@ -3375,7 +3375,7 @@ function updateGuildSelectDatalist() {
 async function loadGuilds() {
   const input = document.getElementById('guild-select');
   try {
-    const res = await fetch('https://corsproxy.io/?https://api.wynncraft.com/v3/guild/list/territory');
+    const res = await fetch('https://corsproxy.io/?https://api.wynncraft.com/v3/guild/list/territory', { cache: 'no-store' });
     if (!res.ok) {
       throw new Error(`API error: ${res.status} ${res.statusText}`);
     }
@@ -3443,7 +3443,7 @@ function updateLiveBadge() {
 // 守備推定に使うグローバル転送位相（_globalTransferPhase）はデータ取得のたびに1回だけ再計算する。
 async function fetchLiveTerritoryData() {
   try {
-    const res = await fetch('https://corsproxy.io/?https://api.wynncraft.com/v3/guild/list/territory');
+    const res = await fetch('https://corsproxy.io/?https://api.wynncraft.com/v3/guild/list/territory', { cache: 'no-store' });
     if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`);
     const data = await res.json();
 

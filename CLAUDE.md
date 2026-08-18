@@ -484,6 +484,7 @@ stored[r] = consumption[r] × f + generation[r] × (1/60 − f)       f = (1 −
   - `resources[].type`は`EMERALD`/`ORE`/`WOOD`/`FISH`/`CROP`。内部表現（`emeralds`/`ore`/`wood`/`fish`/`crops`）へは`LIVE_RESOURCE_TYPE_MAP`でマッピングする（特に`CROP`→`crops`に注意）。
   - **`resources[].baseGeneration`が実際のレスポンスに存在する（2026-08時点で確認済み）。** 領地固有の基礎生成量をこのフィールドから直接取得できる。
   - APIが使えない場合はプレースホルダー（`loadGuilds()`側）またはステータス表示（Liveモード側）にエラーを出し、グレースフルデグラデーションする。
+  - **`corsproxy.io`は元のAPIが返す`Cache-Control: max-age=10`を、独自の`Cache-Control: public, max-age=3600, s-maxage=3600`（1時間）に上書きして転送する（2026-08時点で確認済み）。** `fetch()`には`{ cache: 'no-store' }`を必ず付けること（`loadGuilds()`・`fetchLiveTerritoryData()`の両方で対応済み）。付けないと30秒間隔のポーリングでもブラウザがこのキャッシュを使い、最大1時間近く同じレスポンスを返し続けることがある（実測: 40〜45分間、全437領地の`resources`・`_globalTransferPhase`が完全に不変のまま推移する事例を確認）。
 - `https://corsproxy.io/?https://athena.wynntils.com/cache/get/guildList`
   - ギルドカラー取得用。Liveモードを ON にした時の1回のみ取得する（`fetchGuildColors()`。ポーリングのたびには叩かない）。
   - レスポンス形式: `[{ "_id": "...", "prefix": "SEQ", "color": "#RRGGBB" }, ...]`（配列、2700件超）。`color`が無い要素は`#FFFFFF`にフォールバックする（`getGuildColor()`）。
