@@ -94,11 +94,11 @@ let filterToggles = {
 };
 let allTerritoryNames = [];  // Add Specified Territoryのdatalist用（territories.jsonの全領地名）
 
-// Live モードの状態。表示レイヤーであり、addedTerritoriesは書き換えない（書き換えるのはPhase 6の取り込み操作のみ）。
+// Live モードの状態。表示レイヤーであり、addedTerritoriesは書き換えない（書き換えるのはギルド取り込み操作のみ）。
 // 共有リンクには含めない（ページを開き直せばOFFに戻る）。
+// 守備推定は単一スナップショットで完結するため、stored の履歴（旧liveHistory）は持たない。
 let liveMode = false;
 let liveData = null;       // 直近取得した /v3/guild/list/territory のレスポンス（{ [territoryName]: {...} }、生の形のまま保持）
-let liveHistory = [];      // [{ timestamp, data }, ...] 最大20件。stored の変化を追うための直近サンプル（メモリ上のみ）
 let guildColorMap = {};    // prefix -> "#RRGGBB"（Liveモードを ON にした時に1回だけ取得）
 let _livePollTimer = null;
 let _liveFetchError = null;
@@ -242,7 +242,8 @@ function resetTouchState() {
   clearLongPressTimer();
   longPressTriggered = false;
   touchMoved = false;
-  hideTooltip();
+  // Liveモードでタップにより固定表示中のツールチップは、ジェスチャーの中断では消さない。
+  if (!(liveMode && liveTooltipPinnedName)) hideTooltip();
 }
 
 canvas.addEventListener('touchstart', e => {
@@ -257,15 +258,18 @@ canvas.addEventListener('touchstart', e => {
     touchMoved = false;
     touchDragStart = { x: t.clientX - panX, y: t.clientY - panY };
 
-    longPressTimer = setTimeout(() => {
-      longPressTimer = null;
-      if (touchMoved) return;
-      const hit = hitTestAll(touchStartPos.x, touchStartPos.y);
-      if (hit && isTooltipTarget(hit)) {
-        longPressTriggered = true;
-        showTooltip(touchStartPos.x, touchStartPos.y, hit, true);
-      }
-    }, 500);
+    // Liveモードでは長押しではなくタップでツールチップを表示するため、長押しタイマーは不要。
+    if (!liveMode) {
+      longPressTimer = setTimeout(() => {
+        longPressTimer = null;
+        if (touchMoved) return;
+        const hit = hitTestAll(touchStartPos.x, touchStartPos.y);
+        if (hit && isTooltipTarget(hit)) {
+          longPressTriggered = true;
+          showTooltip(touchStartPos.x, touchStartPos.y, hit, true);
+        }
+      }, 500);
+    }
   } else if (e.touches.length === 2) {
     touchMoved = true;
     const [t1, t2] = e.touches;
@@ -284,7 +288,7 @@ canvas.addEventListener('touchmove', e => {
     if (!touchMoved && Math.hypot(dx, dy) > 10) {
       touchMoved = true;
       clearLongPressTimer();
-      hideTooltip();
+      if (!(liveMode && liveTooltipPinnedName)) hideTooltip();
     }
     panX = t.clientX - touchDragStart.x;
     panY = t.clientY - touchDragStart.y;
@@ -293,7 +297,7 @@ canvas.addEventListener('touchmove', e => {
   } else if (e.touches.length === 2) {
     touchMoved = true;
     clearLongPressTimer();
-    hideTooltip();
+    if (!(liveMode && liveTooltipPinnedName)) hideTooltip();
     const [t1, t2] = e.touches;
     const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
     const newScale = Math.max(0.03, Math.min(8, pinchStartScale * (dist / (pinchStartDist || dist))));
@@ -331,7 +335,7 @@ canvas.addEventListener('touchend', e => {
     if (longPressTriggered) {
       hideTooltip();
     } else if (wasTap) {
-      handleClick(touchStartPos.x, touchStartPos.y);
+      handleClick(touchStartPos.x, touchStartPos.y, true);
     }
     longPressTriggered = false;
     touchMoved = false;
@@ -379,8 +383,27 @@ function hitTestAll(cx, cy) {
   return null;
 }
 
-function handleClick(cx, cy) {
+// Liveモード・スマホでタップにより固定表示中の領地名。次のタップ（別の場所 or 同じ領地）まで表示し続ける。
+let liveTooltipPinnedName = null;
+
+// Liveモードは表示レイヤーであり、シミュレーション状態（選択・モーダル編集）を触る操作は無効にする。
+// スマホでは代わりに、タップでツールチップの固定表示をトグルする（isTouch経由でのみ、マウスクリックでは何もしない）。
+function handleLiveTap(cx, cy, hit) {
+  if (!hit || !isTooltipTarget(hit) || hit === liveTooltipPinnedName) {
+    liveTooltipPinnedName = null;
+    hideTooltip();
+    return;
+  }
+  liveTooltipPinnedName = hit;
+  showTooltip(cx, cy, hit, true);
+}
+
+function handleClick(cx, cy, isTouch = false) {
   const hit = hitTestAll(cx, cy);
+  if (liveMode) {
+    if (isTouch) handleLiveTap(cx, cy, hit);
+    return;
+  }
   if (!hit) return;
   if (addedTerritories[hit]) {
     openModal(hit);
@@ -873,6 +896,43 @@ function drawTerritoriesLive() {
         const sy = cy - iconSize * 0.8;
         drawIcon(hqImage, cx - iconSize / 2, sy, iconSize);
         textY = sy + iconSize + gap + 2;
+      } else if (isOwned) {
+        const flags = getLiveResourceFlags(info);
+        const isLiveRainbow = flags.ore && flags.wood && flags.fish && flags.crops;
+
+        if (isLiveRainbow) {
+          // 虹資源地 (2x2 Grid)。既存のシミュレーションモードと同じ配置。
+          const totalW = iconSize * 2 + gap;
+          const totalH = iconSize * 2 + gap;
+          const sx = cx - totalW / 2;
+          const sy = cy - totalH / 2 - iconSize * 0.4;
+
+          drawIcon(resImages.ore, sx, sy, iconSize);
+          drawIcon(resImages.crops, sx + iconSize + gap, sy, iconSize);
+          drawIcon(resImages.fish, sx, sy + iconSize + gap, iconSize);
+          drawIcon(resImages.wood, sx + iconSize + gap, sy + iconSize + gap, iconSize);
+
+          textY = sy + totalH + gap + 2;
+        } else {
+          const iconsToDraw = [];
+          if (flags.city) iconsToDraw.push(resImages.emeralds);
+          if (flags.ore) iconsToDraw.push(resImages.ore);
+          if (flags.crops) iconsToDraw.push(resImages.crops);
+          if (flags.fish) iconsToDraw.push(resImages.fish);
+          if (flags.wood) iconsToDraw.push(resImages.wood);
+
+          if (iconsToDraw.length > 0) {
+            const totalW = iconsToDraw.length * iconSize + (iconsToDraw.length - 1) * gap;
+            let sx = cx - totalW / 2;
+            const sy = cy - iconSize * 0.8;
+
+            for (const img of iconsToDraw) {
+              drawIcon(img, sx, sy, iconSize);
+              sx += iconSize + gap;
+            }
+            textY = sy + iconSize + gap + 2;
+          }
+        }
       }
 
       const fontSize = Math.min(18, Math.max(9, scale * 13));
@@ -1130,11 +1190,20 @@ const LIVE_RESOURCE_ROW_ORDER = [
 
 // 実データから「確定できるアップグレード」を算出する共通処理（CLAUDE.md 4.4参照）。
 // showLiveTooltip（表示）・getDefenseEstimate（推定のconfirmedExtra）・importLiveGuild（Phase 6の取り込み）で共有する。
-function computeLiveConfirmedInfo(name, info) {
+// bfsCacheを渡すと、同じギルドHQからのBFS距離を使い回す（computeGlobalTransferPhaseが
+// 全所有領地に対してループする際、ギルドごとに1回だけBFSすれば済むようにするための最適化）。
+function computeLiveConfirmedInfo(name, info, bfsCache) {
   const guildHqName = info.guild.hq;
-  const hqDist = (guildHqName && territories[guildHqName])
-    ? EcoLogic.bfsDistancesFrom(guildHqName, territories, [])[name]
-    : undefined;
+  let hqDist;
+  if (guildHqName && territories[guildHqName]) {
+    let distances;
+    if (bfsCache) {
+      distances = bfsCache[guildHqName] || (bfsCache[guildHqName] = EcoLogic.bfsDistancesFrom(guildHqName, territories, []));
+    } else {
+      distances = EcoLogic.bfsDistancesFrom(guildHqName, territories, []);
+    }
+    hqDist = distances[name];
+  }
 
   const treasuryLabel = LIVE_RATING_MAP[info.treasury] || info.treasury;
   const defenceLabel = LIVE_RATING_MAP[info.defences] || info.defences;
@@ -1188,6 +1257,22 @@ function buildConfirmedExtraFromLiveInfo(confirmed) {
   return confirmedExtra;
 }
 
+// 保持期間（acquiredからの経過時間）の文字色。Treasury段階から動的に決まる。
+const HELD_TIME_COLORS = { 'Very Low': '#FF5555', 'Low': '#FFAA00', 'Medium': '#FFFF55', 'High': '#55FF55', 'Very High': '#55FFFF' };
+
+// "3d 14h" 形式。1時間未満は "0h"。acquiredが無い/不正な場合はnullを返す。
+function fmtHeldDuration(acquiredStr) {
+  if (!acquiredStr) return null;
+  const acquiredMs = new Date(acquiredStr).getTime();
+  if (isNaN(acquiredMs)) return null;
+  const diffMs = Date.now() - acquiredMs;
+  if (diffMs < 0) return null;
+  const totalHours = Math.floor(diffMs / 3600000);
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  return days > 0 ? `${days}d ${hours}h` : `${hours}h`;
+}
+
 function showLiveTooltip(mx, my, name, above) {
   const info = liveData && liveData[name];
   if (!info) { hideTooltip(); return; }
@@ -1215,7 +1300,12 @@ function showLiveTooltip(mx, my, name, above) {
 
   let html = `<div style="color:#ffffff; font-weight:bold; font-size:14px; margin-bottom:2px;">${escapeHtml(name)}${titleSuffix}</div>`;
   const prefixText = info.guild.prefix ? `[${info.guild.prefix}] ` : '';
-  html += `<div style="color:#94a3b8; margin-bottom:8px;">${escapeHtml(prefixText + info.guild.name)}</div>`;
+  html += `<div style="color:#94a3b8;">${escapeHtml(prefixText + info.guild.name)}</div>`;
+
+  const heldText = fmtHeldDuration(info.acquired);
+  if (heldText) {
+    html += `<div style="color:${HELD_TIME_COLORS[treasuryLabel] || '#94a3b8'}; margin-bottom:8px;">Held ${heldText}</div>`;
+  }
 
   for (const row of LIVE_RESOURCE_ROW_ORDER) {
     const data = resByType[row.type];
@@ -1228,20 +1318,24 @@ function showLiveTooltip(mx, my, name, above) {
     }
   }
 
-  const confirmedLines = [];
+  // 確定ボーナス（Lv.0は表示しない）。単一Lvに確定したものは[Lv.n]、複数候補が残るものは倍率のみのテキストで表示する。
+  const confirmedUpgrades = [];
+  if (resStorageLv !== null && resStorageLv > 0) confirmedUpgrades.push({ name: 'Larger Resource Storage', lv: resStorageLv });
+  if (emStorageLv !== null && emStorageLv > 0) confirmedUpgrades.push({ name: 'Larger Emerald Storage', lv: emStorageLv });
+  const confirmedAmbiguous = [];
   if (emComboMatches && emComboMatches.matches.length === 1) {
     for (const [bonusName, bonusLv] of Object.entries(emComboMatches.matches[0])) {
-      confirmedLines.push(`${bonusName} Lv.${bonusLv}`);
+      if (bonusLv > 0) confirmedUpgrades.push({ name: bonusName, lv: bonusLv });
     }
   } else if (emComboMatches && emComboMatches.matches.length > 1) {
-    confirmedLines.push(`Emeralds ×${emComboMatches.multiplier.toFixed(1)} (multiple combinations)`);
+    confirmedAmbiguous.push(`Emeralds ×${emComboMatches.multiplier.toFixed(1)} (multiple combinations)`);
   }
   if (resCombo && resCombo.matches.length === 1) {
     for (const [bonusName, bonusLv] of Object.entries(resCombo.matches[0])) {
-      confirmedLines.push(`${bonusName} Lv.${bonusLv}`);
+      if (bonusLv > 0) confirmedUpgrades.push({ name: bonusName, lv: bonusLv });
     }
   } else if (resCombo && resCombo.matches.length > 1) {
-    confirmedLines.push(`Resources ×${resCombo.multiplier.toFixed(1)} (multiple combinations)`);
+    confirmedAmbiguous.push(`Resources ×${resCombo.multiplier.toFixed(1)} (multiple combinations)`);
   }
 
   html += `<div style="margin-top:8px;"><span style="color:#FF55FF;">♦ Treasury: </span><span style="color:#FFFFFF;">${escapeHtml(treasuryLabel)}</span>`;
@@ -1249,19 +1343,20 @@ function showLiveTooltip(mx, my, name, above) {
   html += `</div>`;
   html += `<div><span style="color:#FF55FF;">♦ Defence: </span><span style="color:${ratingColor(defenceLabel)};">${escapeHtml(defenceLabel)}</span></div>`;
 
-  if (emStorageLv !== null) confirmedLines.unshift(`Larger Emerald Storage Lv.${emStorageLv}`);
-  if (resStorageLv !== null) confirmedLines.unshift(`Larger Resource Storage Lv.${resStorageLv}`);
-
-  html += `<div style="color:#FF55FF; margin-top:8px;">Confirmed Bonuses:</div>`;
-  if (confirmedLines.length > 0) {
-    for (const line of confirmedLines) {
-      html += `<div><span style="color:#FF55FF;">- </span><span style="color:#AAAAAA;">${escapeHtml(line)}</span></div>`;
+  // 既存のシミュレーションモードと同じ Upgrades: 見出しの下に統合する
+  html += `<div style="color:#FF55FF; margin-top:8px;">Upgrades:</div>`;
+  if (confirmedUpgrades.length > 0 || confirmedAmbiguous.length > 0) {
+    for (const { name: bonusName, lv } of confirmedUpgrades) {
+      html += `<div><span style="color:#FF55FF;">- </span><span style="color:#AAAAAA;">${escapeHtml(bonusName)} </span><span style="color:#555555;">[Lv.${lv}]</span></div>`;
+    }
+    for (const text of confirmedAmbiguous) {
+      html += `<div><span style="color:#FF55FF;">- </span><span style="color:#AAAAAA;">${escapeHtml(text)}</span></div>`;
     }
   } else {
-    html += `<div style="color:#AAAAAA;">None detected</div>`;
+    html += `<div style="color:#AAAAAA;">No upgrades active</div>`;
   }
 
-  // Phase 5: 守備ステータスの推定（EstimatedはPhase 4の確定値とは視覚的に区別する）
+  // 守備ステータスの推定（Estimatedは確定値とは視覚的に区別する）
   const confirmedExtra = buildConfirmedExtraFromLiveInfo(confirmed);
   const estimate = getDefenseEstimate(name, info, defenceLabel, confirmedExtra, resourceSnapshot);
   html += renderDefenseEstimateHTML(estimate);
@@ -1272,11 +1367,12 @@ function showLiveTooltip(mx, my, name, above) {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  LIVE DEFENSE ESTIMATE（Phase 5: オンデマンド計算・領地ごとにキャッシュ）
-//  推定ロジック本体（候補列挙・スコアリング）はeco-logic.jsにある。
-//  ここではliveData/liveHistoryから入力を組み立てるだけの薄いオーケストレーション。
+//  LIVE DEFENSE ESTIMATE（オンデマンド計算・領地ごとにキャッシュ）
+//  推定ロジック本体（グローバル位相探索・候補列挙）はeco-logic.jsにある。
+//  推定は単一スナップショットで完結し、履歴を必要としない。
 // ═══════════════════════════════════════════════════════════
 let _defenseEstimateCache = {}; // name -> { key, result }
+let _globalTransferPhase = null; // f（Live データ取得のたびに1回だけ再計算する。CLAUDE.md「守備ステータス推定」参照）
 
 // この領地を所有するギルドが所有する全領地名のSet（addedTerritoriesの代わりに使う）
 function getOwnedNamesForGuild(guildUuid) {
@@ -1288,81 +1384,119 @@ function getOwnedNamesForGuild(guildUuid) {
   return result;
 }
 
-// liveHistoryからこの領地のore/crops/wood/fishのΔstored（1分あたり）を算出する。
-// resourcesの更新は1分間隔で、30秒ごとのポーリングでは同じ値が連続するため、
-// 値が実際に変化した直近のサンプル間でのみ計算する（CLAUDE.md「ローリングバッファ」参照）。
-function computeLiveTransitions(name) {
-  const result = { ore: null, crops: null, wood: null, fish: null };
-  const points = { ore: [], crops: [], wood: [], fish: [] };
+// fの探索（EcoLogic.estimateGlobalTransferPhase、数百ms〜1秒程度）はメインスレッドをブロック
+// しないようWeb Worker（phase-worker.js）で実行する。ワーカーはliveMode中1つだけ使い回す。
+let _phaseWorker = null;
+let _phaseRequestId = 0;
 
-  for (const sample of liveHistory) {
-    const info = sample.data[name];
-    if (!info || !info.resources) continue;
-    for (const r of info.resources) {
-      const key = LIVE_RESOURCE_TYPE_MAP[r.type];
-      if (!key || key === 'emeralds') continue;
-      points[key].push({ ts: sample.timestamp, stored: r.stored });
-    }
+// Worker生成に失敗した場合（module worker非対応環境等）はnullを返す。呼び出し側はnullを
+// 「推定不可」として扱い、Liveモード自体は継続する。
+function getPhaseWorker() {
+  if (_phaseWorker) return _phaseWorker;
+  try {
+    _phaseWorker = new Worker(new URL('./phase-worker.js', import.meta.url), { type: 'module' });
+  } catch (err) {
+    _phaseWorker = null;
+  }
+  return _phaseWorker;
+}
+
+function stopPhaseWorker() {
+  if (_phaseWorker) {
+    _phaseWorker.terminate();
+    _phaseWorker = null;
+  }
+}
+
+const PHASE_WORKER_TIMEOUT_MS = 10000;
+
+// 全437領地のstoredから、グローバルな転送位相fを求める。
+// 1回のLiveデータ取得につき1回だけ呼び出し、結果を_globalTransferPhaseにキャッシュする。
+// Worker生成失敗・例外・タイムアウトのいずれの場合も_globalTransferPhaseをnullにして
+// resolveする（推定セクションのみ非表示になり、Liveモードの他の表示は継続する）。
+function computeGlobalTransferPhase() {
+  if (!liveData) { _globalTransferPhase = null; return Promise.resolve(); }
+  const inputs = [];
+  const bfsCache = {}; // guildHqName -> distances（ギルドごとに1回だけBFSする）
+  for (const [name, info] of Object.entries(liveData)) {
+    if (!info.guild || !info.guild.name || !info.resources) continue;
+    const confirmed = computeLiveConfirmedInfo(name, info, bfsCache);
+    const confirmedExtra = buildConfirmedExtraFromLiveInfo(confirmed);
+    inputs.push({
+      observedRating: confirmed.defenceLabel, isHQ: info.hq,
+      confirmedExtra, resourceSnapshot: confirmed.resourceSnapshot
+    });
   }
 
-  for (const key of Object.keys(points)) {
-    const series = points[key];
-    for (let i = series.length - 1; i > 0; i--) {
-      if (series[i].stored !== series[i - 1].stored) {
-        const elapsedMin = (series[i].ts - series[i - 1].ts) / 60000;
-        if (elapsedMin > 0) {
-          result[key] = { deltaPerMinute: (series[i].stored - series[i - 1].stored) / elapsedMin };
-        }
-        break;
+  const worker = getPhaseWorker();
+  if (!worker) { _globalTransferPhase = null; return Promise.resolve(); }
+
+  const requestId = ++_phaseRequestId;
+  return new Promise(resolve => {
+    let settled = false;
+    const cleanup = () => {
+      worker.removeEventListener('message', messageHandler);
+      worker.removeEventListener('error', errorHandler);
+      clearTimeout(timeoutId);
+    };
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      _globalTransferPhase = result ? result.f : null;
+      // 調査タスク（CLAUDE.md「守備ステータスの推定」5.1参照）用の一時ログ。UIには出さない。
+      if (result) {
+        console.log(`[phase] ${new Date().toISOString()} f=${result.f.toFixed(6)} secondsToTransfer=${Math.round(3600 * result.f)} coverage=${result.coverage}`);
       }
-    }
-  }
-  return result;
+      resolve();
+    };
+    const messageHandler = (e) => {
+      if (e.data.requestId !== requestId) return; // 古いリクエストの結果は無視（追い越し対策）
+      finish(e.data.result);
+    };
+    const errorHandler = () => finish(null);
+    const timeoutId = setTimeout(() => finish(null), PHASE_WORKER_TIMEOUT_MS);
+
+    worker.addEventListener('message', messageHandler);
+    worker.addEventListener('error', errorHandler);
+    worker.postMessage({ requestId, inputs });
+  });
 }
 
 function getDefenseEstimate(name, info, defenceLabel, confirmedExtra, resourceSnapshot) {
-  const cacheKey = JSON.stringify({ defenceLabel, hq: info.hq, confirmedExtra });
+  const cacheKey = JSON.stringify({ defenceLabel, hq: info.hq, confirmedExtra, f: _globalTransferPhase });
   const cached = _defenseEstimateCache[name];
   if (cached && cached.key === cacheKey) return cached.result;
 
   const ownedNames = getOwnedNamesForGuild(info.guild.uuid);
   const { mult } = EcoLogic.calcLiveDefenseMult(name, territories, ownedNames, info.hq, []);
-  const transitions = computeLiveTransitions(name);
-  const sampleCount = liveHistory.filter(s => !!s.data[name]).length;
 
   const result = EcoLogic.estimateDefenseStats({
-    observedRating: defenceLabel, isHQ: info.hq, mult, confirmedExtra, resourceSnapshot, transitions, sampleCount
+    observedRating: defenceLabel, isHQ: info.hq, mult, confirmedExtra, resourceSnapshot, f: _globalTransferPhase
   });
 
   _defenseEstimateCache[name] = { key: cacheKey, result };
   return result;
 }
 
+// 推定できない場合（levelsがnull）はセクションごと空文字列を返す。範囲ではなく単一値を表示する。
 function renderDefenseEstimateHTML(estimate) {
-  let html = `<div style="color:#FF55FF; margin-top:8px;">Estimated Defense:</div>`;
-
-  if (estimate.insufficientSamples) {
-    html += `<div style="color:#64748b;">Not enough samples yet (${estimate.samples}/3). Keep Live Mode on and wait.</div>`;
-    return html;
-  }
-
-  if (!estimate.levels) {
-    html += `<div style="color:#64748b;">No candidates matched (unexpected).</div>`;
-    return html;
-  }
+  if (!estimate.levels) return '';
 
   const L = estimate.levels;
-  const line = (label, lv) => `<div><span style="color:#FF55FF;">- </span><span style="color:#94a3b8;">${label} </span><span style="color:#64748b;">Lv.${lv.min} 〜 ${lv.max}</span></div>`;
+  let html = `<div style="color:#FF55FF; margin-top:8px;">Estimated Defense:</div>`;
+  const line = (label, lv) => `<div><span style="color:#FF55FF;">- </span><span style="color:#94a3b8;">${label} </span><span style="color:#64748b;">[Lv.${lv}]</span></div>`;
   html += line('Damage', L.damage);
   html += line('Attack Speed', L.attack);
   html += line('Health', L.health);
   html += line('Defense', L.defense);
-  html += `<div style="color:#64748b; font-size:11px; margin-top:2px;">${fmtNum(estimate.candidates)} candidates / ${estimate.samples} samples</div>`;
 
-  if (estimate.ehp && estimate.dps) {
-    html += `<div style="margin-top:6px;"><span style="color:#FF55FF;">Estimated Stats:</span></div>`;
-    html += `<div><span style="color:#FF55FF;">- </span><span style="color:#94a3b8;">EHP </span><span style="color:#64748b;">${fmt(estimate.ehp.min)} 〜 ${fmt(estimate.ehp.max)}</span></div>`;
-    html += `<div><span style="color:#FF55FF;">- </span><span style="color:#94a3b8;">DPS </span><span style="color:#64748b;">${fmt(estimate.dps.min)} 〜 ${fmt(estimate.dps.max)}</span></div>`;
+  html += `<div style="color:#FF55FF; margin-top:8px;">Estimated Stats:</div>`;
+  html += `<div><span style="color:#FF55FF;">- </span><span style="color:#94a3b8;">EHP ${fmt(estimate.ehp)}</span></div>`;
+  html += `<div><span style="color:#FF55FF;">- </span><span style="color:#94a3b8;">DPS ${fmt(estimate.dps)}</span></div>`;
+
+  if (estimate.secondsToTransfer !== null && estimate.secondsToTransfer !== undefined) {
+    html += `<div style="margin-top:8px; color:#555555;">Resources move in ${estimate.secondsToTransfer}s</div>`;
   }
 
   return html;
@@ -1554,6 +1688,22 @@ function getFilterCategoriesLive(name) {
   }
 
   return [];
+}
+
+// マップ上の資源アイコン描画用（drawTerritoriesLive）。判定にはgenerationを使う（>0で産出中と判定）。
+// cityのみbaseGeneration（18,000以上）で判定する（generationはTreasuryバフ等で変動するため）。
+function getLiveResourceFlags(info) {
+  const flags = { city: false, ore: false, wood: false, fish: false, crops: false };
+  for (const r of info.resources || []) {
+    const key = LIVE_RESOURCE_TYPE_MAP[r.type];
+    if (!key) continue;
+    if (key === 'emeralds') {
+      if ((r.baseGeneration || 0) >= 18000) flags.city = true;
+    } else if ((r.generation || 0) > 0) {
+      flags[key] = true;
+    }
+  }
+  return flags;
 }
 
 // Territory Managerリスト・Select All・Clear Allで使う表示判定。HQは常にtrue。
@@ -3280,13 +3430,17 @@ async function loadGuilds() {
 // ═══════════════════════════════════════════════════════════
 const LIVE_RESOURCE_TYPE_MAP = { EMERALD: 'emeralds', ORE: 'ore', WOOD: 'wood', FISH: 'fish', CROP: 'crops' };
 const LIVE_POLL_INTERVAL_MS = 30000;
-const LIVE_HISTORY_MAX = 20;
 
-function formatClockTime(ts) {
-  return new Date(ts).toLocaleTimeString();
+// LIVEバッジの表示切り替え。データ取得に失敗している間だけエラー色にする。
+function updateLiveBadge() {
+  const badge = document.getElementById('live-badge');
+  if (!badge) return;
+  badge.style.display = liveMode ? '' : 'none';
+  badge.classList.toggle('error', liveMode && !!_liveFetchError);
 }
 
-// API取得失敗時は直前のliveData/liveHistoryを保持したまま次のポーリングを待つ（画面を空にしない）。
+// API取得失敗時は直前のliveDataを保持したまま次のポーリングを待つ（画面を空にしない）。
+// 守備推定に使うグローバル転送位相（_globalTransferPhase）はデータ取得のたびに1回だけ再計算する。
 async function fetchLiveTerritoryData() {
   try {
     const res = await fetch('https://corsproxy.io/?https://api.wynncraft.com/v3/guild/list/territory');
@@ -3295,14 +3449,13 @@ async function fetchLiveTerritoryData() {
 
     liveData = data;
     _liveFetchError = null;
-    liveHistory.push({ timestamp: Date.now(), data });
-    if (liveHistory.length > LIVE_HISTORY_MAX) liveHistory.shift();
+    await computeGlobalTransferPhase(); // Web Worker内で実行するためメインスレッドはブロックしない
     updateLiveGuildOptions();
   } catch (err) {
     _liveFetchError = err.message || 'Unknown Error';
     console.warn('Live territory fetch error:', err);
   }
-  renderLiveDataScreen();
+  updateLiveBadge();
   if (liveMode) draw();
 }
 
@@ -3344,7 +3497,13 @@ async function onLiveModeToggle() {
   const checked = document.getElementById('live-mode-toggle').checked;
   if (checked) {
     liveMode = true;
-    document.getElementById('live-badge').style.display = '';
+    // Liveモードは表示レイヤーであり、シミュレーション状態を触る操作は無効にする。
+    // マップ選択（青ハイライト）はLiveモードに入った時点でクリアし、Add Selected Territoriesも押せなくする。
+    selectedTerritories.clear();
+    liveTooltipPinnedName = null;
+    updateSelectedCount();
+    document.getElementById('add-selected-btn').disabled = true;
+    updateLiveBadge();
     renderLiveDataScreen();
     await fetchGuildColors();
     startLivePolling();
@@ -3352,48 +3511,25 @@ async function onLiveModeToggle() {
     liveMode = false;
     stopLivePollingTimer();
     liveData = null;
-    liveHistory = [];
     _liveFetchError = null;
     _defenseEstimateCache = {};
+    _globalTransferPhase = null;
+    stopPhaseWorker();
+    liveTooltipPinnedName = null;
+    hideTooltip();
     allLiveGuildDisplays = [];
     liveGuildDisplayToUuid = {};
-    document.getElementById('live-badge').style.display = 'none';
+    document.getElementById('add-selected-btn').disabled = false;
+    updateLiveBadge();
     renderLiveDataScreen();
     refreshUI();
   }
 }
 
-function manualRefreshLive() {
-  if (!liveMode) return;
-  fetchLiveTerritoryData();
-}
-
 function renderLiveDataScreen() {
   const toggle = document.getElementById('live-mode-toggle');
-  const statusEl = document.getElementById('live-status');
-  if (!toggle || !statusEl) return;
+  if (!toggle) return;
   toggle.checked = liveMode;
-
-  if (!liveMode) {
-    statusEl.innerHTML = 'Live Mode is off.';
-    return;
-  }
-
-  const sampleCount = liveHistory.length;
-  const lastTs = sampleCount > 0 ? liveHistory[liveHistory.length - 1].timestamp : null;
-
-  let html = '';
-  if (_liveFetchError) {
-    html += `<div class="live-error">⚠ ${escapeHtml(_liveFetchError)}</div>`;
-    if (lastTs) html += `<div>Showing last data from ${formatClockTime(lastTs)}.</div>`;
-  } else if (lastTs) {
-    html += `<div class="live-ok">Connected</div>`;
-    html += `<div>Last updated ${formatClockTime(lastTs)}</div>`;
-  } else {
-    html += `<div>Connecting…</div>`;
-  }
-  html += `<div>Samples: ${sampleCount} / ${LIVE_HISTORY_MAX}</div>`;
-  statusEl.innerHTML = html;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -3509,7 +3645,7 @@ Object.assign(window, {
   toggleAddResourceForm, clearAllResourceOverrides, addResourceOverride, setFilterMode, updateModalStats,
   clearFilter, closeFilterModal, closeCustomSettings, toggleListSelection, removeTerritory,
   removeCustomConnection, removeResourceOverride, toggleFilterValue,
-  onLiveModeToggle, manualRefreshLive, importLiveGuild
+  onLiveModeToggle, importLiveGuild
 });
 
 // ═══════════════════════════════════════════════════════════

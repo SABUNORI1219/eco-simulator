@@ -393,10 +393,33 @@ export function calcLiveDefenseMult(name, territories, ownedNames, isHQ, customC
 }
 
 // ═══════════════════════════════════════════════════════════
-//  DEFENSE STAT ESTIMATION（Phase 5: Liveモード専用）
-//  レーティングだけでは個別レベルが一切絞れない（CLAUDE.md「守備ステータス推定の既知の限界」参照）ため、
-//  資源消費量の観測（ローリングバッファのΔstored）を「除外」ではなく「スコアリング」の制約として使い、
-//  候補群からレベルの範囲を出す近似モデル。個別レベルは確定しない。
+//  DEFENSE STAT ESTIMATION（Liveモード専用）
+//
+//  ゲーム内では毎分1回、資源が隣接領地へ1ホップ移動する。territoryは転送時に1分ぶんの
+//  維持費を受け取り、次の転送までの60秒で消費する。同時に、自前の生産分は毎秒たまり続け、
+//  次の転送でまとめて送出される（余剰も次の転送でHQ方向へ返送されるため蓄積しない）。
+//  転送からの経過秒をt（0≤t<60）、f = (1 − t/60) / 60 と置くと、資源rについて次が成り立つ
+//  （実データで相対誤差0.05%を確認済み）。
+//
+//    stored[r] = consumption[r] × f + generation[r] × (1/60 − f)
+//                 ← 維持費の残り        ← 自前の生産でたまった分
+//
+//  generation === 0（その資源を生産していない）の場合は補正項が0になり、単純な比例関係
+//  stored[r] = consumption[r] × f に一致する。generation[r] は API の値をそのまま使う
+//  （Treasuryバフ適用後の実際の生産速度のため、別途バフを掛け直さない）。
+//
+//  fはゲーム全体で共通の「転送位相」であり、レーティング制約と比例モデルの両方を許容誤差内で
+//  同時に満たす候補が存在する領地数（カバレッジ）を最大化するfを探索したうえで
+//  （estimateGlobalTransferPhase）、領地ごとに残差最小の候補を選ぶ（estimateDefenseStats）ことで、
+//  個別レベルを単一値として確定できる。推定は単一スナップショットで完結し、履歴を必要としない。
+//
+//  守備ステータス推定の既知の限界: storedは整数であるため、1単位が表す消費量は1/fになる。
+//  fは転送位相によって決まり、転送直後は1/60（1単位=消費量60）だが、転送直前には0に近づいて
+//  分解能が発散する。DEFENSE_COST_TABLEの低レベル側の間隔は100/200/300と小さいため、fが小さい
+//  スナップショットではLv.0とLv.1がどちらもstored=0になり、原理的に区別できない。Lv.2〜4も
+//  1・2・4としか差が出ないため、±1の誤差で1〜2段ずれる。APIはresourcesを60秒ごとに更新し、
+//  ゲームの転送周期も60秒であるため、原則として毎回同じ位相のデータしか得られない。
+//  低守備領地の推定精度は、観測できる位相に完全に依存する。
 // ═══════════════════════════════════════════════════════════
 function bonusCost(name, level) {
   const cfg = BONUS_CONFIG.find(b => b.name === name);
@@ -404,7 +427,7 @@ function bonusCost(name, level) {
 }
 
 // 候補1件の資源消費量（ore/crops/wood/fish）を算出する。
-// confirmedExtraはPhase 4で確定したボーナス（Efficient Emeralds→ore, Emerald Rate→crops,
+// confirmedExtraは確定したボーナス（Efficient Emeralds→ore, Emerald Rate→crops,
 // Larger Emerald Storage→wood）の消費分。fishを消費する確定可能なボーナスは存在しない。
 function candidateConsumption(damage, attack, health, defense, aura, volley, confirmedExtra) {
   return {
@@ -415,109 +438,273 @@ function candidateConsumption(damage, attack, health, defense, aura, volley, con
   };
 }
 
-// 観測（resourceSnapshotのstored/limit比、transitionsのΔstored）との整合性をスコアリングする。
-// 除外ではなく減点方式にする（観測にノイズがある場合に候補が全滅するのを防ぐため）。
-function scoreCandidate(consumption, resourceSnapshot, transitions) {
-  let score = 0;
-  for (const r of ['ore', 'crops', 'wood', 'fish']) {
-    const snap = resourceSnapshot[r];
-    if (!snap || !snap.limit) continue;
-    const ratio = snap.stored / snap.limit;
-    const generationPerMinute = (snap.generation || 0) / 60;
+const NON_EMERALD_RESOURCES = ['ore', 'crops', 'wood', 'fish'];
 
-    if (ratio >= 0.95) {
-      // stored が limit に張り付いている → 消費量は供給を下回っている。消費が高い候補ほど不自然。
-      score -= consumption[r] / 100;
-    } else if (ratio <= 0.05) {
-      // stored がほぼ0 → 消費が供給を上回っている可能性。消費が生産量より大幅に低い候補ほど不自然。
-      score -= Math.max(0, generationPerMinute * 60 - consumption[r]) / 100;
-    }
-
-    const trans = transitions[r];
-    if (trans && ratio < 0.9) {
-      // stored が上限に張り付いていない場合のみ、Δstoredから消費量の下限を見積もる。
-      // HQからの供給・上流への送出は観測できないため、この下限は完全ではない近似値として扱う
-      // （下回る候補を完全に除外せず、重い減点にとどめる）。
-      const minConsumptionPerMinute = Math.max(0, generationPerMinute - trans.deltaPerMinute);
-      const consumptionPerMinute = consumption[r] / 60;
-      if (consumptionPerMinute < minConsumptionPerMinute) {
-        score -= (minConsumptionPerMinute - consumptionPerMinute) * 10;
-      }
-    }
+// Step 1・Step 2共通: 資源ごとに、生産分を補正したconsumption目標値（stored[r]から逆算した値）と、
+// 拘束（levelsNearTargetによる絞り込み）に使えるかどうかを求める。
+// 補正後の値が負になる資源、またはstoredデータ自体が無い資源は「除外」とし、その系統は無拘束
+// （0〜11の全域）として扱う。除外された資源は残差計算・妥当性チェックからも除く
+// （負の値を無理に拘束・検算に使うと、他の資源から得られた候補まで巻き添えで無効化されてしまうため）。
+function computeResourceModel(stored, generation, f) {
+  const model = {};
+  for (const r of NON_EMERALD_RESOURCES) {
+    const s = stored[r];
+    if (s === undefined) { model[r] = { excluded: true, target: null }; continue; }
+    const target = (s - (generation[r] || 0) * (F_MAX - f)) / f;
+    model[r] = { excluded: target < 0, target };
   }
-  return score;
+  return model;
 }
 
-function minMax(arr) {
-  return { min: Math.min(...arr), max: Math.max(...arr) };
+// Step 1: グローバル位相fの探索。
+//
+// difficulty/ratingの一致はfを両側から拘束できる唯一の絶対的制約である（消費量テーブルは
+// 100〜22800（228倍）と幅が広く、残差の最小化だけではfの値を1つに定められない。どんなfでも
+// 「たまたま比が近い」候補がどこかに見つかってしまうため）。そこで目的関数は
+// 「レーティング制約と比例モデルの両方を許容誤差内で同時に満たす候補が1件以上存在する領地の数
+// （カバレッジ）を最大化するf」を採用する（同カバレッジの場合は残差合計が小さいほうを採る）。
+// stored の大小によるフィルタ・重み付け・対象領地数の上限は設けない（該当する全領地を使う）。
+//
+// 候補の列挙は「全列挙してフィルタ」ではなく「fから逆算」で行う。生産分を補正した
+// consumption[r] ≈ (stored[r] − generation[r]×(1/60−f)) / f が直接求まり、DEFENSE_COST_TABLEから
+// 近い値を引けばレベルが絞れる（wood→Health、fish→Defense、ore→Damage+Tower Volley、
+// crops→Attack+Tower Aura）。生産している資源も同じ式で扱える（generation===0なら補正項が0になり
+// 従来の式と一致する）。4系統は互いに独立なので、系統ごとに許容誤差内のレベル（の組）を求めてから
+// 直積を取り、最後にrating一致でフィルタする。これにより1領地あたりの候補数が12^4×16=331,776通り
+// から数十〜数百通りに減る。fの探索自体も、粗探索（60分割）→その近傍を細探索（40分割）の
+// 2段グリッドにし、全体で約100回のf評価で完結させる（600分割の全域探索はしない）。
+// 全域でカバレッジ0（＝許容誤差内の候補が1件も無い）の場合でも、方針4「fをnullにしない」に従い、
+// 評価した全f点のうち残差合計が最小のものにフォールバックする。
+//
+// 1回のLiveデータ取得につき1回だけ呼び出すこと。
+const F_MAX = 1 / 60;
+const PHASE_TOLERANCE_PER_RESOURCE = 1.5; // storedは整数（丸め誤差±0.5相当）+ 観測ノイズの余裕
+const PHASE_COARSE_STEPS = 60;
+const PHASE_FINE_STEPS = 40;
+const ALL_LEVELS_0_11 = [0,1,2,3,4,5,6,7,8,9,10,11];
+
+// DEFENSE_COST_TABLE[lv] + extra が target の consTolerance 以内に収まるレベル一覧。
+function levelsNearTarget(target, extra, consTolerance) {
+  const result = [];
+  for (let lv = 0; lv <= 11; lv++) {
+    if (Math.abs(DEFENSE_COST_TABLE[lv] + extra - target) <= consTolerance) result.push(lv);
+  }
+  return result;
 }
 
-// params:
-//   observedRating: API defences（HQなら既にHQ調整済みのラベル。例 "High"）
-//   isHQ: boolean
-//   mult: calcLiveDefenseMult()で算出済みの倍率
-//   confirmedExtra: { ore, crops, wood, fish }（Phase 4で確定した分の消費量）
-//   resourceSnapshot: { ore: {stored,limit,generation}, crops: {...}, wood: {...}, fish: {...} }
-//   transitions: { ore: {deltaPerMinute}|null, crops, wood, fish }
-//   sampleCount: liveHistory内でこの領地のデータが存在したサンプル数
-export function estimateDefenseStats({ observedRating, isHQ, mult, confirmedExtra, resourceSnapshot, transitions, sampleCount }) {
-  if (sampleCount < 3) {
-    return { insufficientSamples: true, samples: sampleCount, candidates: 0, levels: null, ehp: null, dps: null };
+// 1領地・1つのfについて、4系統（wood→Health, fish→Defense, ore→Damage+Volley,
+// crops→Attack+Aura）を逆算し、直積 × rating一致で候補一覧を求める。
+// modelで除外された系統は無拘束（全域）として扱う。Step 1（evaluatePhase）・Step 2
+// （estimateDefenseStats）の両方から呼ばれる（候補生成のロジックを2箇所に持たないため）。
+function deriveTerritoryCandidates(input, f, model) {
+  const { observedRating, isHQ, confirmedExtra } = input;
+  const extra = confirmedExtra || {};
+  const consTolerance = PHASE_TOLERANCE_PER_RESOURCE / f;
+
+  // 全資源が除外された領地は推定不可（無拘束の全域探索に落ちるのを防ぐ）。
+  if (model.wood.excluded && model.fish.excluded && model.ore.excluded && model.crops.excluded) return [];
+
+  const healthSet = model.wood.excluded
+    ? ALL_LEVELS_0_11
+    : levelsNearTarget(model.wood.target, extra.wood || 0, consTolerance);
+  if (healthSet.length === 0) return [];
+
+  const defenseSet = model.fish.excluded
+    ? ALL_LEVELS_0_11
+    : levelsNearTarget(model.fish.target, extra.fish || 0, consTolerance);
+  if (defenseSet.length === 0) return [];
+
+  const dmgVolleyPairs = [];
+  if (model.ore.excluded) {
+    for (const dmg of ALL_LEVELS_0_11) for (let volley = 0; volley <= 3; volley++) dmgVolleyPairs.push([dmg, volley]);
+  } else {
+    for (let volley = 0; volley <= 3; volley++) {
+      const volleyExtra = volley > 0 ? bonusCost('Tower Volley', volley) : 0;
+      for (const dmg of levelsNearTarget(model.ore.target - volleyExtra, extra.ore || 0, consTolerance)) dmgVolleyPairs.push([dmg, volley]);
+    }
   }
+  if (dmgVolleyPairs.length === 0) return [];
 
-  const scored = [];
-  for (let damage = 0; damage <= 11; damage++) {
-    for (let attack = 0; attack <= 11; attack++) {
-      for (let health = 0; health <= 11; health++) {
-        for (let defense = 0; defense <= 11; defense++) {
-          for (let aura = 0; aura <= 3; aura++) {
-            for (let volley = 0; volley <= 3; volley++) {
-              const difficulty = calcDifficulty(health, damage, attack, defense, aura, volley);
-              let rating = difficultyToRating(difficulty);
-              if (isHQ) rating = bumpRatingForHQ(rating);
-              if (rating !== observedRating) continue;
+  const atkAuraPairs = [];
+  if (model.crops.excluded) {
+    for (const atk of ALL_LEVELS_0_11) for (let aura = 0; aura <= 3; aura++) atkAuraPairs.push([atk, aura]);
+  } else {
+    for (let aura = 0; aura <= 3; aura++) {
+      const auraExtra = aura > 0 ? bonusCost('Tower Aura', aura) : 0;
+      for (const atk of levelsNearTarget(model.crops.target - auraExtra, extra.crops || 0, consTolerance)) atkAuraPairs.push([atk, aura]);
+    }
+  }
+  if (atkAuraPairs.length === 0) return [];
 
-              const consumption = candidateConsumption(damage, attack, health, defense, aura, volley, confirmedExtra);
-              const score = scoreCandidate(consumption, resourceSnapshot, transitions);
-              scored.push({ damage, attack, health, defense, aura, volley, score });
-            }
-          }
+  const candidates = [];
+  for (const health of healthSet) {
+    for (const defense of defenseSet) {
+      for (const [damage, volley] of dmgVolleyPairs) {
+        for (const [attack, aura] of atkAuraPairs) {
+          const difficulty = calcDifficulty(health, damage, attack, defense, aura, volley);
+          let rating = difficultyToRating(difficulty);
+          if (isHQ) rating = bumpRatingForHQ(rating);
+          if (rating !== observedRating) continue;
+          candidates.push({ damage, attack, health, defense, aura, volley });
         }
       }
     }
   }
+  return candidates;
+}
 
-  if (scored.length === 0) {
-    return { insufficientSamples: false, samples: sampleCount, candidates: 0, levels: null, ehp: null, dps: null };
+// 候補1件の残差（除外された資源は除く）。
+function candidateResidual(c, confirmedExtra, model, stored, generation, f) {
+  const consumption = candidateConsumption(c.damage, c.attack, c.health, c.defense, c.aura, c.volley, confirmedExtra || {});
+  let residual = 0;
+  for (const r of NON_EMERALD_RESOURCES) {
+    if (model[r].excluded) continue;
+    const predicted = consumption[r] * f + (generation[r] || 0) * (F_MAX - f);
+    const diff = stored[r] - predicted;
+    residual += diff * diff;
+  }
+  return residual;
+}
+
+// あるfについて、全領地のカバレッジ数（rating一致かつ許容誤差内の候補を持つ領地数）と
+// 残差合計（カバー領地のみ、各領地の最小残差の合計）を求める。
+function evaluatePhase(prepared, f) {
+  let coverage = 0;
+  let totalResidual = 0;
+  for (const { input, stored, generation } of prepared) {
+    const model = computeResourceModel(stored, generation, f);
+    const candidates = deriveTerritoryCandidates(input, f, model);
+    if (candidates.length === 0) continue;
+    coverage++;
+    let minResidual = Infinity;
+    for (const c of candidates) {
+      const residual = candidateResidual(c, input.confirmedExtra, model, stored, generation, f);
+      if (residual < minResidual) minResidual = residual;
+    }
+    totalResidual += minResidual;
+  }
+  return { f, coverage, totalResidual };
+}
+
+// territoryInputs: [{ observedRating, isHQ, confirmedExtra, resourceSnapshot }, ...]
+// 戻り値: { f, coverage } | null（1件も評価できなかった場合のみnull）
+export function estimateGlobalTransferPhase(territoryInputs) {
+  const prepared = [];
+  for (const input of territoryInputs) {
+    const stored = {}, generation = {};
+    for (const r of NON_EMERALD_RESOURCES) {
+      const d = input.resourceSnapshot[r];
+      if (d) { stored[r] = d.stored; generation[r] = d.generation || 0; }
+    }
+    prepared.push({ input, stored, generation });
+  }
+  if (prepared.length === 0) return null;
+
+  // 粗探索（60分割）
+  const coarseResults = [];
+  for (let k = 1; k <= PHASE_COARSE_STEPS; k++) {
+    coarseResults.push(evaluatePhase(prepared, (F_MAX * k) / PHASE_COARSE_STEPS));
+  }
+  const maxCoarseCoverage = Math.max(...coarseResults.map(r => r.coverage));
+  const tiedCoarseFs = coarseResults.filter(r => r.coverage === maxCoarseCoverage).map(r => r.f);
+  const coarseStep = F_MAX / PHASE_COARSE_STEPS;
+  const loBound = Math.max(0, Math.min(...tiedCoarseFs) - coarseStep);
+  const hiBound = Math.min(F_MAX, Math.max(...tiedCoarseFs) + coarseStep);
+
+  // 細探索（±1粗ステップの範囲を40分割）
+  const fineResults = [];
+  for (let k = 0; k <= PHASE_FINE_STEPS; k++) {
+    const f = loBound + (hiBound - loBound) * (k / PHASE_FINE_STEPS);
+    if (f > 0) fineResults.push(evaluatePhase(prepared, f));
   }
 
-  // 上位候補（スコア上位30%、最低50件）を残して範囲を出す。
-  scored.sort((a, b) => b.score - a.score);
-  const keepCount = Math.max(50, Math.ceil(scored.length * 0.3));
-  const top = scored.slice(0, Math.min(keepCount, scored.length));
-
-  const levels = {
-    damage: minMax(top.map(c => c.damage)),
-    attack: minMax(top.map(c => c.attack)),
-    health: minMax(top.map(c => c.health)),
-    defense: minMax(top.map(c => c.defense))
-  };
-
-  let ehpMin = Infinity, ehpMax = -Infinity, dpsMin = Infinity, dpsMax = -Infinity;
-  for (const c of top) {
-    const stats = computeStatsFromLevels(c.health, c.damage, c.attack, c.defense, mult);
-    if (stats.finalHp < ehpMin) ehpMin = stats.finalHp;
-    if (stats.finalHp > ehpMax) ehpMax = stats.finalHp;
-    if (stats.dps < dpsMin) dpsMin = stats.dps;
-    if (stats.dps > dpsMax) dpsMax = stats.dps;
+  const allResults = coarseResults.concat(fineResults);
+  const maxCoverage = Math.max(...allResults.map(r => r.coverage));
+  let best = null;
+  for (const r of allResults) {
+    if (r.coverage !== maxCoverage) continue;
+    if (best === null || r.totalResidual < best.totalResidual) best = r;
   }
+  return { f: best.f, coverage: best.coverage }; // 方針4: coverageが0でも、残差合計最小のfを返す（nullにしない）
+}
+
+// Step 2: 領地ごとに、Step 1と同じderiveTerritoryCandidates()で候補を絞り込み（全列挙はしない）、
+// 妥当性チェック（転送残り時間0〜60秒の範囲・消費量と補正後storedの符号一致）を通過したもののうち
+// 正規化残差が最小の1件を選ぶ。範囲ではなく単一値を返す。
+// params:
+//   observedRating: API defences（HQなら既にHQ調整済みのラベル。例 "High"）
+//   isHQ: boolean
+//   mult: calcLiveDefenseMult()で算出済みの倍率
+//   confirmedExtra: { ore, crops, wood, fish }（確定済みボーナスの消費量）
+//   resourceSnapshot: { ore: {stored,limit,generation}, crops: {...}, wood: {...}, fish: {...} }
+//   f: estimateGlobalTransferPhase()で求めたグローバル位相
+export function estimateDefenseStats({ observedRating, isHQ, mult, confirmedExtra, resourceSnapshot, f }) {
+  if (f === null || f === undefined) {
+    return { levels: null, ehp: null, dps: null, secondsToTransfer: null, residual: null };
+  }
+
+  const stored = {}, generation = {};
+  for (const r of NON_EMERALD_RESOURCES) {
+    const d = resourceSnapshot[r];
+    if (d) { stored[r] = d.stored; generation[r] = d.generation || 0; }
+  }
+
+  const model = computeResourceModel(stored, generation, f);
+  const candidates = deriveTerritoryCandidates({ observedRating, isHQ, confirmedExtra }, f, model);
+  if (candidates.length === 0) {
+    return { levels: null, ehp: null, dps: null, secondsToTransfer: null, residual: null };
+  }
+
+  const includedResources = NON_EMERALD_RESOURCES.filter(r => !model[r].excluded);
+  const sumSq = includedResources.reduce((s, r) => s + stored[r] ** 2, 0);
+  if (sumSq <= 0) {
+    return { levels: null, ehp: null, dps: null, secondsToTransfer: null, residual: null };
+  }
+
+  let best = null;
+  for (const c of candidates) {
+    const consumption = candidateConsumption(c.damage, c.attack, c.health, c.defense, c.aura, c.volley, confirmedExtra || {});
+
+    let valid = true;
+    let residual = 0;
+    for (const r of includedResources) {
+      const cons = consumption[r];
+      // 維持費由来の残り（stored[r]から生産でたまった分を除いたもの）。モデルが正しければ cons×f に一致する。
+      const correctedStored = stored[r] - generation[r] * (F_MAX - f);
+      const consZero = cons === 0;
+      const correctedZero = Math.abs(correctedStored) <= PHASE_TOLERANCE_PER_RESOURCE;
+      if (consZero !== correctedZero) { valid = false; break; }
+      if (!consZero) {
+        // fr（維持費由来の残りの比率）が0〜F_MAXの範囲外なら、個別に係数を当てはめた場合の
+        // 「転送までの残り時間」が0〜60秒の範囲外であることを意味するため除外する。
+        // 補正前はstored・consとも非負のためfr<0は原理的に起こらない死んだ条件だったが、
+        // Phase 1の生産分補正によりcorrectedStoredが負になり得るため、fr<0も現在は意味を持つ。
+        const fr = correctedStored / cons;
+        if (fr < 0 || fr > F_MAX) { valid = false; break; }
+      }
+      residual += (stored[r] - (cons * f + generation[r] * (F_MAX - f))) ** 2;
+    }
+    if (!valid) continue;
+
+    const normResidual = residual / sumSq;
+    if (best === null || normResidual < best.residual) {
+      best = { damage: c.damage, attack: c.attack, health: c.health, defense: c.defense, residual: normResidual };
+    }
+  }
+
+  if (best === null) {
+    return { levels: null, ehp: null, dps: null, secondsToTransfer: null, residual: null };
+  }
+
+  const stats = computeStatsFromLevels(best.health, best.damage, best.attack, best.defense, mult);
+  // f = (1 − t/60) / 60 なので、転送までの残り時間 = 3600×f（60×(1−60f) は転送からの経過秒であり、残り時間ではない）。
+  const secondsToTransfer = Math.round(3600 * f);
 
   return {
-    insufficientSamples: false,
-    samples: sampleCount,
-    candidates: scored.length,
-    levels,
-    ehp: { min: ehpMin, max: ehpMax },
-    dps: { min: dpsMin, max: dpsMax }
+    levels: { damage: best.damage, attack: best.attack, health: best.health, defense: best.defense },
+    ehp: stats.finalHp,
+    dps: stats.dps,
+    secondsToTransfer,
+    residual: best.residual
   };
 }

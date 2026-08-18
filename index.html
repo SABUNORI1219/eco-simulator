@@ -45,7 +45,7 @@
 
   <div class="ctrl-section">
     <h3>Selected on Map (<span id="selected-count">0</span>)</h3>
-    <button class="primary" onclick="addSelectedTerritories()">Add Selected Territories</button>
+    <button class="primary" id="add-selected-btn" onclick="addSelectedTerritories()">Add Selected Territories</button>
   </div>
 
   <div class="ctrl-section">
@@ -252,13 +252,12 @@
         <h2>Live Data</h2>
       </div>
       <hr class="divider">
+      <!-- 手動更新ボタンは設けない。APIのキャッシュは10秒、resourcesの更新は1分間隔のため、
+           30秒ごとの自動ポーリング以上の頻度で叩いても同じ内容が返るだけで意味がない。 -->
       <label class="live-enable-row">
         <input type="checkbox" id="live-mode-toggle" onchange="onLiveModeToggle()">
         <span>Enable Live Mode</span>
       </label>
-
-      <div id="live-status"></div>
-      <button onclick="manualRefreshLive()">Refresh Now</button>
 
       <hr class="divider">
       <div class="res-field-label">Guild:</div>
