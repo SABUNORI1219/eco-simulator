@@ -460,9 +460,24 @@ function computeResourceModel(stored, generation, f) {
 //
 // difficulty/ratingの一致はfを両側から拘束できる唯一の絶対的制約である（消費量テーブルは
 // 100〜22800（228倍）と幅が広く、残差の最小化だけではfの値を1つに定められない。どんなfでも
-// 「たまたま比が近い」候補がどこかに見つかってしまうため）。そこで目的関数は
-// 「レーティング制約と比例モデルの両方を許容誤差内で同時に満たす候補が1件以上存在する領地の数
-// （カバレッジ）を最大化するf」を採用する（同カバレッジの場合は残差合計が小さいほうを採る）。
+// 「たまたま比が近い」候補がどこかに見つかってしまうため）。
+//
+// 【重要】目的関数に「カバレッジ（候補が1件以上存在する領地数）の最大化」を使ってはならない。
+// 許容誤差はstored単位で固定（PHASE_TOLERANCE_PER_RESOURCE）だが、DEFENSE_COST_TABLEの
+// 候補間隔をconsumption空間に戻すとfに反比例して縮むため、fが小さいほど許容誤差window
+// （PHASE_TOLERANCE_PER_RESOURCE/f）が広がり、無関係な候補まで大量に飲み込んでカバレッジを
+// 底上げしてしまう。つまりカバレッジ最大化は「どのfがデータを最もよく説明するか」ではなく
+// 「どのfが緩いか」を測ってしまう（Phase 5 調査G・Hで実測確認済み）。
+// 実測（2026-08-18時点、437領地）: f=0.001111ではカバレッジが321と最大になる一方、候補数の
+// 平均は1,945件・「候補が正確に1件に絞れた領地数」（exactlyOne）は0件だった。f=0.007500では
+// カバレッジは288に下がるが、候補数の平均は5〜15件・exactlyOneは70件と、実際に「絞り込めて
+// いる」度合いはこちらのほうが大きく上回っていた。
+//
+// そこで目的関数は「exactlyOneを最大化するf」を採用する（同数の場合は残差合計が小さいほうを
+// 採る）。exactlyOneは候補0件の領地を自動的に除外するため、fが大きすぎてほぼ誰も説明できなく
+// なる場合は自然に不利になるが、念のためカバレッジが全領地数の1/3を下回るfは候補から除外する
+// （ごく少数の領地だけでexactlyOneが偶然高くなるケースを避けるため）。該当するfが1つも無い
+// 場合はガード無しの全結果にフォールバックする（fをnullにしない方針は維持する）。
 // stored の大小によるフィルタ・重み付け・対象領地数の上限は設けない（該当する全領地を使う）。
 //
 // 候補の列挙は「全列挙してフィルタ」ではなく「fから逆算」で行う。生産分を補正した
@@ -473,8 +488,6 @@ function computeResourceModel(stored, generation, f) {
 // 直積を取り、最後にrating一致でフィルタする。これにより1領地あたりの候補数が12^4×16=331,776通り
 // から数十〜数百通りに減る。fの探索自体も、粗探索（60分割）→その近傍を細探索（40分割）の
 // 2段グリッドにし、全体で約100回のf評価で完結させる（600分割の全域探索はしない）。
-// 全域でカバレッジ0（＝許容誤差内の候補が1件も無い）の場合でも、方針4「fをnullにしない」に従い、
-// 評価した全f点のうち残差合計が最小のものにフォールバックする。
 //
 // 1回のLiveデータ取得につき1回だけ呼び出すこと。
 const F_MAX = 1 / 60;
@@ -566,16 +579,27 @@ function candidateResidual(c, confirmedExtra, model, stored, generation, f) {
   return residual;
 }
 
-// あるfについて、全領地のカバレッジ数（rating一致かつ許容誤差内の候補を持つ領地数）と
-// 残差合計（カバー領地のみ、各領地の最小残差の合計）を求める。
-function evaluatePhase(prepared, f) {
+// あるfについて、全領地のカバレッジ数（rating一致かつ許容誤差内の候補を持つ領地数）、
+// 候補が正確に1件に絞れた領地数（exactlyOne）、残差合計・平均（カバー領地のみ、各領地の
+// 最小残差を集計）を求める。
+// 合計残差はカバー領地数に比例して増えるため、そのまま比較すると低カバレッジのfが
+// 不当に有利になる。必ず平均（meanResidual）で比較すること。カバレッジ0のときは
+// 比較対象から自動的に外れるようInfinityにする。
+// collectCountsをtrueにすると、領地ごとの候補数（prepared順）をcountsとして返す
+// （調査用のヒストグラム集計にのみ使用。グリッド探索中の大量呼び出しでは常にfalseにし、
+// 探索で選ばれたf1点についてだけ再評価して集計する）。
+function evaluatePhase(prepared, f, collectCounts) {
   let coverage = 0;
+  let exactlyOne = 0;
   let totalResidual = 0;
+  const counts = collectCounts ? [] : null;
   for (const { input, stored, generation } of prepared) {
     const model = computeResourceModel(stored, generation, f);
     const candidates = deriveTerritoryCandidates(input, f, model);
+    if (collectCounts) counts.push(candidates.length);
     if (candidates.length === 0) continue;
     coverage++;
+    if (candidates.length === 1) exactlyOne++;
     let minResidual = Infinity;
     for (const c of candidates) {
       const residual = candidateResidual(c, input.confirmedExtra, model, stored, generation, f);
@@ -583,11 +607,30 @@ function evaluatePhase(prepared, f) {
     }
     totalResidual += minResidual;
   }
-  return { f, coverage, totalResidual };
+  const meanResidual = coverage > 0 ? totalResidual / coverage : Infinity;
+  return { f, coverage, exactlyOne, totalResidual, meanResidual, counts };
+}
+
+// カバレッジが全領地数の1/3を下回るfを除外する（該当が1件も無ければガード無しにフォールバック）。
+const MIN_COVERAGE_FRACTION = 1 / 3;
+function eligibleResults(results, minCoverage) {
+  const eligible = results.filter(r => r.coverage >= minCoverage);
+  return eligible.length > 0 ? eligible : results;
+}
+
+// poolの中からexactlyOne最大・同数ならmeanResidual最小の1件を選ぶ。
+function pickBestByExactlyOne(pool) {
+  const maxExactlyOne = Math.max(...pool.map(r => r.exactlyOne));
+  let best = null;
+  for (const r of pool) {
+    if (r.exactlyOne !== maxExactlyOne) continue;
+    if (best === null || r.meanResidual < best.meanResidual) best = r;
+  }
+  return best;
 }
 
 // territoryInputs: [{ observedRating, isHQ, confirmedExtra, resourceSnapshot }, ...]
-// 戻り値: { f, coverage } | null（1件も評価できなかった場合のみnull）
+// 戻り値: { f, coverage, exactlyOne } | null（1件も評価できなかった場合のみnull）
 export function estimateGlobalTransferPhase(territoryInputs) {
   const prepared = [];
   for (const input of territoryInputs) {
@@ -599,33 +642,58 @@ export function estimateGlobalTransferPhase(territoryInputs) {
     prepared.push({ input, stored, generation });
   }
   if (prepared.length === 0) return null;
+  const minCoverage = Math.ceil(prepared.length * MIN_COVERAGE_FRACTION);
 
-  // 粗探索（60分割）
+  // 粗探索（60分割）。kも保持し、同着した粗ステップの隣接判定に使う。
   const coarseResults = [];
   for (let k = 1; k <= PHASE_COARSE_STEPS; k++) {
-    coarseResults.push(evaluatePhase(prepared, (F_MAX * k) / PHASE_COARSE_STEPS));
+    coarseResults.push({ k, ...evaluatePhase(prepared, (F_MAX * k) / PHASE_COARSE_STEPS) });
   }
-  const maxCoarseCoverage = Math.max(...coarseResults.map(r => r.coverage));
-  const tiedCoarseFs = coarseResults.filter(r => r.coverage === maxCoarseCoverage).map(r => r.f);
-  const coarseStep = F_MAX / PHASE_COARSE_STEPS;
-  const loBound = Math.max(0, Math.min(...tiedCoarseFs) - coarseStep);
-  const hiBound = Math.min(F_MAX, Math.max(...tiedCoarseFs) + coarseStep);
+  const coarsePool = eligibleResults(coarseResults, minCoverage);
+  const maxCoarseExactlyOne = Math.max(...coarsePool.map(r => r.exactlyOne));
+  const tiedKs = coarsePool.filter(r => r.exactlyOne === maxCoarseExactlyOne).map(r => r.k).sort((a, b) => a - b);
 
-  // 細探索（±1粗ステップの範囲を40分割）
+  // 同着した粗ステップが離れた位置に複数ある場合（例: k=8とk=44）、両端を単純に
+  // ±1粗ステップして細探索すると範囲が広がりすぎ、PHASE_FINE_STEPS=40で割ったときの
+  // 1ステップが粗探索とほぼ同じ粒度になってしまい細探索の意味が消える。
+  // そこで同着kを隣接するもの同士でグループ化し、グループごとに独立して
+  // ±1粗ステップの範囲をPHASE_FINE_STEPSで細探索する。
+  const groups = [];
+  let currentGroup = [tiedKs[0]];
+  for (let i = 1; i < tiedKs.length; i++) {
+    if (tiedKs[i] - tiedKs[i - 1] <= 1) currentGroup.push(tiedKs[i]);
+    else { groups.push(currentGroup); currentGroup = [tiedKs[i]]; }
+  }
+  groups.push(currentGroup);
+
+  const coarseStep = F_MAX / PHASE_COARSE_STEPS;
   const fineResults = [];
-  for (let k = 0; k <= PHASE_FINE_STEPS; k++) {
-    const f = loBound + (hiBound - loBound) * (k / PHASE_FINE_STEPS);
-    if (f > 0) fineResults.push(evaluatePhase(prepared, f));
+  for (const group of groups) {
+    const loBound = Math.max(0, (F_MAX * Math.min(...group)) / PHASE_COARSE_STEPS - coarseStep);
+    const hiBound = Math.min(F_MAX, (F_MAX * Math.max(...group)) / PHASE_COARSE_STEPS + coarseStep);
+    for (let k = 0; k <= PHASE_FINE_STEPS; k++) {
+      const f = loBound + (hiBound - loBound) * (k / PHASE_FINE_STEPS);
+      if (f > 0) fineResults.push(evaluatePhase(prepared, f));
+    }
   }
 
   const allResults = coarseResults.concat(fineResults);
-  const maxCoverage = Math.max(...allResults.map(r => r.coverage));
-  let best = null;
-  for (const r of allResults) {
-    if (r.coverage !== maxCoverage) continue;
-    if (best === null || r.totalResidual < best.totalResidual) best = r;
+  const pool = eligibleResults(allResults, minCoverage);
+  const best = pickBestByExactlyOne(pool);
+
+  // 選ばれたfについてのみ、領地ごとの候補数を再集計してヒストグラムを作る
+  // （調査用。表示方式の検討材料。グリッド探索中は毎回集計しない）。
+  const { counts } = evaluatePhase(prepared, best.f, true);
+  const histogram = { zero: 0, one: 0, twoToThree: 0, fourToTen: 0, elevenPlus: 0 };
+  for (const n of counts) {
+    if (n === 0) histogram.zero++;
+    else if (n === 1) histogram.one++;
+    else if (n <= 3) histogram.twoToThree++;
+    else if (n <= 10) histogram.fourToTen++;
+    else histogram.elevenPlus++;
   }
-  return { f: best.f, coverage: best.coverage }; // 方針4: coverageが0でも、残差合計最小のfを返す（nullにしない）
+
+  return { f: best.f, coverage: best.coverage, exactlyOne: best.exactlyOne, histogram }; // fをnullにしない方針は維持
 }
 
 // Step 2: 領地ごとに、Step 1と同じderiveTerritoryCandidates()で候補を絞り込み（全列挙はしない）、

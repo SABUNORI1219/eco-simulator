@@ -1446,7 +1446,9 @@ function computeGlobalTransferPhase() {
       _globalTransferPhase = result ? result.f : null;
       // 調査タスク（CLAUDE.md「守備ステータスの推定」5.1参照）用の一時ログ。UIには出さない。
       if (result) {
-        console.log(`[phase] ${new Date().toISOString()} f=${result.f.toFixed(6)} secondsToTransfer=${Math.round(3600 * result.f)} coverage=${result.coverage}`);
+        const h = result.histogram;
+        console.log(`[phase] ${new Date().toISOString()} f=${result.f.toFixed(6)} secondsToTransfer=${Math.round(3600 * result.f)} coverage=${result.coverage} exactlyOne=${result.exactlyOne} histogram(0/1/2-3/4-10/11+)=${h.zero}/${h.one}/${h.twoToThree}/${h.fourToTen}/${h.elevenPlus}`);
+        logSampleTerritoryEstimates();
       }
       resolve();
     };
@@ -1461,6 +1463,27 @@ function computeGlobalTransferPhase() {
     worker.addEventListener('error', errorHandler);
     worker.postMessage({ requestId, inputs });
   });
+}
+
+// Phase 5 調査（目的関数差し替え後の検証）用の一時ログ。固定10領地について、
+// ツールチップを開かなくても毎ポーリング推定値を記録する。UIには出さない。調査後は削除予定。
+const SAMPLE_TERRITORY_NAMES = ['Detlas', 'Ragni', 'Nemract', 'Cinfras', 'Llevigar', 'Elkurn', 'Thesead', 'Rodoroc', 'Troms', 'Olux'];
+function logSampleTerritoryEstimates() {
+  for (const name of SAMPLE_TERRITORY_NAMES) {
+    const info = liveData && liveData[name];
+    if (!info || !info.guild || !info.guild.name || !info.resources) { console.log(`[sample] ${name}: unowned/no data`); continue; }
+    const confirmed = computeLiveConfirmedInfo(name, info);
+    const confirmedExtra = buildConfirmedExtraFromLiveInfo(confirmed);
+    const ownedNames = getOwnedNamesForGuild(info.guild.uuid);
+    const { mult } = EcoLogic.calcLiveDefenseMult(name, territories, ownedNames, info.hq, []);
+    const estimate = EcoLogic.estimateDefenseStats({
+      observedRating: confirmed.defenceLabel, isHQ: info.hq, mult, confirmedExtra,
+      resourceSnapshot: confirmed.resourceSnapshot, f: _globalTransferPhase
+    });
+    if (!estimate.levels) { console.log(`[sample] ${name}: levels=null (defences=${confirmed.defenceLabel})`); continue; }
+    const L = estimate.levels;
+    console.log(`[sample] ${name}: Damage${L.damage}/Attack${L.attack}/Health${L.health}/Defense${L.defense} residual=${estimate.residual.toFixed(4)} (defences=${confirmed.defenceLabel})`);
+  }
 }
 
 function getDefenseEstimate(name, info, defenceLabel, confirmedExtra, resourceSnapshot) {
