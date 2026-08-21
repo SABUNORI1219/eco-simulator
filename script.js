@@ -386,6 +386,13 @@ function hitTestAll(cx, cy) {
 // Liveモード・スマホでタップにより固定表示中の領地名。次のタップ（別の場所 or 同じ領地）まで表示し続ける。
 let liveTooltipPinnedName = null;
 
+// Liveモードで現在表示中のツールチップの引数（{mx, my, name, above}|null）。ポーリングごとに
+// refreshLiveTooltipIfOpen()がこれを使って同じ領地・同じ位置でshowLiveTooltip()を再実行し、
+// 表示中のツールチップの内容（Estimated Defence・Resources move in Xs等）を現在のf/liveDataで
+// 再計算する。2026-08修正: 従来はhoveredTerritoryが変化した瞬間（マウスが別の領地に移った時）
+// にしか再描画されず、同じ領地にカーソルを置いたままポーリングが進んでも表示が初回表示時点の
+// まま固定されていた（詳細はCLAUDE.md「守備ステータスの推定」参照）。
+
 // Liveモードは表示レイヤーであり、シミュレーション状態（選択・モーダル編集）を触る操作は無効にする。
 // スマホでは代わりに、タップでツールチップの固定表示をトグルする（isTouch経由でのみ、マウスクリックでは何もしない）。
 function handleLiveTap(cx, cy, hit) {
@@ -822,6 +829,10 @@ function drawTerritoriesLive() {
     const isHovered = name === hoveredTerritory;
     const isSelected = selectedTerritories.has(name);
 
+    // 取られてから10分以内の領地は赤の破線でハイライトする（既存の非接続領地の描画を流用）。
+    const capturedElapsedMs = isOwned ? recentlyCapturedElapsedMs(info) : null;
+    const isRecentlyCaptured = capturedElapsedMs !== null;
+
     // Map Filter: 該当/非該当の判定（無所属領地は判定対象外）
     const filterActive = filterMode !== 'none';
     let filterMatched = [];
@@ -855,10 +866,14 @@ function drawTerritoriesLive() {
     }
 
     // Outline（縁取り→本体の順で描画。フィルターの影響を受けない）
-    let bodyLineWidth, bodyStrokeStyle;
+    let bodyLineWidth, bodyStrokeStyle, bodyDash = [];
     if (isSelected) {
       bodyLineWidth = Math.max(1.8, scale * 2.0);
       bodyStrokeStyle = '#3b82f6';
+    } else if (isRecentlyCaptured) {
+      bodyDash = [Math.max(6, scale * 6), Math.max(4, scale * 4)];
+      bodyLineWidth = Math.max(2.0, scale * 2.2);
+      bodyStrokeStyle = '#ef4444';
     } else if (isHQ) {
       bodyLineWidth = Math.max(4.0, scale * 4.4);
       bodyStrokeStyle = guildColor;
@@ -878,9 +893,11 @@ function drawTerritoriesLive() {
     ctx.strokeStyle = 'rgba(0,0,0,0.6)';
     ctx.strokeRect(x, y, w, h);
 
+    ctx.setLineDash(bodyDash);
     ctx.lineWidth = bodyLineWidth;
     ctx.strokeStyle = bodyStrokeStyle;
     ctx.strokeRect(x, y, w, h);
+    ctx.setLineDash([]);
 
     ctx.restore();
 
@@ -948,6 +965,16 @@ function drawTerritoriesLive() {
       ctx.strokeText(name, cx, textY);
       ctx.fillText(name, cx, textY);
 
+      if (isRecentlyCaptured) {
+        const capturedMinutes = Math.floor(capturedElapsedMs / 60000);
+        const capturedSeconds = Math.floor(capturedElapsedMs / 1000) % 60;
+        const capturedText = `${capturedMinutes}m ${capturedSeconds}s`;
+        const capturedY = y - fontSize - 4;
+        ctx.fillStyle = '#ef4444';
+        ctx.strokeText(capturedText, cx, capturedY);
+        ctx.fillText(capturedText, cx, capturedY);
+      }
+
       ctx.shadowColor = 'transparent';
       ctx.shadowBlur = 0;
     } else if (isHQ && scale > 0.06) {
@@ -989,6 +1016,7 @@ function getFullGraphDistances() {
 //  TOOLTIP
 // ═══════════════════════════════════════════════════════════
 const tooltip = document.getElementById('tooltip');
+let _lastLiveTooltipArgs = null;
 
 // Very Low/Low/Medium/High/Very High の難易度ラベルに対応する文字色。
 // showTooltip（守備ステータス）とshowLiveTooltip（実データのdefences）で共有する。
@@ -1226,7 +1254,8 @@ function computeLiveConfirmedInfo(name, info, bfsCache) {
       ? data.baseGeneration
       : parseFloat((territories[name] && territories[name].resources[row.key]) || 0);
 
-    if (row.key !== 'emeralds') resourceSnapshot[row.key] = { stored, limit, generation };
+    // baseGenerationはグローバルf探索のエメラルドveto判定（Trio A検出）にも使うため保持する。
+    if (row.key !== 'emeralds') resourceSnapshot[row.key] = { stored, limit, generation, baseGeneration };
 
     const isEmerald = row.key === 'emeralds';
     const lv = detectStorageLevel(limit, info.hq, isEmerald);
@@ -1245,6 +1274,18 @@ function computeLiveConfirmedInfo(name, info, bfsCache) {
   return { guildHqName, hqDist, treasuryLabel, defenceLabel, treasuryBuff, resByType, resourceSnapshot, emStorageLv, resStorageLv, emComboMatches, resCombo };
 }
 
+// 取得直後（10分以内）の領地はstoredが捕獲時にリセットされ、転送位相モデルに従わなくなるため、
+// マップの赤破線ハイライトとグローバルf算出の両方でこの閾値を共有する。
+const RECENTLY_CAPTURED_MS = 600000;
+// 取得からの経過msを返す（10分以内のみ）。対象外・acquired不正の場合はnullを返す。
+function recentlyCapturedElapsedMs(info) {
+  if (!info.acquired) return null;
+  const acquiredMs = new Date(info.acquired).getTime();
+  if (isNaN(acquiredMs)) return null;
+  const elapsed = Date.now() - acquiredMs;
+  return (elapsed >= 0 && elapsed < RECENTLY_CAPTURED_MS) ? elapsed : null;
+}
+
 // Damage/Attack/Health/Defense消費（ore/crops/wood/fish）の確定分。一意に確定した組み合わせのみを反映する。
 function buildConfirmedExtraFromLiveInfo(confirmed) {
   const confirmedExtra = { ore: 0, crops: 0, wood: 0, fish: 0 };
@@ -1260,22 +1301,31 @@ function buildConfirmedExtraFromLiveInfo(confirmed) {
 // 保持期間（acquiredからの経過時間）の文字色。Treasury段階から動的に決まる。
 const HELD_TIME_COLORS = { 'Very Low': '#FF5555', 'Low': '#FFAA00', 'Medium': '#FFFF55', 'High': '#55FF55', 'Very High': '#55FFFF' };
 
-// "3d 14h" 形式。1時間未満は "0h"。acquiredが無い/不正な場合はnullを返す。
+// 経過時間の桁に応じて段階的に表示を切り替える（1分未満は"XXs"、1時間未満は"XXm XXs"、
+// 1日未満は"XXh XXm"、それ以上は"XXd XXh"）。"0h"のような目安にならない表示を避けるため。
+// acquiredが無い/不正な場合はnullを返す。
 function fmtHeldDuration(acquiredStr) {
   if (!acquiredStr) return null;
   const acquiredMs = new Date(acquiredStr).getTime();
   if (isNaN(acquiredMs)) return null;
   const diffMs = Date.now() - acquiredMs;
   if (diffMs < 0) return null;
-  const totalHours = Math.floor(diffMs / 3600000);
-  const days = Math.floor(totalHours / 24);
-  const hours = totalHours % 24;
-  return days > 0 ? `${days}d ${hours}h` : `${hours}h`;
+  const totalSeconds = Math.floor(diffMs / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor(totalSeconds / 3600) % 24;
+  const minutes = Math.floor(totalSeconds / 60) % 60;
+  const seconds = totalSeconds % 60;
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
 }
 
 function showLiveTooltip(mx, my, name, above) {
   const info = liveData && liveData[name];
   if (!info) { hideTooltip(); return; }
+
+  _lastLiveTooltipArgs = { mx, my, name, above };
 
   const isOwned = !!(info.guild && info.guild.name);
   if (!isOwned) {
@@ -1287,7 +1337,7 @@ function showLiveTooltip(mx, my, name, above) {
   }
 
   const confirmed = computeLiveConfirmedInfo(name, info);
-  const { hqDist, treasuryLabel, defenceLabel, treasuryBuff, resByType, resourceSnapshot, emStorageLv, resStorageLv, emComboMatches, resCombo } = confirmed;
+  const { hqDist, treasuryLabel, defenceLabel, treasuryBuff, resByType } = confirmed;
 
   let titleSuffix = '';
   if (info.hq) {
@@ -1313,29 +1363,10 @@ function showLiveTooltip(mx, my, name, above) {
     const { generation, stored, limit } = data;
     if (generation > 0 || stored > 0) {
       if (generation > 0) html += `<div style="color:${row.color};">${row.icon}+${fmtNum(generation)} ${row.label} per Hour</div>`;
-      const storedColor = stored >= limit ? '#FF5555' : row.color;
+      // 満杯（stored === limit）は正常な状態なので赤にしない。limitを超えた場合のみ警告色にする。
+      const storedColor = stored > limit ? '#FF5555' : row.color;
       html += `<div style="color:${row.color};">${row.icon}<span style="color:${storedColor};">${fmtNum(stored)}</span>/${fmtNum(limit)} stored</div>`;
     }
-  }
-
-  // 確定ボーナス（Lv.0は表示しない）。単一Lvに確定したものは[Lv.n]、複数候補が残るものは倍率のみのテキストで表示する。
-  const confirmedUpgrades = [];
-  if (resStorageLv !== null && resStorageLv > 0) confirmedUpgrades.push({ name: 'Larger Resource Storage', lv: resStorageLv });
-  if (emStorageLv !== null && emStorageLv > 0) confirmedUpgrades.push({ name: 'Larger Emerald Storage', lv: emStorageLv });
-  const confirmedAmbiguous = [];
-  if (emComboMatches && emComboMatches.matches.length === 1) {
-    for (const [bonusName, bonusLv] of Object.entries(emComboMatches.matches[0])) {
-      if (bonusLv > 0) confirmedUpgrades.push({ name: bonusName, lv: bonusLv });
-    }
-  } else if (emComboMatches && emComboMatches.matches.length > 1) {
-    confirmedAmbiguous.push(`Emeralds ×${emComboMatches.multiplier.toFixed(1)} (multiple combinations)`);
-  }
-  if (resCombo && resCombo.matches.length === 1) {
-    for (const [bonusName, bonusLv] of Object.entries(resCombo.matches[0])) {
-      if (bonusLv > 0) confirmedUpgrades.push({ name: bonusName, lv: bonusLv });
-    }
-  } else if (resCombo && resCombo.matches.length > 1) {
-    confirmedAmbiguous.push(`Resources ×${resCombo.multiplier.toFixed(1)} (multiple combinations)`);
   }
 
   html += `<div style="margin-top:8px;"><span style="color:#FF55FF;">♦ Treasury: </span><span style="color:#FFFFFF;">${escapeHtml(treasuryLabel)}</span>`;
@@ -1343,23 +1374,27 @@ function showLiveTooltip(mx, my, name, above) {
   html += `</div>`;
   html += `<div><span style="color:#FF55FF;">♦ Defence: </span><span style="color:${ratingColor(defenceLabel)};">${escapeHtml(defenceLabel)}</span></div>`;
 
-  // 既存のシミュレーションモードと同じ Upgrades: 見出しの下に統合する
-  html += `<div style="color:#FF55FF; margin-top:8px;">Upgrades:</div>`;
-  if (confirmedUpgrades.length > 0 || confirmedAmbiguous.length > 0) {
-    for (const { name: bonusName, lv } of confirmedUpgrades) {
-      html += `<div><span style="color:#FF55FF;">- </span><span style="color:#AAAAAA;">${escapeHtml(bonusName)} </span><span style="color:#555555;">[Lv.${lv}]</span></div>`;
-    }
-    for (const text of confirmedAmbiguous) {
-      html += `<div><span style="color:#FF55FF;">- </span><span style="color:#AAAAAA;">${escapeHtml(text)}</span></div>`;
-    }
+  // 守備ステータスの推定（Estimatedは確定値とは視覚的に区別する）。
+  // 品質付きキャッシュ（Item 9）にTier A/Bのエントリがあればそれを優先表示する（構成が変わって
+  // いない限り、過去に観測できた「良いf」での推定のほうが現在ポーリングの生の推定より信頼できるため）。
+  // 無ければ従来どおり現在ポーリングの生の推定（確定失敗時のみ簡易推定にフォールバック）を表示する。
+  // Storage/資源ブースト等の確定ボーナス一覧（Upgrades:）は表示しない。推定の内部計算では使い続ける。
+  // getDefenseEstimate/getDefenseEstimateApproximateは、ここで得たconfirmed（現在ポーリングの
+  // 最新liveData由来）ではなく、_phaseSourceLiveData（fと同じスナップショット）を内部で
+  // 参照し直す。両者を混ぜないことがCLAUDE.md「Res Tickと表示されている資源量が噛み合わない」
+  // への対策の要のため、ここでは意図的にconfirmedExtra/resourceSnapshotを渡さない。
+  const cachedEntry = _qualityCache[name];
+  if (cachedEntry) {
+    html += renderDefenseEstimateHTML(cachedEntry.estimate, { observedAt: cachedEntry.observedAt, tier: cachedEntry.tier });
   } else {
-    html += `<div style="color:#AAAAAA;">No upgrades active</div>`;
+    const estimate = getDefenseEstimate(name);
+    if (estimate.levels) {
+      html += renderDefenseEstimateHTML(estimate);
+    } else {
+      const approx = getDefenseEstimateApproximate(name);
+      html += renderDefenseEstimateApproximateHTML(approx);
+    }
   }
-
-  // 守備ステータスの推定（Estimatedは確定値とは視覚的に区別する）
-  const confirmedExtra = buildConfirmedExtraFromLiveInfo(confirmed);
-  const estimate = getDefenseEstimate(name, info, defenceLabel, confirmedExtra, resourceSnapshot);
-  html += renderDefenseEstimateHTML(estimate);
 
   tooltip.innerHTML = html;
   tooltip.style.display = 'block';
@@ -1371,14 +1406,60 @@ function showLiveTooltip(mx, my, name, above) {
 //  推定ロジック本体（グローバル位相探索・候補列挙）はeco-logic.jsにある。
 //  推定は単一スナップショットで完結し、履歴を必要としない。
 // ═══════════════════════════════════════════════════════════
+// 調査用診断ログ（[phase]/[sample]/[cache-diag]）の出力可否。デフォルトはOFF（実運用テスト時の
+// ブラウザ負荷を減らすため、2026-08導入）。キャッシュ判定ロジック自体（shouldUpdateCache等）は
+// 一切変更しない、純粋に出力の有無のみを制御するフラグ。
+// 有効化方法: URLに`?diag=1`を付けて開く（`loadFromHash()`のURLハッシュとは独立、`location.search`を見る）、
+// またはブラウザのコンソールから`enableDiagLogging()`を呼ぶ（localStorageに保存され、リロード後も有効なまま）。
+// 無効化は`disableDiagLogging()`。
+let _diagLoggingEnabled = (() => {
+  try {
+    if (new URLSearchParams(window.location.search).get('diag') === '1') return true;
+    return localStorage.getItem('ecoDiagLogging') === '1';
+  } catch (e) {
+    return false;
+  }
+})();
+
+function diagLog(...args) {
+  if (_diagLoggingEnabled) console.log(...args);
+}
+
+function enableDiagLogging() {
+  _diagLoggingEnabled = true;
+  try { localStorage.setItem('ecoDiagLogging', '1'); } catch (e) { /* localStorage無効環境では永続化しないだけで機能する */ }
+  console.log('[diag] logging enabled (persisted via localStorage; call disableDiagLogging() to turn off)');
+}
+
+function disableDiagLogging() {
+  _diagLoggingEnabled = false;
+  try { localStorage.removeItem('ecoDiagLogging'); } catch (e) { /* 同上 */ }
+  console.log('[diag] logging disabled');
+}
+
 let _defenseEstimateCache = {}; // name -> { key, result }
 let _globalTransferPhase = null; // f（Live データ取得のたびに1回だけ再計算する。CLAUDE.md「守備ステータス推定」参照）
 
-// この領地を所有するギルドが所有する全領地名のSet（addedTerritoriesの代わりに使う）
-function getOwnedNamesForGuild(guildUuid) {
+// _globalTransferPhaseの計算に使ったliveDataのスナップショット（同じポーリング回のオブジェクト参照）。
+// _globalTransferPhaseと必ず同時に更新する（computeGlobalTransferPhase()のfinish()内のみで書き込む）。
+// 守備ステータス推定（stored[r] = consumption[r]×f + generation[r]×(1/60−f)）はstored/generationと
+// fが同じ瞬間のスナップショットであることが前提のモデルのため、推定計算は必ずこちらを参照し、
+// 常に最新の`liveData`と混ぜてはならない（CLAUDE.md「Res Tickと表示されている資源量が噛み合わない」参照）。
+// Held時間・赤破線ハイライト・資源生産表示など、時間経過に伴うリアルタイム表示は引き続き
+// 最新の`liveData`を参照する（推定値の鮮度とは別の要件のため）。
+let _phaseSourceLiveData = null;
+
+// 推定結果の品質付きキャッシュ（Item 9）。name -> CachedEstimate。メモリ内・Liveモードの
+// セッションスコープのみ（Liveモード OFF でクリアする。CLAUDE.md「守備ステータスの推定」参照）。
+let _qualityCache = {};
+
+// 指定ギルドが所有する全領地名のSet（addedTerritoriesの代わりに使う）。datasetを省略すると
+// 常に最新のliveDataを使う（Import This Guild等、リアルタイム性が必要な用途向け）。守備推定
+// （getDefenseEstimate等）は_phaseSourceLiveDataを明示的に渡し、fと同じスナップショットで揃える。
+function getOwnedNamesForGuild(guildUuid, dataset = liveData) {
   const result = new Set();
-  if (!liveData) return result;
-  for (const [n, info] of Object.entries(liveData)) {
+  if (!dataset) return result;
+  for (const [n, info] of Object.entries(dataset)) {
     if (info.guild && info.guild.uuid === guildUuid) result.add(n);
   }
   return result;
@@ -1406,32 +1487,82 @@ function stopPhaseWorker() {
     _phaseWorker.terminate();
     _phaseWorker = null;
   }
+  _phaseWorkerBusy = false;
 }
 
-const PHASE_WORKER_TIMEOUT_MS = 10000;
+// Stronger Minions(×5)・Tower Multi-Attacks(×2)の候補列挙追加により探索の候補空間が
+// 10倍に増え、実測で15〜40秒かかる（2026-08）。ポーリング間隔（30秒）を探索時間が超えると
+// リクエストが詰まるため、ポーリング間隔の3倍を確保する。
+const PHASE_WORKER_TIMEOUT_MS = 90000;
+
+// Worker が前回のリクエストを処理中かどうか。trueの間は新しいリクエストを投げず、
+// そのポーリング回はスキップして前回のfをそのまま使い続ける（探索時間がポーリング間隔
+// 30秒を超えるとリクエストがキューに詰まり、雪だるま式に全滅するのを防ぐため）。
+let _phaseWorkerBusy = false;
+
+// fの計算が連続で失敗した回数。1回の失敗だけではfをnullにせず前回値を保持し、
+// PHASE_FAILURE_STREAK_LIMIT回（約2.5分）連続で失敗して初めてnullにする。
+let _phaseFailureStreak = 0;
+const PHASE_FAILURE_STREAK_LIMIT = 5;
 
 // 全437領地のstoredから、グローバルな転送位相fを求める。
-// 1回のLiveデータ取得につき1回だけ呼び出し、結果を_globalTransferPhaseにキャッシュする。
-// Worker生成失敗・例外・タイムアウトのいずれの場合も_globalTransferPhaseをnullにして
-// resolveする（推定セクションのみ非表示になり、Liveモードの他の表示は継続する）。
+// 1回のLiveデータ取得につき1回だけ呼び出す。前回の探索が完了していない場合はスキップする。
+// 失敗時は連続失敗回数がPHASE_FAILURE_STREAK_LIMITに達するまで_globalTransferPhaseを
+// 前回値のまま保持する（推定セクションのみ非表示になり、Liveモードの他の表示は継続する）。
+//
+// 2026-08、エメラルド（EMERALD）のstored/generationから直接fを逆算する方式を検証したが、
+// XP Seeking（emeralds消費・観測不能）が未計上のまま多数の領地に効いているらしく、実データで
+// fの中央値がF_MAX付近に偏り、Tromsの実測検算（ore/wood/fish/crops）と食い違ったため不採用と
+// した。詳細はeco-logic.js「Step 1」コメントおよびCLAUDE.md「守備ステータスの推定」参照。
 function computeGlobalTransferPhase() {
-  if (!liveData) { _globalTransferPhase = null; return Promise.resolve(); }
+  if (!liveData) { _globalTransferPhase = null; _phaseSourceLiveData = null; _phaseFailureStreak = 0; return Promise.resolve(); }
+
+  if (_phaseWorkerBusy) {
+    diagLog('[phase] skipped: previous search still in progress, keeping previous f');
+    return Promise.resolve();
+  }
+
+  // このラウンドのinputsが由来するliveDataのスナップショット参照を保持する。setInterval経由の
+  // ポーリングはWorker計算の完了を待たずに次のfetchLiveTerritoryData()を呼びうるため、
+  // このPromiseが解決する時点ではモジュール変数liveDataが別ラウンドのものに差し替わっている
+  // 可能性がある。finish()の成功時にはこのliveDataForThisRoundを_phaseSourceLiveDataへ
+  // 代入することで、_globalTransferPhaseとその計算元スナップショットを必ず同時に更新する。
+  const liveDataForThisRound = liveData;
+
   const inputs = [];
   const bfsCache = {}; // guildHqName -> distances（ギルドごとに1回だけBFSする）
-  for (const [name, info] of Object.entries(liveData)) {
+  // try/catch: 1領地のデータ異常でinputs構築全体が例外送出され、フェーズ探索と
+  // updateQualityCache()の両方が丸ごとスキップされる経路を防ぐため、1領地単位で例外を
+  // 分離する（例外発生時はログのみ行い、以降の領地の処理は継続する）。
+  for (const [name, info] of Object.entries(liveDataForThisRound)) {
     if (!info.guild || !info.guild.name || !info.resources) continue;
-    const confirmed = computeLiveConfirmedInfo(name, info, bfsCache);
-    const confirmedExtra = buildConfirmedExtraFromLiveInfo(confirmed);
-    inputs.push({
-      observedRating: confirmed.defenceLabel, isHQ: info.hq,
-      confirmedExtra, resourceSnapshot: confirmed.resourceSnapshot
-    });
+    // 取得直後（10分以内）は資源のstoredが捕獲時にリセットされ転送位相モデルに従わないため除外する
+    if (recentlyCapturedElapsedMs(info) !== null) continue;
+    try {
+      const confirmed = computeLiveConfirmedInfo(name, info, bfsCache);
+      const confirmedExtra = buildConfirmedExtraFromLiveInfo(confirmed);
+      const em = confirmed.resByType['EMERALD'];
+      inputs.push({
+        observedRating: confirmed.defenceLabel, isHQ: info.hq,
+        confirmedExtra, resourceSnapshot: confirmed.resourceSnapshot,
+        treasuryBuff: confirmed.treasuryBuff,
+        emGeneration: em ? em.generation : undefined,
+        emStored: em ? em.stored : undefined
+      });
+    } catch (err) {
+      console.error(`Failed to build phase input for ${name}:`, err);
+    }
   }
 
   const worker = getPhaseWorker();
-  if (!worker) { _globalTransferPhase = null; return Promise.resolve(); }
+  if (!worker) {
+    _phaseFailureStreak++;
+    if (_phaseFailureStreak >= PHASE_FAILURE_STREAK_LIMIT) { _globalTransferPhase = null; _phaseSourceLiveData = null; }
+    return Promise.resolve();
+  }
 
   const requestId = ++_phaseRequestId;
+  _phaseWorkerBusy = true;
   return new Promise(resolve => {
     let settled = false;
     const cleanup = () => {
@@ -1439,25 +1570,36 @@ function computeGlobalTransferPhase() {
       worker.removeEventListener('error', errorHandler);
       clearTimeout(timeoutId);
     };
-    const finish = (result) => {
+    const finish = (result, isTimeout) => {
       if (settled) return;
       settled = true;
       cleanup();
-      _globalTransferPhase = result ? result.f : null;
-      // 調査タスク（CLAUDE.md「守備ステータスの推定」5.1参照）用の一時ログ。UIには出さない。
+      _phaseWorkerBusy = false;
+      if (isTimeout) {
+        // キューに溜まった古いリクエストを破棄するため、Workerごと作り直す
+        stopPhaseWorker();
+      }
       if (result) {
+        _globalTransferPhase = result.f;
+        _phaseSourceLiveData = liveDataForThisRound;
+        _phaseFailureStreak = 0;
+        // 調査タスク（CLAUDE.md「守備ステータスの推定」参照）用の一時ログ。UIには出さない。
         const h = result.histogram;
-        console.log(`[phase] ${new Date().toISOString()} f=${result.f.toFixed(6)} secondsToTransfer=${Math.round(3600 * result.f)} coverage=${result.coverage} exactlyOne=${result.exactlyOne} histogram(0/1/2-3/4-10/11+)=${h.zero}/${h.one}/${h.twoToThree}/${h.fourToTen}/${h.elevenPlus}`);
+        diagLog(`[phase] ${new Date().toISOString()} f=${result.f.toFixed(6)} secondsToTransfer=${Math.round(3600 * result.f)} coverage=${result.coverage} exactlyOne=${result.exactlyOne} histogram(0/1/2-3/4-10/11+)=${h.zero}/${h.one}/${h.twoToThree}/${h.fourToTen}/${h.elevenPlus}`);
         logSampleTerritoryEstimates();
+      } else {
+        _phaseFailureStreak++;
+        if (_phaseFailureStreak >= PHASE_FAILURE_STREAK_LIMIT) { _globalTransferPhase = null; _phaseSourceLiveData = null; }
+        diagLog(`[phase] failed (streak=${_phaseFailureStreak}${isTimeout ? ', timeout' : ''}), keeping previous f=${_globalTransferPhase}`);
       }
       resolve();
     };
     const messageHandler = (e) => {
       if (e.data.requestId !== requestId) return; // 古いリクエストの結果は無視（追い越し対策）
-      finish(e.data.result);
+      finish(e.data.result, false);
     };
-    const errorHandler = () => finish(null);
-    const timeoutId = setTimeout(() => finish(null), PHASE_WORKER_TIMEOUT_MS);
+    const errorHandler = () => finish(null, false);
+    const timeoutId = setTimeout(() => finish(null, true), PHASE_WORKER_TIMEOUT_MS);
 
     worker.addEventListener('message', messageHandler);
     worker.addEventListener('error', errorHandler);
@@ -1469,50 +1611,205 @@ function computeGlobalTransferPhase() {
 // ツールチップを開かなくても毎ポーリング推定値を記録する。UIには出さない。調査後は削除予定。
 const SAMPLE_TERRITORY_NAMES = ['Detlas', 'Ragni', 'Nemract', 'Cinfras', 'Llevigar', 'Elkurn', 'Thesead', 'Rodoroc', 'Troms', 'Olux'];
 function logSampleTerritoryEstimates() {
+  // try/catch: このループはcomputeGlobalTransferPhase()のfinish()から同期的に呼ばれ、
+  // finish()はこの直後にresolve()する。1領地分の例外がここで送出されると、finish()が
+  // resolve()に到達できず、computeGlobalTransferPhase()が返すPromiseが永久にpendingのまま
+  // 残る（fetchLiveTerritoryData()側のawaitがそのポーリング回だけ完了しなくなり、
+  // updateQualityCache()も呼ばれなくなる）。1領地分の例外はログのみに留め、残りの
+  // サンプル領地の処理は継続する。
   for (const name of SAMPLE_TERRITORY_NAMES) {
-    const info = liveData && liveData[name];
-    if (!info || !info.guild || !info.guild.name || !info.resources) { console.log(`[sample] ${name}: unowned/no data`); continue; }
-    const confirmed = computeLiveConfirmedInfo(name, info);
-    const confirmedExtra = buildConfirmedExtraFromLiveInfo(confirmed);
-    const ownedNames = getOwnedNamesForGuild(info.guild.uuid);
-    const { mult } = EcoLogic.calcLiveDefenseMult(name, territories, ownedNames, info.hq, []);
-    const estimate = EcoLogic.estimateDefenseStats({
-      observedRating: confirmed.defenceLabel, isHQ: info.hq, mult, confirmedExtra,
-      resourceSnapshot: confirmed.resourceSnapshot, f: _globalTransferPhase
-    });
-    if (!estimate.levels) { console.log(`[sample] ${name}: levels=null (defences=${confirmed.defenceLabel})`); continue; }
-    const L = estimate.levels;
-    console.log(`[sample] ${name}: Damage${L.damage}/Attack${L.attack}/Health${L.health}/Defense${L.defense} residual=${estimate.residual.toFixed(4)} (defences=${confirmed.defenceLabel})`);
+    try {
+      // fと同じスナップショット（_phaseSourceLiveData）から読む。常に最新のliveDataを使うと、
+      // ポーリングの追い越し（CLAUDE.md「Res Tickと表示されている資源量が噛み合わない」参照）で
+      // 新しい資源量と古いfが混ざり、推定値が不正確になる。
+      const info = _phaseSourceLiveData && _phaseSourceLiveData[name];
+      if (!info || !info.guild || !info.guild.name || !info.resources) { diagLog(`[sample] ${name}: unowned/no data`); continue; }
+      const confirmed = computeLiveConfirmedInfo(name, info);
+      const confirmedExtra = buildConfirmedExtraFromLiveInfo(confirmed);
+      const ownedNames = getOwnedNamesForGuild(info.guild.uuid, _phaseSourceLiveData);
+      const { mult } = EcoLogic.calcLiveDefenseMult(name, territories, ownedNames, info.hq, []);
+      const estimate = EcoLogic.estimateDefenseStats({
+        observedRating: confirmed.defenceLabel, isHQ: info.hq, mult, confirmedExtra,
+        resourceSnapshot: confirmed.resourceSnapshot, f: _globalTransferPhase
+      });
+      if (!estimate.levels) { diagLog(`[sample] ${name}: levels=null (defences=${confirmed.defenceLabel})`); continue; }
+      const L = estimate.levels;
+      diagLog(`[sample] ${name}: Damage${L.damage}/Attack${L.attack}/Health${L.health}/Defense${L.defense} residual=${estimate.residual.toFixed(4)} (defences=${confirmed.defenceLabel})`);
+    } catch (err) {
+      console.error(`[sample] EXCEPTION for ${name}:`, err);
+    }
   }
 }
 
-function getDefenseEstimate(name, info, defenceLabel, confirmedExtra, resourceSnapshot) {
-  const cacheKey = JSON.stringify({ defenceLabel, hq: info.hq, confirmedExtra, f: _globalTransferPhase });
+// 推定はfと同じスナップショット（_phaseSourceLiveData）からのみ算出する。呼び出し側から
+// info/confirmedExtra/resourceSnapshot（現在ポーリングの最新liveData由来）を渡させる旧方式は、
+// Worker計算がポーリング間隔（30秒）を超えた際に「最新の資源量」と「1つ前のf」が混ざる
+// バグの原因だったため廃止した（CLAUDE.md「Res Tickと表示されている資源量が噛み合わない」参照）。
+// 領地がまだ_phaseSourceLiveDataに存在しない（Liveモード開始直後・直近捕獲でf探索対象外等）場合は
+// levels:nullを返し、呼び出し側は簡易推定へフォールバックしない（簡易推定も同じ理由でf同期が必要なため）。
+const EMPTY_ESTIMATE = { levels: null, ehp: null, dps: null, secondsToTransfer: null, residual: null, candidateCount: 0, consumption: null, mult: 1 };
+function getDefenseEstimate(name) {
+  const info = _phaseSourceLiveData && _phaseSourceLiveData[name];
+  if (!info || !info.guild || !info.guild.name || !info.resources) return EMPTY_ESTIMATE;
+
+  const cacheKey = _globalTransferPhase; // _phaseSourceLiveDataは_globalTransferPhaseと必ず同時に更新されるため、fの値だけでラウンドを一意に識別できる
   const cached = _defenseEstimateCache[name];
   if (cached && cached.key === cacheKey) return cached.result;
 
-  const ownedNames = getOwnedNamesForGuild(info.guild.uuid);
+  const confirmed = computeLiveConfirmedInfo(name, info);
+  const confirmedExtra = buildConfirmedExtraFromLiveInfo(confirmed);
+  const ownedNames = getOwnedNamesForGuild(info.guild.uuid, _phaseSourceLiveData);
   const { mult } = EcoLogic.calcLiveDefenseMult(name, territories, ownedNames, info.hq, []);
 
-  const result = EcoLogic.estimateDefenseStats({
-    observedRating: defenceLabel, isHQ: info.hq, mult, confirmedExtra, resourceSnapshot, f: _globalTransferPhase
-  });
+  const result = {
+    ...EcoLogic.estimateDefenseStats({
+      observedRating: confirmed.defenceLabel, isHQ: info.hq, mult, confirmedExtra,
+      resourceSnapshot: confirmed.resourceSnapshot, f: _globalTransferPhase
+    }),
+    mult
+  };
 
   _defenseEstimateCache[name] = { key: cacheKey, result };
   return result;
 }
 
+// ═══════════════════════════════════════════════════════════
+//  推定結果の品質付きキャッシュ保持（Item 9）
+//  computeGlobalTransferPhase()の直後（fetchLiveTerritoryData()内）にポーリングごと1回呼ばれる。
+//  全所有領地についてStep2（estimateDefenseStats）をこの時点のfで評価し、候補が1件に絞れた
+//  （Tier A/B）場合のみキャッシュを更新する。判定ロジック自体はeco-logic.jsの純関数に委譲する。
+// ═══════════════════════════════════════════════════════════
+function updateQualityCache() {
+  const nowMs = Date.now();
+
+  // try/catch: 1領地の処理で例外が発生しても、以降の領地の破棄判定・更新判定が
+  // スキップされないよう1領地単位で例外を分離する（例外発生時はログのみ行い処理を継続する）。
+
+  // 破棄判定を先に行う（現在のliveDataに存在しない・acquired/defences/guild変化・2時間経過・
+  // 資源量ベースの追加判定のいずれか）。resourceSnapshot/fは鮮度優先で常に最新のliveData/
+  // _globalTransferPhaseから作る（BFSを必要としない生のstored/generationのみで足りるため、
+  // computeLiveConfirmedInfo()は使わない）。
+  for (const name of Object.keys(_qualityCache)) {
+    try {
+      const cached = _qualityCache[name];
+      const info = liveData && liveData[name];
+      let currentInfo = null;
+      if (info && info.guild && info.guild.name) {
+        const resourceSnapshot = {};
+        for (const r of info.resources || []) {
+          const key = LIVE_RESOURCE_TYPE_MAP[r.type];
+          if (key && key !== 'emeralds') resourceSnapshot[key] = { stored: r.stored, generation: r.generation };
+        }
+        currentInfo = {
+          acquired: info.acquired, defences: info.defences, guild: info.guild.name,
+          resourceSnapshot, f: _globalTransferPhase
+        };
+      }
+      if (EcoLogic.shouldDiscardCache(cached, currentInfo, nowMs)) delete _qualityCache[name];
+    } catch (err) {
+      console.error(`Failed to evaluate cache discard for ${name}:`, err);
+    }
+  }
+
+  if (_globalTransferPhase === null || !_phaseSourceLiveData) return;
+
+  // 新規のTier A/B評価は、fと同じスナップショット（_phaseSourceLiveData）からのみ行う。
+  // 最新のliveDataを使うと、Worker計算がポーリング間隔を超えた際に「最新の資源量」と
+  // 「1つ前のf」が混ざり、誤った推定が高品質としてキャッシュされうる
+  // （CLAUDE.md「Res Tickと表示されている資源量が噛み合わない」参照）。
+  // なお直前の破棄判定（上のループ）は意図的に最新のliveDataを使い続ける
+  // （領地喪失・defences変化等は鮮度優先で即座に検知したいため）。
+  const bfsCache = {}; // ギルドごとに1回だけBFSする（computeGlobalTransferPhaseと同じ最適化）
+  for (const [name, info] of Object.entries(_phaseSourceLiveData)) {
+    if (!info.guild || !info.guild.name || !info.resources) continue;
+    try {
+      // 取得直後はstoredが捕獲時にリセットされ転送位相モデルに従わないため、キャッシュ更新の対象外とする
+      if (recentlyCapturedElapsedMs(info) !== null) continue;
+
+      const confirmed = computeLiveConfirmedInfo(name, info, bfsCache);
+      const confirmedExtra = buildConfirmedExtraFromLiveInfo(confirmed);
+      const ownedNames = getOwnedNamesForGuild(info.guild.uuid, _phaseSourceLiveData);
+      const { mult } = EcoLogic.calcLiveDefenseMult(name, territories, ownedNames, info.hq, []);
+      const result = EcoLogic.estimateDefenseStats({
+        observedRating: confirmed.defenceLabel, isHQ: info.hq, mult, confirmedExtra,
+        resourceSnapshot: confirmed.resourceSnapshot, f: _globalTransferPhase
+      });
+      if (result.candidateCount !== 1) continue; // Tier C相当。キャッシュに触れない
+
+      const em = confirmed.resByType['EMERALD'];
+      const emeraldAdmissible = EcoLogic.computeTerritoryEmeraldAdmissible(
+        confirmed.resourceSnapshot, confirmed.treasuryBuff, info.hq,
+        em ? em.generation : undefined, em ? em.stored : undefined
+      );
+      const tier = EcoLogic.determineTier(result.candidateCount, emeraldAdmissible, _globalTransferPhase);
+      if (tier === 'C') continue;
+
+      const storedValues = [];
+      const producingChannels = [];
+      for (const r of ['ore', 'crops', 'wood', 'fish']) {
+        const d = confirmed.resourceSnapshot[r];
+        if (!d) continue;
+        storedValues.push(d.stored);
+        if (d.generation > 0) {
+          producingChannels.push({ resource: r, generation: d.generation, consumption: result.consumption[r] });
+        }
+      }
+      if (storedValues.length === 0) continue;
+
+      const quality = EcoLogic.computeQualityScore(storedValues, _globalTransferPhase, producingChannels);
+      const cachedBefore = _qualityCache[name] || null;
+      if (!EcoLogic.shouldUpdateCache(cachedBefore, tier, quality)) continue;
+
+      // 調査用の一時ログ（CLAUDE.md「問題3」参照、調査後削除予定）。低品質なTier Aが
+      // より高品質なTier Bを問答無用で上書きしてしまっていないかを実データで確認するため、
+      // 「TierがB→Aへ変わる」かつ「新しい品質のほうが低い」更新だけを記録する
+      // （shouldUpdateCacheの仕様上、Tier Aは品質を問わずTier Bに勝つため、この組み合わせは
+      // 理論上いつでも起こりうる。実際にどれくらいの頻度・落差で発生しているかを見たい）。
+      if (cachedBefore && cachedBefore.tier === 'B' && tier === 'A' && quality < cachedBefore.quality) {
+        diagLog(`[cache-diag] ${name}: B(quality=${cachedBefore.quality.toFixed(4)}, levels=${JSON.stringify(cachedBefore.estimate.levels)}) -> A(quality=${quality.toFixed(4)}, levels=${JSON.stringify(result.levels)}) at ${new Date(nowMs).toISOString()}`);
+      }
+
+      _qualityCache[name] = {
+        territoryName: name,
+        tier,
+        quality,
+        estimate: { ...result, mult }, // renderDefenseEstimateHTMLがそのまま渡せる形（getDefenseEstimateの戻り値と同型）
+        observedAt: new Date(nowMs).toISOString(),
+        acquired: info.acquired,
+        defences: info.defences,
+        guild: info.guild.name
+      };
+    } catch (err) {
+      console.error(`Failed to evaluate cache update for ${name}:`, err);
+    }
+  }
+}
+
+// アイコン付きの1行（Damage/Attack Speed/HP/Defence共通の見た目）。lvがnullなら"?"を表示する。
+function defenseStatLine(icon, text, lv) {
+  return `<div><img src="./assets/icons/upgrades/${icon}.png" class="res-icon-img" alt="${icon}"> <span style="color:#94a3b8;">${text}</span> <span style="color:#64748b;">(${lv === null ? '?' : lv})</span></div>`;
+}
+
 // 推定できない場合（levelsがnull）はセクションごと空文字列を返す。範囲ではなく単一値を表示する。
-function renderDefenseEstimateHTML(estimate) {
+// Damage/HPはConnections/Externals由来の倍率（mult）を反映する。Attacks per second/Defence%には
+// 倍率を掛けない（computeStatsFromLevelsの仕様どおり）。
+// cacheMeta（{observedAt, tier}、Item 9）を渡すと、キャッシュされた推定である旨（観測時刻・Tier A表示）を
+// 見出しの下に1行追加する。省略時（現在ポーリングの生の推定を表示する場合）は何も追加しない。
+function renderDefenseEstimateHTML(estimate, cacheMeta) {
   if (!estimate.levels) return '';
 
   const L = estimate.levels;
+  const stats = EcoLogic.computeStatsFromLevels(L.health, L.damage, L.attack, L.defense, estimate.mult);
   let html = `<div style="color:#FF55FF; margin-top:8px;">Estimated Defense:</div>`;
-  const line = (label, lv) => `<div><span style="color:#FF55FF;">- </span><span style="color:#94a3b8;">${label} </span><span style="color:#64748b;">[Lv.${lv}]</span></div>`;
-  html += line('Damage', L.damage);
-  html += line('Attack Speed', L.attack);
-  html += line('Health', L.health);
-  html += line('Defense', L.defense);
+  if (cacheMeta) {
+    const elapsed = fmtHeldDuration(cacheMeta.observedAt) || '0s';
+    const tierTag = cacheMeta.tier === 'A' ? ' · verified' : '';
+    html += `<div style="color:#64748b; font-size:0.85em;">(observed ${elapsed} ago${tierTag})</div>`;
+  }
+  html += defenseStatLine('damage', `${fmtNum(stats.finalDmgMin)}-${fmtNum(stats.finalDmgMax)} Damage`, L.damage);
+  html += defenseStatLine('attack-speed', `${stats.atkSpd.toFixed(1)} Attacks per second`, L.attack);
+  html += defenseStatLine('health', `${fmtHp(stats.finalHp)} HP`, L.health);
+  html += defenseStatLine('defense', `${fmtPct1(stats.defPct)}% Defence`, L.defense);
 
   html += `<div style="color:#FF55FF; margin-top:8px;">Estimated Stats:</div>`;
   html += `<div><span style="color:#FF55FF;">- </span><span style="color:#94a3b8;">EHP ${fmt(estimate.ehp)}</span></div>`;
@@ -1521,6 +1818,56 @@ function renderDefenseEstimateHTML(estimate) {
   if (estimate.secondsToTransfer !== null && estimate.secondsToTransfer !== undefined) {
     html += `<div style="margin-top:8px; color:#555555;">Resources move in ${estimate.secondsToTransfer}s</div>`;
   }
+
+  return html;
+}
+
+// 確定推定（estimateDefenseStats）がlevels:nullのときのみ呼ばれるフォールバック。
+// キャッシュはしない（O(1)で軽量なため）。確定推定と同じ理由で、必ずfと同じスナップショット
+// （_phaseSourceLiveData）から算出する（この式もf/generation/storedの整合を前提とするモデルのため）。
+function getDefenseEstimateApproximate(name) {
+  const info = _phaseSourceLiveData && _phaseSourceLiveData[name];
+  if (!info || !info.guild || !info.guild.name || !info.resources) {
+    return { levels: { damage: null, attack: null, health: null, defense: null }, ehp: null, dps: null, secondsToTransfer: null, mult: 1 };
+  }
+  const confirmed = computeLiveConfirmedInfo(name, info);
+  const confirmedExtra = buildConfirmedExtraFromLiveInfo(confirmed);
+  const ownedNames = getOwnedNamesForGuild(info.guild.uuid, _phaseSourceLiveData);
+  const { mult } = EcoLogic.calcLiveDefenseMult(name, territories, ownedNames, info.hq, []);
+  return {
+    ...EcoLogic.estimateDefenseStatsApproximate({
+      observedRating: confirmed.defenceLabel, isHQ: info.hq, mult, confirmedExtra,
+      resourceSnapshot: confirmed.resourceSnapshot, f: _globalTransferPhase
+    }),
+    mult
+  };
+}
+
+// 4スタッツとも決定不能な場合は空文字列を返す（セクション自体を出さない）。
+// 確定推定（renderDefenseEstimateHTML）とは見出し・色をグレー系にして明確に区別する。
+// 各スタッツが個別に決定不能な場合は"?"を表示する。HPはhealth・defenseの両方が
+// 決定できている場合のみ表示する（computeStatsFromLevelsの仕様上、両方揃わないと算出できないため）。
+function renderDefenseEstimateApproximateHTML(estimate) {
+  const L = estimate.levels;
+  if (L.damage === null && L.attack === null && L.health === null && L.defense === null) return '';
+
+  const stats = EcoLogic.computeStatsFromLevels(L.health ?? 0, L.damage ?? 0, L.attack ?? 0, L.defense ?? 0, estimate.mult);
+  let html = `<div style="color:#8B96A3; margin-top:8px;">Estimated Defence (approximate):</div>`;
+  html += defenseStatLine('damage', L.damage !== null ? `${fmtNum(stats.finalDmgMin)}-${fmtNum(stats.finalDmgMax)} Damage` : 'Damage', L.damage);
+  html += defenseStatLine('attack-speed', L.attack !== null ? `${stats.atkSpd.toFixed(1)} Attacks per second` : 'Attacks per second', L.attack);
+  html += defenseStatLine('health', (L.health !== null && L.defense !== null) ? `${fmtHp(stats.finalHp)} HP` : 'HP', L.health);
+  html += defenseStatLine('defense', L.defense !== null ? `${fmtPct1(stats.defPct)}% Defence` : 'Defence', L.defense);
+
+  if (estimate.ehp !== null || estimate.dps !== null) {
+    html += `<div style="color:#8B96A3; margin-top:8px;">Estimated Stats (approximate):</div>`;
+    if (estimate.ehp !== null) html += `<div><span style="color:#8B96A3;">- </span><span style="color:#94a3b8;">EHP ${fmt(estimate.ehp)}</span></div>`;
+    if (estimate.dps !== null) html += `<div><span style="color:#8B96A3;">- </span><span style="color:#94a3b8;">DPS ${fmt(estimate.dps)}</span></div>`;
+  }
+
+  if (estimate.secondsToTransfer !== null && estimate.secondsToTransfer !== undefined) {
+    html += `<div style="margin-top:8px; color:#555555;">Resources move in ${estimate.secondsToTransfer}s</div>`;
+  }
+  html += `<div style="margin-top:4px; color:#555555; font-size:0.85em;">Approximate: hidden bonuses inferred from defence rating</div>`;
 
   return html;
 }
@@ -1554,6 +1901,16 @@ function showUpgradeTooltip(mx, my, displayName, above) {
 
 function hideTooltip() {
   tooltip.style.display = 'none';
+  _lastLiveTooltipArgs = null;
+}
+
+// ポーリングごと（fetchLiveTerritoryData内）に呼ぶ。表示中のLiveツールチップがあれば、
+// 同じ領地・同じ位置でshowLiveTooltip()を再実行して内容を現在のf/liveDataで再計算する。
+// マウスが離れる等で既にhideTooltip()済み（_lastLiveTooltipArgs===null）の場合は何もしない。
+function refreshLiveTooltipIfOpen() {
+  if (!liveMode || !_lastLiveTooltipArgs || tooltip.style.display !== 'block') return;
+  const { mx, my, name, above } = _lastLiveTooltipArgs;
+  showLiveTooltip(mx, my, name, above);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1607,6 +1964,11 @@ function fmt(n) {
 
 function fmtNum(n) {
   return Math.round(n).toLocaleString('en-US');
+}
+
+// Estimated Defence の HP 表示専用（k単位、例: 3,300k）
+function fmtHp(n) {
+  return Math.round(n / 1000).toLocaleString('en-US') + 'k';
 }
 
 // 小数第1位まで丸めたうえで、末尾の.0を落とす（Treasuryのバフ率表示用）
@@ -3473,7 +3835,9 @@ async function fetchLiveTerritoryData() {
     liveData = data;
     _liveFetchError = null;
     await computeGlobalTransferPhase(); // Web Worker内で実行するためメインスレッドはブロックしない
+    updateQualityCache(); // 品質付きキャッシュ（Item 9）の破棄判定・更新
     updateLiveGuildOptions();
+    refreshLiveTooltipIfOpen(); // 表示中のツールチップがあれば内容を現在のf/liveDataで再計算する
   } catch (err) {
     _liveFetchError = err.message || 'Unknown Error';
     console.warn('Live territory fetch error:', err);
@@ -3536,7 +3900,10 @@ async function onLiveModeToggle() {
     liveData = null;
     _liveFetchError = null;
     _defenseEstimateCache = {};
+    _qualityCache = {};
     _globalTransferPhase = null;
+    _phaseSourceLiveData = null;
+    _phaseFailureStreak = 0;
     stopPhaseWorker();
     liveTooltipPinnedName = null;
     hideTooltip();
@@ -3627,21 +3994,30 @@ function importLiveGuild() {
     };
   }
 
+  // try/catch: 1領地分のcomputeLiveConfirmedInfo()が例外を投げると、この直後の
+  // sel.value=''/updateLiveImportGuildDatalist()/Liveモード自動OFF/refreshUI()に到達できず、
+  // addedTerritoriesは既に全置換済み（直前のループ）のままUIがLiveモード表示に固まって残る。
+  // bonusesは直前のループで既に{}に初期化済みのため、1領地分の例外はログのみに留めて
+  // そのままスキップ（ボーナス確定なし＝安全側）し、残りの領地の取り込みは継続する。
   for (const [name, info] of entries) {
-    const confirmed = computeLiveConfirmedInfo(name, info);
-    const bonuses = addedTerritories[name].bonuses;
-    if (confirmed.emComboMatches && confirmed.emComboMatches.matches.length === 1) {
-      const m = confirmed.emComboMatches.matches[0];
-      if (m['Efficient Emeralds'] !== undefined) bonuses['Efficient Emeralds'] = m['Efficient Emeralds'];
-      if (m['Emerald Rate'] !== undefined) bonuses['Emerald Rate'] = m['Emerald Rate'];
+    try {
+      const confirmed = computeLiveConfirmedInfo(name, info);
+      const bonuses = addedTerritories[name].bonuses;
+      if (confirmed.emComboMatches && confirmed.emComboMatches.matches.length === 1) {
+        const m = confirmed.emComboMatches.matches[0];
+        if (m['Efficient Emeralds'] !== undefined) bonuses['Efficient Emeralds'] = m['Efficient Emeralds'];
+        if (m['Emerald Rate'] !== undefined) bonuses['Emerald Rate'] = m['Emerald Rate'];
+      }
+      if (confirmed.resCombo && confirmed.resCombo.matches.length === 1) {
+        const m = confirmed.resCombo.matches[0];
+        if (m['Efficient Resources'] !== undefined) bonuses['Efficient Resources'] = m['Efficient Resources'];
+        if (m['Resource Rate'] !== undefined) bonuses['Resource Rate'] = m['Resource Rate'];
+      }
+      if (confirmed.emStorageLv !== null) bonuses['Larger Emerald Storage'] = confirmed.emStorageLv;
+      if (confirmed.resStorageLv !== null) bonuses['Larger Resource Storage'] = confirmed.resStorageLv;
+    } catch (err) {
+      console.error(`[import] EXCEPTION computing confirmed bonuses for ${name}:`, err);
     }
-    if (confirmed.resCombo && confirmed.resCombo.matches.length === 1) {
-      const m = confirmed.resCombo.matches[0];
-      if (m['Efficient Resources'] !== undefined) bonuses['Efficient Resources'] = m['Efficient Resources'];
-      if (m['Resource Rate'] !== undefined) bonuses['Resource Rate'] = m['Resource Rate'];
-    }
-    if (confirmed.emStorageLv !== null) bonuses['Larger Emerald Storage'] = confirmed.emStorageLv;
-    if (confirmed.resStorageLv !== null) bonuses['Larger Resource Storage'] = confirmed.resStorageLv;
   }
 
   sel.value = '';
@@ -3668,7 +4044,7 @@ Object.assign(window, {
   toggleAddResourceForm, clearAllResourceOverrides, addResourceOverride, setFilterMode, updateModalStats,
   clearFilter, closeFilterModal, closeCustomSettings, toggleListSelection, removeTerritory,
   removeCustomConnection, removeResourceOverride, toggleFilterValue,
-  onLiveModeToggle, importLiveGuild
+  onLiveModeToggle, importLiveGuild, enableDiagLogging, disableDiagLogging
 });
 
 // ═══════════════════════════════════════════════════════════

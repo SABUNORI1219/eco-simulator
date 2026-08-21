@@ -137,3 +137,6 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# 実験用スクリプト・データ（eco-simulator固有）。削除はせずGit管理対象からのみ外す。
+scratchpad/
