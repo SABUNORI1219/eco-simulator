@@ -101,6 +101,7 @@ let liveMode = false;
 let liveData = null;       // 直近取得した /v3/guild/list/territory のレスポンス（{ [territoryName]: {...} }、生の形のまま保持）
 let guildColorMap = {};    // prefix -> "#RRGGBB"（Liveモードを ON にした時に1回だけ取得）
 let _livePollTimer = null;
+let _liveTimeTickTimer = null; // 1秒間隔。新規データ取得・f再計算は一切行わず、経過時間表示のみ再計算する
 let _liveFetchError = null;
 let liveGuildDisplayToUuid = {};  // Import This Guild用。表示文字列 → ギルドuuid
 let allLiveGuildDisplays = [];    // Import This Guild用のdatalist（liveData更新のたびに再構築）
@@ -1705,7 +1706,9 @@ function updateQualityCache() {
           resourceSnapshot, f: _globalTransferPhase
         };
       }
-      if (EcoLogic.shouldDiscardCache(cached, currentInfo, nowMs)) delete _qualityCache[name];
+      const { discard, resourceMismatchStreak } = EcoLogic.shouldDiscardCache(cached, currentInfo, nowMs);
+      if (discard) delete _qualityCache[name];
+      else cached.resourceMismatchStreak = resourceMismatchStreak;
     } catch (err) {
       console.error(`Failed to evaluate cache discard for ${name}:`, err);
     }
@@ -1777,7 +1780,8 @@ function updateQualityCache() {
         observedAt: new Date(nowMs).toISOString(),
         acquired: info.acquired,
         defences: info.defences,
-        guild: info.guild.name
+        guild: info.guild.name,
+        resourceMismatchStreak: 0 // 新規/更新された観測は資源量ベースの不一致とは無関係のため0から開始する
       };
     } catch (err) {
       console.error(`Failed to evaluate cache update for ${name}:`, err);
@@ -3867,6 +3871,148 @@ function getGuildColor(prefix) {
   return (prefix && guildColorMap[prefix]) || '#FFFFFF';
 }
 
+// ═══════════════════════════════════════════════════════════
+//  定点観測ロガー（調査用、Liveモード専用）
+//  URLに?watch=1を付けたときのみ有効。Liveモードが ON の間だけ5分間隔で動作し、
+//  監視対象領地の状態（Tier・表示中の守備レベル・候補数・veto有無・品質・キャッシュ観測時刻・
+//  生資源値）をコンソールへ出力し、_watchLogにも蓄積する。あわせてLiveモードが（ユーザーの
+//  手動トグル以外の経路で）OFFになった事象・Liveモード中の未捕捉例外も_liveModeEventsに記録する。
+//  exportWatchLog()で全記録をJSONファイルとしてダウンロードできる。
+// ═══════════════════════════════════════════════════════════
+const WATCH_LOGGING_ENABLED = new URLSearchParams(window.location.search).get('watch') === '1';
+const WATCH_LOG_INTERVAL_MS = 5 * 60 * 1000;
+// 監視対象領地（ベース名。(HQ)/(Conn)/(Ext)等の接尾辞は付けない）。書き換えやすいようここに集約する。
+const WATCH_TERRITORY_BASE_NAMES = ["Bantisu Approach", "Krolton's Cave", "Nemract", "Troms", "Elkurn", "Lexdale Penitentiary", "Llevigar Farm", "Timasca"];
+let _watchLogTimer = null;
+let _watchLog = [];
+// Liveモードの自動OFF・未捕捉例外の事象ログ（{at, type: 'off'|'error', reason}）。
+let _liveModeEvents = [];
+
+// liveData/_qualityCacheのキーは常にベース名（(HQ)/(Conn)/(Ext)等の接尾辞はツールチップの
+// タイトル表示専用でキーには付かない）。WATCH_TERRITORY_BASE_NAMES側に誤って接尾辞付きの
+// 値が混ざっても照合できるよう、比較前に必ずこのヘルパーを通す。
+function stripTerritorySuffix(name) {
+  return name.replace(/\((?:HQ|Conn|Ext)\)$/, '');
+}
+
+// candidateCount===1だがエメラルドvetoでTier Cに落ちたかどうかを判定する。fと同じスナップショット
+// （_phaseSourceLiveData）から算出する必要があるため、getDefenseEstimate()と同じ由来のinfoを使う
+// （updateQualityCache()内のemeraldAdmissible計算と同じ手順、CLAUDE.md「エメラルドチャンネルに
+// よるexactlyOneの拘束（veto）」参照）。
+function computeWatchVetoStatus(name, candidateCount) {
+  if (candidateCount !== 1 || _globalTransferPhase === null) return false;
+  const phaseInfo = _phaseSourceLiveData && _phaseSourceLiveData[name];
+  if (!phaseInfo || !phaseInfo.guild || !phaseInfo.resources) return false;
+  const confirmed = computeLiveConfirmedInfo(name, phaseInfo);
+  const em = confirmed.resByType['EMERALD'];
+  const emeraldAdmissible = EcoLogic.computeTerritoryEmeraldAdmissible(
+    confirmed.resourceSnapshot, confirmed.treasuryBuff, phaseInfo.hq,
+    em ? em.generation : undefined, em ? em.stored : undefined
+  );
+  return EcoLogic.isVetoed(candidateCount, emeraldAdmissible, _globalTransferPhase);
+}
+
+// showLiveTooltip()と同じ優先順位（品質付きキャッシュのTier A/B優先→無ければ現在ポーリングの
+// 生の確定推定→それも不可なら簡易推定）で、監視対象1領地分のスナップショットを組み立てる。
+// stored/generationの両方を残す（fと合わせてisCachedConsumptionStillPlausible相当の判定を
+// 事後に再現できるようにするため。2026-08、resourceMismatchStreak導入時の検証で必要になった）。
+function buildWatchEntry(baseName) {
+  const name = stripTerritorySuffix(baseName);
+  const info = liveData && liveData[name];
+  if (!info || !info.guild || !info.guild.name) return { name, owned: false };
+
+  const stored = {};
+  for (const r of info.resources || []) {
+    const key = LIVE_RESOURCE_TYPE_MAP[r.type];
+    if (key) stored[key] = { stored: r.stored, generation: r.generation };
+  }
+
+  const cachedEntry = _qualityCache[name];
+  if (cachedEntry) {
+    // キャッシュされているのは常にTier A/B（candidateCount===1かつ非veto）のため、
+    // candidateCount/vetoedは再計算せず固定値で返す。
+    return {
+      name, owned: true, guild: info.guild.name, source: 'cache',
+      tier: cachedEntry.tier, levels: cachedEntry.estimate.levels,
+      candidateCount: cachedEntry.estimate.candidateCount, vetoed: false,
+      consumption: cachedEntry.estimate.consumption,
+      resourceMismatchStreak: cachedEntry.resourceMismatchStreak || 0,
+      quality: cachedEntry.quality, observedAt: cachedEntry.observedAt, stored
+    };
+  }
+
+  const estimate = getDefenseEstimate(name);
+  const candidateCount = estimate.candidateCount;
+  const vetoed = computeWatchVetoStatus(name, candidateCount);
+  if (estimate.levels) {
+    return { name, owned: true, guild: info.guild.name, source: 'live', tier: 'C', levels: estimate.levels, candidateCount, vetoed, consumption: estimate.consumption, resourceMismatchStreak: null, quality: null, observedAt: null, stored };
+  }
+
+  const approx = getDefenseEstimateApproximate(name);
+  return { name, owned: true, guild: info.guild.name, source: 'approx', tier: 'C', levels: approx.levels, candidateCount, vetoed, consumption: null, resourceMismatchStreak: null, quality: null, observedAt: null, stored };
+}
+
+function logWatchSnapshot() {
+  if (!liveMode || !liveData) return;
+  // fはこのスナップショット全体で共通の値のため、entry単位ではなくレコード直下に1回だけ記録する
+  // （2026-08追加。resourceMismatchStreak導入の検証で、stored/generationだけでなくfも無いと
+  // isCachedConsumptionStillPlausible相当の判定を事後に再現できないと判明したため）。
+  const record = { at: new Date().toISOString(), f: _globalTransferPhase, entries: WATCH_TERRITORY_BASE_NAMES.map(buildWatchEntry) };
+  _watchLog.push(record);
+  console.log(`[watch] ${record.at}`, record.entries);
+}
+
+// Liveモードの自動OFF・Liveモード中の未捕捉例外を記録する（reasonは呼び出し元が渡す文字列）。
+function recordLiveModeEvent(type, reason) {
+  if (!WATCH_LOGGING_ENABLED) return;
+  const event = { at: new Date().toISOString(), type, reason };
+  _liveModeEvents.push(event);
+  console.log(`[watch-event] ${event.at} ${type}: ${reason}`);
+}
+
+// Liveモード中に未捕捉の例外・Promise rejectionが発生した場合、importLiveGuild()等の
+// 途中で例外が起きてLiveモードが意図せずOFFになるケースを事後に確認できるよう記録する
+// （通常利用への影響を避けるため?watch=1のときのみ登録する）。
+if (WATCH_LOGGING_ENABLED) {
+  window.addEventListener('error', (e) => {
+    if (liveMode) recordLiveModeEvent('error', `uncaught error: ${e.message || e}`);
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    if (liveMode) recordLiveModeEvent('error', `unhandled rejection: ${(e.reason && e.reason.message) || e.reason}`);
+  });
+}
+
+// コンソールから呼ぶ。蓄積した全記録（定点観測＋Liveモード事象ログ）をJSONファイルとして
+// ダウンロードする（ファイル名 watch-log-<日時>.json）。あわせてJSON文字列も返す。
+function exportWatchLog() {
+  const payload = { exportedAt: new Date().toISOString(), watchSnapshots: _watchLog, liveModeEvents: _liveModeEvents };
+  const json = JSON.stringify(payload);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const ts = new Date().toISOString().replace(/[:.]/g, '-');
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `watch-log-${ts}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  return json;
+}
+
+function startWatchLogging() {
+  if (!WATCH_LOGGING_ENABLED) return;
+  stopWatchLogging();
+  _watchLogTimer = setInterval(logWatchSnapshot, WATCH_LOG_INTERVAL_MS);
+}
+
+function stopWatchLogging() {
+  if (_watchLogTimer !== null) {
+    clearInterval(_watchLogTimer);
+    _watchLogTimer = null;
+  }
+}
+
 function startLivePolling() {
   stopLivePollingTimer();
   fetchLiveTerritoryData();
@@ -3880,7 +4026,29 @@ function stopLivePollingTimer() {
   }
 }
 
-async function onLiveModeToggle() {
+// マップの赤破線ハイライトの経過時間・Held表示・ツールチップの観測時刻表示は、データ自体は
+// ポーリング（30秒間隔）でしか更新されないが、経過時間の「表示」はその場で計算できるため、
+// ポーリングとは独立に1秒間隔で再描画する（2026-08追加）。新規データ取得・f再計算は一切行わない。
+const LIVE_TIME_TICK_INTERVAL_MS = 1000;
+function startLiveTimeTicking() {
+  stopLiveTimeTicking();
+  _liveTimeTickTimer = setInterval(() => {
+    draw(); // drawTerritoriesLive()内のrecentlyCapturedElapsedMs()/Held表示が最新のDate.now()で再計算される
+    refreshLiveTooltipIfOpen(); // ツールチップのHeld/観測時刻表示を再計算する
+  }, LIVE_TIME_TICK_INTERVAL_MS);
+}
+function stopLiveTimeTicking() {
+  if (_liveTimeTickTimer !== null) {
+    clearInterval(_liveTimeTickTimer);
+    _liveTimeTickTimer = null;
+  }
+}
+
+// reason: OFFになった経緯を事後に区別するための文字列（定点観測ロガー用、CLAUDE.md参照）。
+// index.htmlのonchange="onLiveModeToggle()"（ユーザーによる手動トグル）からは引数無しで
+// 呼ばれ既定値'user-checkbox'になる。importLiveGuild()等の他コードから明示的にOFFへ倒す
+// 場合は個別の理由文字列を渡す。
+async function onLiveModeToggle(reason = 'user-checkbox') {
   const checked = document.getElementById('live-mode-toggle').checked;
   if (checked) {
     liveMode = true;
@@ -3894,9 +4062,14 @@ async function onLiveModeToggle() {
     renderLiveDataScreen();
     await fetchGuildColors();
     startLivePolling();
+    startWatchLogging();
+    startLiveTimeTicking();
   } else {
     liveMode = false;
+    recordLiveModeEvent('off', reason);
     stopLivePollingTimer();
+    stopWatchLogging();
+    stopLiveTimeTicking();
     liveData = null;
     _liveFetchError = null;
     _defenseEstimateCache = {};
@@ -4025,7 +4198,7 @@ function importLiveGuild() {
 
   // 取り込み後はLiveモードを自動的にOFFにする（表示がLiveデータのままだと取り込んだ内容が確認できないため）
   document.getElementById('live-mode-toggle').checked = false;
-  onLiveModeToggle();
+  onLiveModeToggle('import-guild');
 
   closeCustomSettings();
   refreshUI();
@@ -4044,13 +4217,21 @@ Object.assign(window, {
   toggleAddResourceForm, clearAllResourceOverrides, addResourceOverride, setFilterMode, updateModalStats,
   clearFilter, closeFilterModal, closeCustomSettings, toggleListSelection, removeTerritory,
   removeCustomConnection, removeResourceOverride, toggleFilterValue,
-  onLiveModeToggle, importLiveGuild, enableDiagLogging, disableDiagLogging
+  onLiveModeToggle, importLiveGuild, enableDiagLogging, disableDiagLogging, exportWatchLog
 });
 
 // ═══════════════════════════════════════════════════════════
 //  INITIALISATION
 // ═══════════════════════════════════════════════════════════
 async function init() {
+  try {
+    const verRes = await fetch('./script.js', { method: 'HEAD', cache: 'no-store' });
+    const lastModified = verRes.headers.get('Last-Modified');
+    console.log(`eco-simulator loaded: ${lastModified || 'unknown'}`);
+  } catch (e) {
+    console.log('eco-simulator loaded: unknown');
+  }
+
   try {
     const res = await fetch('./territories.json');
     territories = await res.json();

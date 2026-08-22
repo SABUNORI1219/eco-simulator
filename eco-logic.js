@@ -1214,6 +1214,15 @@ export function determineTier(candidateCount, emeraldAdmissible, fGrid) {
   return 'C'; // emeraldAdmissibleはveto済みのはずなのでここには来ないはずだが、念のため
 }
 
+// determineTier()と同じ判定を共有し、「候補が1件に絞れなかった（candidateCount!==1）」のか
+// 「候補は1件だがエメラルドvetoで除外された」のかを呼び出し側（定点観測ロガー等）が区別できる
+// ようにするための公開ヘルパー。determineTier()が'C'を返すケースのうち後者のみtrueになる。
+export function isVetoed(candidateCount, emeraldAdmissible, fGrid) {
+  if (candidateCount !== 1) return false;
+  if (emeraldAdmissible === null) return false;
+  return !isFSupportedByAnyLevel(fGrid, emeraldAdmissible);
+}
+
 // MIN_CACHE_QUALITYフロア（品質が閾値未満のTier A/B観測をキャッシュしない対策）は2026-08に撤廃した。
 // 実データ検証（1098件・8スナップショット）でrating整合フィルタに矛盾が一件も無かったことから、
 // 品質フロアは低品質な偶然の一致だけでなく正しい確定推定まで巻き込んで弾いていた可能性が高いと
@@ -1233,6 +1242,12 @@ export function shouldUpdateCache(cached, newTier, newQuality) {
 
 // キャッシュの既定の破棄しきい値（2時間）。テストで短縮したしきい値を注入できるよう第4引数にした。
 const CACHE_DISCARD_MS = 2 * 60 * 60 * 1000;
+
+// 資源量ベースの不一致が何回連続したら破棄するか（2026-08、resourceMismatchStreak導入時に追加）。
+// 1回だけの不一致は即破棄せず様子見する。1回の不一致だけで破棄→即キャッシュ更新を繰り返す
+// パターンが実ログ（watch-log）で頻発していたため、observedAtが必要以上に頻繁に更新されて
+// しまっていた（詳細はCLAUDE.md「低品質キャッシュがTier Bを上書きする件」に続く追記参照）。
+const RESOURCE_MISMATCH_DISCARD_STREAK = 2;
 
 // 資源量ベースの追加破棄判定（2026-08導入）。acquired/defences/guildが変わらないまま、
 // War中に内部の防衛レベル配分だけが変わるケースを検知するため、キャッシュ済み推定の消費量
@@ -1259,17 +1274,27 @@ function isCachedConsumptionStillPlausible(consumption, resourceSnapshot, f) {
 // currentInfo: { acquired, defences, guild, resourceSnapshot?, f? } | null
 //   （nullは「現在のAPIレスポンスに存在しない＝領地を失った」）。resourceSnapshot/fは
 //   資源量ベースの追加判定用（省略可・省略時はこの判定をスキップする）。
-// acquired/defences/guild変化、観測から2時間（既定）経過、または資源量ベースの判定が
-// 不成立になった場合に破棄する。
+// acquired/defences/guild変化、観測から2時間（既定）経過では即座に破棄する。資源量ベースの
+// 判定（isCachedConsumptionStillPlausible）は、fのわずかな誤差・丸め等による偶発的な単発の
+// 不一致だけでキャッシュを破棄してしまわないよう、RESOURCE_MISMATCH_DISCARD_STREAK回
+// （既定2回）連続で不一致が観測された場合のみ破棄する（2026-08、resourceMismatchStreak導入）。
+// 戻り値: { discard, resourceMismatchStreak }。discard=trueのとき呼び出し側はキャッシュを削除する。
+// discard=falseのときはresourceMismatchStreakの新しい値をcached.resourceMismatchStreakへ
+// 書き戻す（判定不能/整合だった場合は0にリセット、単発の不一致ならcached.resourceMismatchStreak+1）。
+// acquired/defences/guild変化・2時間経過による即時破棄ではresourceMismatchStreakは意味を持たず0を返す。
 export function shouldDiscardCache(cached, currentInfo, nowMs, discardMs = CACHE_DISCARD_MS) {
-  if (currentInfo === null) return true;
-  if (currentInfo.acquired !== cached.acquired) return true;
-  if (currentInfo.defences !== cached.defences) return true;
-  if (currentInfo.guild !== cached.guild) return true;
-  if (nowMs - Date.parse(cached.observedAt) > discardMs) return true;
+  if (currentInfo === null) return { discard: true, resourceMismatchStreak: 0 };
+  if (currentInfo.acquired !== cached.acquired) return { discard: true, resourceMismatchStreak: 0 };
+  if (currentInfo.defences !== cached.defences) return { discard: true, resourceMismatchStreak: 0 };
+  if (currentInfo.guild !== cached.guild) return { discard: true, resourceMismatchStreak: 0 };
+  if (nowMs - Date.parse(cached.observedAt) > discardMs) return { discard: true, resourceMismatchStreak: 0 };
+
   const stillPlausible = isCachedConsumptionStillPlausible(
     cached.estimate && cached.estimate.consumption, currentInfo.resourceSnapshot, currentInfo.f
   );
-  if (stillPlausible === false) return true;
-  return false;
+  if (stillPlausible === false) {
+    const streak = (cached.resourceMismatchStreak || 0) + 1;
+    return { discard: streak >= RESOURCE_MISMATCH_DISCARD_STREAK, resourceMismatchStreak: streak };
+  }
+  return { discard: false, resourceMismatchStreak: 0 };
 }
