@@ -934,10 +934,10 @@ function drawTerritoriesLive() {
         } else {
           const iconsToDraw = [];
           if (flags.city) iconsToDraw.push(resImages.emeralds);
-          if (flags.ore) iconsToDraw.push(resImages.ore);
-          if (flags.crops) iconsToDraw.push(resImages.crops);
-          if (flags.fish) iconsToDraw.push(resImages.fish);
-          if (flags.wood) iconsToDraw.push(resImages.wood);
+          if (flags.ore) { iconsToDraw.push(resImages.ore); if (flags.oreDouble) iconsToDraw.push(resImages.ore); }
+          if (flags.crops) { iconsToDraw.push(resImages.crops); if (flags.cropsDouble) iconsToDraw.push(resImages.crops); }
+          if (flags.fish) { iconsToDraw.push(resImages.fish); if (flags.fishDouble) iconsToDraw.push(resImages.fish); }
+          if (flags.wood) { iconsToDraw.push(resImages.wood); if (flags.woodDouble) iconsToDraw.push(resImages.wood); }
 
           if (iconsToDraw.length > 0) {
             const totalW = iconsToDraw.length * iconSize + (iconsToDraw.length - 1) * gap;
@@ -2081,8 +2081,15 @@ function getFilterCategoriesLive(name) {
 
 // マップ上の資源アイコン描画用（drawTerritoriesLive）。判定にはgenerationを使う（>0で産出中と判定）。
 // cityのみbaseGeneration（18,000以上）で判定する（generationはTreasuryバフ等で変動するため）。
+// ダブル資源地（baseGeneration>=7200）はdrawTerritories()の通常モードと同じ基準でアイコンを
+// 2つ表示するため、doubleフラグも合わせて返す（2026-08修正。従来はboolean一つのみでLive Mode側の
+// アイコンが常に1個になっていた）。isCity判定と同様baseGenerationを使う（Treasuryバフ等の影響を
+// 受けない、領地固有の基礎生成量のため）。
 function getLiveResourceFlags(info) {
-  const flags = { city: false, ore: false, wood: false, fish: false, crops: false };
+  const flags = {
+    city: false, ore: false, wood: false, fish: false, crops: false,
+    oreDouble: false, woodDouble: false, fishDouble: false, cropsDouble: false
+  };
   for (const r of info.resources || []) {
     const key = LIVE_RESOURCE_TYPE_MAP[r.type];
     if (!key) continue;
@@ -2090,6 +2097,7 @@ function getLiveResourceFlags(info) {
       if ((r.baseGeneration || 0) >= 18000) flags.city = true;
     } else if ((r.generation || 0) > 0) {
       flags[key] = true;
+      if ((r.baseGeneration || 0) >= 7200) flags[`${key}Double`] = true;
     }
   }
   return flags;
@@ -3764,7 +3772,7 @@ function updateGuildSelectDatalist() {
 async function loadGuilds() {
   const input = document.getElementById('guild-select');
   try {
-    const res = await fetch('https://corsproxy.io/?https://api.wynncraft.com/v3/guild/list/territory', { cache: 'no-store' });
+    const res = await fetch(`https://corsproxy.io/?url=${encodeURIComponent('https://api.wynncraft.com/v3/guild/list/territory')}`, { cache: 'no-store' });
     if (!res.ok) {
       throw new Error(`API error: ${res.status} ${res.statusText}`);
     }
@@ -3832,7 +3840,7 @@ function updateLiveBadge() {
 // 守備推定に使うグローバル転送位相（_globalTransferPhase）はデータ取得のたびに1回だけ再計算する。
 async function fetchLiveTerritoryData() {
   try {
-    const res = await fetch('https://corsproxy.io/?https://api.wynncraft.com/v3/guild/list/territory', { cache: 'no-store' });
+    const res = await fetch(`https://corsproxy.io/?url=${encodeURIComponent('https://api.wynncraft.com/v3/guild/list/territory')}`, { cache: 'no-store' });
     if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`);
     const data = await res.json();
 
@@ -3853,7 +3861,7 @@ async function fetchLiveTerritoryData() {
 // ギルドカラーはLiveモードをONにした時の1回のみ取得する（ほぼ変化しないため）。
 async function fetchGuildColors() {
   try {
-    const res = await fetch('https://corsproxy.io/?https://athena.wynntils.com/cache/get/guildList');
+    const res = await fetch(`https://corsproxy.io/?url=${encodeURIComponent('https://athena.wynntils.com/cache/get/guildList')}`);
     if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`);
     const list = await res.json();
     const map = {};

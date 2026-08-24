@@ -187,7 +187,7 @@ python dev-server.py 8080
 | `renderDefenseEstimateApproximateHTML(estimate)` | 簡易推定（フォールバック）のHTMLを構築する。見出し・箇条書きの色を確定推定（マゼンタ`#FF55FF`）とは異なるグレー系（`#8B96A3`）にして視覚的に区別し、末尾に英語の注記を付す。4スタッツとも決定不能な場合は空文字列を返し、個別に決定不能なスタッツは`?`で表示する |
 | `fmtHeldDuration(acquiredStr)` | `acquired`からの経過時間を、桁に応じて段階的な形式（1分未満`XXs`／1時間未満`XXm XXs`／1日未満`XXh XXm`／それ以上`XXd XXh`）で返す |
 | `recentlyCapturedElapsedMs(info)` | `acquired`から10分（`RECENTLY_CAPTURED_MS`）以内なら経過msを返す、それ以外は`null`。Liveモードのマップハイライトと`computeGlobalTransferPhase()`のグローバルf探索対象除外の両方で共有する |
-| `getLiveResourceFlags(info)` | マップ上の資源アイコン描画用。`resources[].generation`（emeraldsは`baseGeneration`）から産出中の資源・Cityを判定する |
+| `getLiveResourceFlags(info)` | マップ上の資源アイコン描画用。`resources[].generation`（emeraldsは`baseGeneration`）から産出中の資源・Cityを判定する。**ダブル資源地（`baseGeneration>=7200`）の判定（`oreDouble`/`woodDouble`/`fishDouble`/`cropsDouble`）も返す（2026-08追加、下記バグ修正参照）** |
 | `handleLiveTap(cx, cy, hit)` | Liveモード・スマホのタップ処理。`liveTooltipPinnedName`をトグルしてツールチップの固定表示を切り替える |
 | `updateLiveBadge()` | `#live-badge`の表示切り替え。データ取得に失敗している間だけエラー色（`.error`クラス）にする |
 | `computeLiveConfirmedInfo(name, info, bfsCache?)` | 実データから確定できるボーナス（ストレージレベル・Efficient/Rate系の組み合わせ）を算出する共通処理。showLiveTooltip/getDefenseEstimate/importLiveGuild/computeGlobalTransferPhaseで共有する。`bfsCache`を渡すと同じギルドHQからのBFS距離を使い回す。`resourceSnapshot[r]`（r=ore/crops/wood/fish）には`baseGeneration`も保持する（グローバルf探索のエメラルドveto判定＝Trio A検出に使う。2026-08追加） |
@@ -274,6 +274,28 @@ Worker生成失敗（module worker非対応環境等）・Worker内エラー・�
 **XP Seekingが影響するのは「エメラルドからfを求める」用途のみであり、守備ステータス推定そのもの（ore/wood/fish/crops、Damage/Attack/Health/Defense）には一切関係しない。** XP Seekingはemeraldsのみを消費するボーナスであり、`candidateConsumption()`が算出する4系統（ore/crops/wood/fish）のいずれにも登場しない。上記のエメラルド方式不採用は「fの求め方」の話であり、fが（グリッド探索によって）正しく求まった後のStep 2（`estimateDefenseStats()`）の精度には影響しない。
 
 **secondsToTransferの向き（2026-08、実データで再検証・現行のまま正しいことを確認）。** `secondsToTransfer = 3600 × f` は「次の転送までの残り秒数」であり、**fが大きい（F_MAXに近い）ほど残り秒数は大きい＝転送直後**という向きで正しい。根拠: Elkurn（VERY_HIGH、`f=0.013617`、`secondsToTransfer=49s`）のore/wood/fish/crops実測を、確定推定の結果（Damage7/Attack11/Health9/Defense8）から逆算した消費量で検算したところ、正規化残差`2.1×10⁻⁶`とほぼ完全に一致した（ore実測125 vs 予測114.4、wood実測234 vs 予測212.4、fish実測228 vs 予測163.4、crops実測475 vs 予測431.2）。**fが大きい（残り秒数が大きい）ときにstoredの絶対値も大きくなるのは、その領地のconsumption（Defenseレベルの合計コスト）自体が大きいためであり、fの大小と直接対応するものではない**（`stored[r] = consumption[r]×f + generation[r]×(1/60−f)`はconsumptionにも比例するため、低Defense領地は高fでもstoredが小さくなりうる。「Res Tickが50〜60sのとき精度が良い」という観察自体は正しく、fが大きいほど`1/f`（stored 1単位の丸め誤差が表す消費量誤差）が小さくなるため精度が上がる——詳細は次項のRESOLUTION_LIMIT参照）。
+
+**secondsToTransferの離散パターン再検証（Phase 6、2026-08実施）。** Phase 5D初期（veto・片側化導入前の古いアルゴリズム）の調査で「secondsToTransferが6〜7段の階段状（8.5〜9秒間隔）に偏っている」ように見えるデータがあったが、当時のアルゴリズムの偏りが生んだ見かけ上のパターンなのか、切り分けができていなかった。veto・片側化を実装した現行アルゴリズムで、本番コードを一切変更せずNode.jsから直接API（`api.wynncraft.com`、corsproxyを介さない）を叩いて再検証した（収集・分析スクリプトは`scratchpad/phase5d/`と同様`scratchpad/phase6/`に保存済み。`scratchpad/`はgitignore対象のためリポジトリには含まれない）。
+
+2パターンで各180件収集した。①固定60秒間隔（対照実験）: 探索が60秒を超過するケースが180件中64件（17.8%）あり、後半でスケジュールのドリフトが累積したため、分析は設計上の間隔ではなく実測`fetchedAt`間隔ベースで行った（実測間隔のmod 60分布は60ビン中39ビンのみに観測があり、0/59秒付近に集中——ポーリング周期と資源更新周期の同期＝エイリアシングが実際に起きていたことを示す）。②45〜165秒のランダム待機を挟むパターン（メイン）: 実測間隔のmod 60分布は60ビン中57ビンに観測があり、固定パターンよりはるかに偏りなく位相をカバーできていることを確認済み。
+
+**結果: 両パターンとも一様分布[0,60)を帰無仮説としたカイ二乗適合度検定が極めて有意**（固定: χ²=649.33, df=59, p≈2.4×10⁻⁸⁹／ランダム: χ²=596.00, df=59, p≈1.1×10⁻⁸⁰、いずれもWilson-Hilferty近似）。両パターンのヒストグラム（1秒刻み60ビン）は、37/60ビンが両方とも0件・不一致は3/60ビンのみという高い構造的一致を示し、相関係数0.64、頻度上位15ビンのうち11ビンが一致した（34s/54s/16s/45s/27s/7s/35s/43s等）。ランダム間隔パターンはエイリアシングをほぼ排除した実測間隔分布の下でも同じクラスタが再現したため、**「当時のアルゴリズムの偏りの名残」という帰無仮説は棄却し、「本物の離散パターン」と結論する。**
+
+副次検証（エメラルドチャンネルのadmissible区間、資源ブースト無し確認済みの6領地——Winding Waters/Path to Ahmsord/Heart of Decay/Ogre Den/Ragni North Entrance/Festival Grounds、候補7領地中Dreary Docksはore storageブースト検出のため除外——で照合）は、固定パターンで64.4%（670/1040件）・ランダムパターンで69.5%（720/1036件）が選ばれた`f`と矛盾しなかった。頻度上位クラスタの内外で支持率に大差はなかった（プールした上位12ビン内64.6% vs 外75.9%）ため、この副次検証単体では「クラスタの真偽」を判別する材料にはならなかったが、多数派のケースでグローバル位相探索の出力が独立チャンネルと矛盾しないことは確認できた。
+
+**注意（推測の禁止）: 「本物の離散パターン」と判定できたのは観測された`secondsToTransfer`の分布についてであり、これがWynncraft側の実際のサーバー実装に起因するのか、本シミュレーターのf探索アルゴリズム自体の離散化（粗探索60分割＝secondsToTransfer換算で1秒刻み・exactlyOne目的関数のタイブレーク等）に起因するバイアスなのかは、今回のデータだけでは切り分けられない。ゲーム内の実際の挙動についての推測はしていない。** 次のステップとして、f探索の候補グリッドを観測された離散値（34s/54s/16s/45s/27s/7s等）に絞る最適化は検討する価値があるが、今回は検討のみに留め実装はしていない。
+
+**副次的な発見: 探索時間がfの小ささと強く相関し、本番のWorkerタイムアウト（90秒）に迫る/超えるケースが実測された。** 収集した360件中64件（17.8%）で探索時間が60秒を超え、6件（1.7%）は90秒（`PHASE_WORKER_TIMEOUT_MS`と同水準）を超えた（最大619,702ms）。いずれもf が極端に小さい（secondsToTransfer 2.2s/7.0sのみ）ケースに集中しており、fとdurationの相関係数は-0.55だった。これは「fが小さいほど許容誤差window（`PHASE_TOLERANCE_PER_RESOURCE/f`等）が広がり候補が急増する」という既存の理解（本節冒頭「目的関数に『カバレッジの最大化』を使ってはならない」参照）と整合する。本番のポーリング間隔（30秒）・Workerタイムアウト（90秒）は現状維持で問題ないと判断されるレベル（1.7%）だが、頻度が今後増える場合は`PHASE_WORKER_TIMEOUT_MS`の見直しを検討する余地がある。今回は観測のみで対応は行っていない。
+
+**secondsToTransferの離散パターンの原因切り分け（探索格子解像度依存の検証、2026-08実施）。** 上記の再検証で「本物の離散パターン」と判定したクラスタ（34s/54s/16s/45s/27s/7s等）について、これが「ゲーム側の本当の更新間隔」なのか「f探索アルゴリズム自体の格子解像度が生んだ人工的な離散化」なのかを追加検証した。`estimateGlobalTransferPhase()`の粗探索の分割数`PHASE_COARSE_STEPS`（本番60、`secondsToTransfer`換算で1秒刻みに相当）を**120（2倍）に上げた複製版**を用意し（`scratchpad/phase6/eco-logic-highres.mjs`。本番`eco-logic.js`は無変更、`computeTerritoryEmeraldAdmissible`等export済みの関数は複製せず本番のものをそのままimportして使用）、細探索の分割数`PHASE_FINE_STEPS`（40）は変更していない（変更を粗探索側1箇所に絞るため）。ランダム間隔（45〜165秒）のみで再度180件収集した（固定間隔パターンは前回でエイリアシング排除が決着済みのため今回は省略）。
+
+**着手前の懸念（探索時間の悪化）は事前の試し打ち5回で確認**: 高解像度版の所要時間は現行比平均2.09倍（f・exactlyOneの値自体は現行版とほぼ一致し、アルゴリズムの複製が正しいことも確認済み）、90秒超過は5回中1回（20%）で、目安の30%を下回っていたため解像度の上げ幅はそのまま2倍で本収集に進んだ。**しかし本収集180件では90秒超過が54件（30.0%）に達し、目安ちょうどの水準まで悪化した**（duration: 平均67,171ms、最大191,331ms）。今回はデータ収集自体は打ち切らず全180件をそのまま記録・集計した（本番のタイムアウト処理を模擬する実装ではなく、あくまで所要時間の実測が目的のため）。
+
+副次検証の対象領地は、前回の手動選定6領地に加えて**現在稼働中の全所有領地からTrio Aブースト無しを毎ポーリング自動スキャンする方式**（`findBoostFreeOwnedTerritories()`、`common.mjs`）に拡張した。180回のポーリングを通じて延べ336領地（1回あたり216〜281領地、平均241.9領地）が対象になった。
+
+**結果: 解像度を上げると、クラスタの位置は同じ場所に留まらず移動した。** 高解像度版も単独では一様分布から極めて有意に乖離しており（χ²=862.67, df=59, p≈1.6×10⁻¹²³、現行版のχ²=596.00, p≈1.1×10⁻⁸⁰と同様に強いクラスタ構造を持つ）、**クラスタが消滅したわけではない。** しかし現行版と高解像度版のヒストグラム（同じ1秒ビンで比較）の相関係数は**0.077**（前回、固定間隔 vs ランダム間隔＝同一解像度どうしの比較では0.64だった）まで低下し、上位15ビンの重なりも5/15（34s/54s/16s/45s/27s/7s等のうち生き残ったのは9s/27s/36s/46s/56sのみ）、両方非ゼロで一致するビンはわずか7/60、不一致（片方だけ非ゼロ）は25/60に達した（前回の同一解像度比較では不一致3/60）。**さらに、現行版の主要クラスタ（7s/16s/34s/45s/54s等）を高解像度版の0.5秒ビンで見ると、該当する1秒区間の観測数がほぼ0件になっているか、あるいはその区間内の片方の0.5秒サブビンへ100%近く（67〜100%）偏って移動していた**（例: 現行版の27s台クラスタは高解像度版で27.5〜28.0sのサブビンに100%移動、46s台は46.5〜47.0sに90%移動）。クラスタが解像度に応じて生成・消滅・移動する挙動は、粗探索の格子点自体が「勝ちやすいf」を生んでいることを示しており、**判定基準に照らして「探索格子の解像度に依存していた＝アルゴリズム由来の人工的な離散化だった可能性が高い」と結論する。** ゲーム側の実際のサーバー実装がこれと独立に何らかの離散更新間隔を持つかどうかは、今回のデータからは判断できず、推測しない。
+
+**副次検証（エメラルドチャンネル）は今回明示的に結論を出す。** 手動6領地は現行版69.5%（720/1036件）・高解像度版69.3%（742/1071件）、自動検出した延べ336領地は70.5%（30,706/43,540件）と、**解像度・対象領地セットによらずおおむね69〜71%で安定していた。** この一致自体はクラスタの真偽（解像度依存かどうか）を判別する材料にはならない（エメラルドチャンネルは「選ばれたfがその領地単体として辻褄が合うか」を見るものであり、どの解像度でどのクラスタが選ばれたかとは独立の検証のため）が、少なくとも**解像度を変えてもf選定プロセス自体の外的整合性（約7割が独立チャンネルと矛盾しない）は変わらないことを確認した。**
 
 **Step 2: 領地ごとの候補決定（`EcoLogic.estimateDefenseStats()`）**
 
@@ -367,7 +389,24 @@ Tierは3段階。**Tier A**: 候補が1件に絞れており（`candidateCount==
 - **Nemractは複数回Tier Aで観測されており（`D6/A8/H8/F7`等）、品質が下がった回もTier Aのまま`keep`（更新スキップ）と正しく判定されていた。defences変化による正当な`DISCARD`は1回発生していたが、Tier B→Tier Aの上書きは一度も発生していない。**
 - **ログ全体（約1万行）を`newTier=A.*prevTier=B`で検索しても該当は0件。** 437領地・実運用セッションの中で、Tier B→Tier Aの遷移自体が（少なくともこのセッションでは）一度も起きていない。
 
+**時間方向の区間積み重ね方式は検証したが不採用（2026-08）。** storedの丸め誤差（±0.5）から`cons[r] ∈ [(s−0.5−gen×(1/60−f))/f, (s+0.5−gen×(1/60−f))/f]`という区間が得られ、複数スナップショットの区間を共通部分（AND）で積み重ねれば、単独最良の観測より分解能が上がるのではないかという仮説を検証した。Tromsを含む5領地・保存済み7スナップショット（`scratchpad/phase5d`、2026-08-20 04:12〜07:34）で検証したところ、**Tromsでさえ4チャンネル全てで共通部分が空集合になり、真の消費量を一度も含めなかった。** confirmedExtra/defences/treasuryが一致し続ける安定部分集合（4件）に絞っても結果は変わらなかった。原因は、oreチャンネルの実測storedと真値からの予測を比較すると、highf（52s）以外の6スナップショットで25〜35ユニットの系統的なズレがあり、これはstoredの整数丸め（±0.5）や区間幅（1/f）では説明できない大きさだったこと。**素朴な区間式は`f`が正確であることを前提にしており、`f`自体の推定誤差を織り込んでいなかったため。** 複数回の量子化観測を重ねると分解能が上がるという性質自体は、非生産チャンネル1件（Dragonling Nestsのore、7件を通してconfirmedExtra一致・矛盾なし）で幅69.2→12.2（縮小率17.6%）と実証できたが、これを実用化するには「fの誤差が小さい（高f・高品質の）観測だけを対象にする」という絞り込みが必要になり、結局Item 9キャッシュ（Tier Aの良い観測を保持する仕組み）の延長線上の話に帰着するため、新規の仕組みとしては見送りとした。
+
+**Fort Hegeaの事例が、生産チャンネルの感度に関する既存の理解を追加で裏付けた（2026-08）。**上記の検証中、Fort Hegea（ore/crops/wood/fish全資源が軽く生産されているRainbow系領地）で、
+confirmedExtra/defences/treasuryが完全に一致したまま、**わずか68秒しか離れていない2スナップショット間でも4チャンネル全てが矛盾する**事例が見つかった。構成変更では
+説明がつかないタイミングであり、`f`のわずかな誤差が生産量の大きいチャンネルで拡大されるという既存の理解（`SENSITIVITY_NORMALIZER`による品質補正・TOL_PROD不採用の経緯を参照）と整合する追加の実例である。
+
 **結論**: 上書きの仕組み自体は合成データで実証済みだが、実データでは今回確認した範囲でまだ一度も発生していない（Tier Bで観測された領地がその後Tier Aに遷移すること自体が実際には稀と見られる）。KC/BAの症状はこの問題とは無関係（候補未確定が真因）と判断し、この3領地を診断対象から外す。一般ケースでの再発生を捉えるため、`updateQualityCache()`内の**診断用ログ`[cache-diag]`は残す**（`cachedBefore.tier === 'B'`かつ新規観測が`tier === 'A'`かつ新しい品質が既存より低い場合にのみ出力、挙動は変更しない）。今後この条件が実データで発火した場合に、対策案（Tier B超えに必要な最低品質を別途設ける／Tierによる絶対優先をやめ正規化した品質で単純比較する）を検討する。
+
+**「共有位相」仮説（Opus 5 Effort最大の提案）は段階1で棄却・不採用（2026-08検証、段階2は未実施）。** Tromsの真の消費量から4チャンネル独立にfを逆算するとグリッド探索のfと系統的にズレる（前掲の時間方向区間積み重ね方式の検証で判明）ことから、「領地ごとの候補マッチング誤差は、4チャンネル独立の測定誤差ではなく、その領地固有の真の位相とグローバル探索が選んだ位相のズレという単一の共有パラメータで支配的に説明できる」という仮説を、既知の正解構成が判明している6領地（Troms/Collapsed Emerald Mine/Akias Ruins/Fort Hegea/Maltic Coast/Thanos Exit、ユーザー提供のレベル値）×保存済み7スナップショット（`scratchpad/phase5d`、2026-08-20 04:12〜07:34）で検証した。真の消費量は`DEFENSE_COST_TABLE`/`BONUS_CONFIG`から機械的に算出した（Minions/Multiレベルに「または」がある領地は両方の値で計算し、結論への影響が無いことを確認済み）。Efficient Resources/Resource Rate/Larger Resource Storage（Trio A、emeralds消費）はore/crops/wood/fish消費に無関係なため、Trio B（Efficient Emeralds/Emerald Rate/Larger Emerald Storage、ore/crops/wood消費）を持つTroms以外は消費量に影響しない。
+
+ドキュメント記載の段階1停止条件（「バラつきが大きい、またはスナップショットごとに乖離の方向・大きさが一貫しない場合は、仮説は支持されない→ここで終了」）に該当したため、以下の理由で**段階2（共有位相での新候補選定ロジックの試作）は実施しなかった。**
+
+- **方向は概ね一貫して負（グリッドfが真のfを過大評価）だが、大きさが領地間で一致しない。** 構成変化の疑いが無い4領地（Fort Hegea/Collapsed Emerald Mine/Akias Ruins/Thanos Exit）の乖離率は、同一スナップショット（同一グリッドf）内で f=25s(0.006847)時-10.3%〜-38.1%（範囲27.9pt）、f=35s(0.009736)時-6.0%〜-22.1%（範囲16.2pt）、f=52s(0.014444、highf)時-5.2%〜+1.9%（範囲7.1pt）とバラついた。fが大きいほど乖離が縮む傾向自体は、単一の共有位相ズレという新しい仮説ではなく、既存の分解能ガード（`RESOLUTION_LIMIT`、storedの丸め誤差1単位が表す消費量誤差=1/f）の理解で説明がつく挙動である。
+- **4チャンネル間のバラつき（spread）も領地によって大きく異なる。** Fort Hegeaは極めて小さい（spread 0.00004〜0.0001）が、Collapsed Emerald Mineは同じ低f帯でspread 0.0018〜0.0176（f自体より大きい）、Thanos Exitも0.0011〜0.0035、Tromsは一部スナップショットでspread 0.013〜0.034（fを大幅に超え、meanFが負になる縮退も発生）に達した。
+- **Troms・Maltic Coast（いずれもAequitas所有）は最初の3スナップショット（04:12:47〜04:18:43）で構成変化の疑いが強い。** 両領地とも`acquired`が最初のスナップショット取得の約10〜30分前であり、同時間帯にAequitasの`guild.hq`自体も変化していた（`Corrupted Warfront`→`Nivla Woods Exit`、05:22:55以降）。Tromsはこの間`defences`がVERY_LOW⇄HIGHで揺れ、ore/crops/fishのstoredが0にリセットされる等、転送位相モデルと無関係な不安定さを示した。
+- **Maltic Coastは検証した7スナップショット全てでrating不一致だった（期待Highに対し実測はVery LowまたはMedium）。** ユーザー提供の構成（Damage4/AttackSpeed5/Health5/Defense5等）はこの検証で観測された実データのいずれとも整合せず、この領地は今回の検証では正解データとして使用できないと判断した（構成が古い、または過去に別ギルドが所有していた時点の構成だった可能性がある）。
+
+検証に使ったスクリプトは`scratchpad/phase5d/stage1_shared_phase.mjs`（本番コード非変更、読み取り専用の分析スクリプト）。指示元の検証手順書（`docs/phase5d-shared-phase-verification.md`）は結果記録後に削除済み。
 
 ### 生産計算
 - 基本生産量は `territories.json` の `resources` フィールド
@@ -451,7 +490,7 @@ stored[r] = consumption[r] × f + generation[r] × (1/60 − f)       f = (1 −
 
 **Live モード中はマップ・Map Filter・ツールチップが実データに切り替わる。`addedTerritories` ベースの描画は一切行わない。** Liveモードは表示レイヤーであり、シミュレーション状態を触る操作（領地の選択・モーダル編集）はすべて無効化する。
 
-- マップ描画（`drawTerritoriesLive()`）: 所有ギルドのカラー（`guildColorMap`、`getGuildColor(prefix)`）で塗り・枠線を描く。無所属は白。`hq: true` の領地には既存のHQアイコンを表示する。マップ選択（`selectedTerritories`）のハイライトは維持する。**HQ以外の所有領地にも、領地名の上に生産資源のアイコンを表示する**（`getLiveResourceFlags(info)`。判定は`resources[].generation`（0より大きいものを産出していると判定）、Cityのみ`EMERALD`の`baseGeneration`（18,000以上）を使う。アイコンの種類・配置（Rainbow時の2x2グリッド等）は既存のシミュレーションモードと同じ）。**取られてから10分以内（`recentlyCapturedElapsedMs(info)`）の領地は、既存の非接続領地と同じ赤破線アウトライン（`#ef4444`）でハイライトし、領地名の上に経過時間（`Xm Ys`形式）を赤文字で表示する（2026-08追加）。** 優先順位は選択（`isSelected`）の次・HQ/所有色の前（非接続ハイライトと同じ位置）。10分を超えると通常表示に戻る。
+- マップ描画（`drawTerritoriesLive()`）: 所有ギルドのカラー（`guildColorMap`、`getGuildColor(prefix)`）で塗り・枠線を描く。無所属は白。`hq: true` の領地には既存のHQアイコンを表示する。マップ選択（`selectedTerritories`）のハイライトは維持する。**HQ以外の所有領地にも、領地名の上に生産資源のアイコンを表示する**（`getLiveResourceFlags(info)`。判定は`resources[].generation`（0より大きいものを産出していると判定）、Cityのみ`EMERALD`の`baseGeneration`（18,000以上）を使う。アイコンの種類・配置（Rainbow時の2x2グリッド等）は既存のシミュレーションモードと同じ）。**ダブル資源地（`baseGeneration>=7200`）のバグ修正（2026-08）**: `getLiveResourceFlags()`が真偽値（産出中か否か）しか返しておらず、通常モードの`drawTerritories()`（`res.ore>=7200`等でアイコンを2つ積む）とロジックが揃っていなかったため、Live Mode時はダブル資源地でもアイコンが1個しか表示されないバグがあった。`getLiveResourceFlags()`に`oreDouble`/`woodDouble`/`fishDouble`/`cropsDouble`（`baseGeneration>=7200`で判定、Treasuryバフ等の影響を受けない値のため通常モードの生値比較と同じ基準になる）を追加し、`drawTerritoriesLive()`側の`iconsToDraw`構築でdoubleフラグが立っている資源のアイコンを2つ積むよう修正した。Playwrightで`CanvasRenderingContext2D.drawImage`呼び出しをモンキーパッチして検証し、修正前は隣接する同一アイコンのペアが0件、修正後は当時所有されていたダブル資源地12件ぶんのペアが検出されることを確認済み（検証スクリプトは`scratchpad/phase6/`、作業後削除済み）。**取られてから10分以内（`recentlyCapturedElapsedMs(info)`）の領地は、既存の非接続領地と同じ赤破線アウトライン（`#ef4444`）でハイライトし、領地名の上に経過時間（`Xm Ys`形式）を赤文字で表示する（2026-08追加）。** 優先順位は選択（`isSelected`）の次・HQ/所有色の前（非接続ハイライトと同じ位置）。10分を超えると通常表示に戻る。
 - Map Filter（`getFilterCategoriesLive(name)`）: 判定対象は全437領地。`defense`は実データの`defences`、`treasury`は実データの`treasury`、`resource`は`resources[].generation`（0より大きいものを産出していると判定）と`EMERALD`の`baseGeneration`（18,000以上をCityと判定）を使う。配色・斜め分割塗り・非該当領地の不透明度0.35は既存仕様のまま。判定対象外（無所属）の領地は暗くしない。
 - ツールチップ（`showLiveTooltip()`）: 実データ（所有ギルド・生産量・貯蔵量・Treasury・Defence）を表示する。`(Conn)`/`(Ext)`の判定は、そのギルドの`guild.hq`領地を起点に全437領地グラフをBFSした距離を使う（`EcoLogic.bfsDistancesFrom(guildHqName, territories, [])`。**customConnectionsは含めない**——ユーザーが追加した接続線はシミュレーション専用の設定であり、実データの表示には反映しないため）。無所属の領地は`Unclaimed`とだけ表示する。ホバー/長押しでのツールチップ表示対象も、Liveモード中は「`liveData`を持つ領地すべて」に切り替わる（`isTooltipTarget(name)`）。表示内容の詳細は「ツールチップ」節を参照。
 - **操作の無効化**: Liveモード ON のとき、領地のクリック／タップによる選択・モーダル表示（`handleClick()`）はすべて無効化する。`selectedTerritories`はLiveモードに入った時点でクリアし、`Add Selected Territories`ボタンも無効化する（`disabled`）。OFFに戻すとすべて従来どおりに復帰する。`addedTerritories`自体はLiveモード中も保持する。
@@ -598,7 +637,9 @@ stored[r] = consumption[r] × f + generation[r] × (1/60 − f)       f = (1 −
 
 ## 外部API
 
-- `https://corsproxy.io/?https://api.wynncraft.com/v3/guild/list/territory`
+**corsproxy.io呼び出しのURL形式（2026-08変更）。** 従来の`https://corsproxy.io/?<url>`（クエリキー無しでURLを直接連結する形式）は、corsproxy.io側の仕様変更により403で拒否されるようになった。現在は`https://corsproxy.io/?url=${encodeURIComponent(<url>)}`（`url=`クエリパラメータ＋URLエンコード）形式に統一している（`loadGuilds()`・`fetchLiveTerritoryData()`・`fetchGuildColors()`の3箇所すべて対応済み）。**Node.js等ブラウザ以外からの直接リクエストは、URL形式を新形式にしても`{"error":"Server-side requests are not allowed on your plan..."}`（403）で拒否される**（corsproxy.io無料プランがOriginヘッダーの無いサーバー間リクエストを別途ブロックしているためと見られる）。実際のブラウザ（Live Modeを有効化した状態）からのリクエストはPlaywrightで200成功を確認済み。したがって**corsproxy.io経由の疎通確認は必ず実ブラウザで行うこと。`curl`やNode `fetch`単体での403は、URL形式の問題ではなくこの制限による可能性があるため、ブラウザ検証なしにURL形式を疑わないこと。**
+
+- `https://corsproxy.io/?url=${encodeURIComponent('https://api.wynncraft.com/v3/guild/list/territory')}`
   - `loadGuilds()`（Add From On-map Guild用）と Live モード（`fetchLiveTerritoryData()`）の両方がこのURLを叩く。新しいエンドポイントではない。
   - レスポンス形式（実測、437領地全件）:
     ```json
@@ -620,7 +661,7 @@ stored[r] = consumption[r] × f + generation[r] × (1/60 − f)       f = (1 −
   - **`resources[].baseGeneration`が実際のレスポンスに存在する（2026-08時点で確認済み）。** 領地固有の基礎生成量をこのフィールドから直接取得できる。
   - APIが使えない場合はプレースホルダー（`loadGuilds()`側）またはステータス表示（Liveモード側）にエラーを出し、グレースフルデグラデーションする。
   - **`corsproxy.io`は元のAPIが返す`Cache-Control: max-age=10`を、独自の`Cache-Control: public, max-age=3600, s-maxage=3600`（1時間）に上書きして転送する（2026-08時点で確認済み）。** `fetch()`には`{ cache: 'no-store' }`を必ず付けること（`loadGuilds()`・`fetchLiveTerritoryData()`の両方で対応済み）。付けないと30秒間隔のポーリングでもブラウザがこのキャッシュを使い、最大1時間近く同じレスポンスを返し続けることがある（実測: 40〜45分間、全437領地の`resources`・`_globalTransferPhase`が完全に不変のまま推移する事例を確認）。
-- `https://corsproxy.io/?https://athena.wynntils.com/cache/get/guildList`
+- `https://corsproxy.io/?url=${encodeURIComponent('https://athena.wynntils.com/cache/get/guildList')}`
   - ギルドカラー取得用。Liveモードを ON にした時の1回のみ取得する（`fetchGuildColors()`。ポーリングのたびには叩かない）。
   - レスポンス形式: `[{ "_id": "...", "prefix": "SEQ", "color": "#RRGGBB" }, ...]`（配列、2700件超）。`color`が無い要素は`#FFFFFF`にフォールバックする（`getGuildColor()`）。
   - 取得に失敗した場合は全ギルドを`#FFFFFF`として続行する。
