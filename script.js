@@ -3852,7 +3852,7 @@ function updateGuildSelectDatalist() {
 async function loadGuilds() {
   const input = document.getElementById('guild-select');
   try {
-    const res = await fetch(`https://corsproxy.io/?url=${encodeURIComponent('https://api.wynncraft.com/v3/guild/list/territory')}`, { cache: 'no-store' });
+    const res = await fetch(`${CF_PROXY_URL}/proxy?url=${encodeURIComponent('https://api.wynncraft.com/v3/guild/list/territory')}`, { cache: 'no-store' });
     if (!res.ok) {
       throw new Error(`API error: ${res.status} ${res.statusText}`);
     }
@@ -3908,6 +3908,10 @@ async function loadGuilds() {
 const LIVE_RESOURCE_TYPE_MAP = { EMERALD: 'emeralds', ORE: 'ore', WOOD: 'wood', FISH: 'fish', CROP: 'crops' };
 const LIVE_POLL_INTERVAL_MS = 60000;
 
+// 自前のCloudflare Worker（CORSプロキシ）。api.wynncraft.com/athena.wynntils.comへの
+// 全リクエストがこれを経由する（corsproxy.ioは2026-08に廃止、詳細はCLAUDE.md参照）。
+const CF_PROXY_URL = 'https://eco-simulator-cf-proxy.eco-service.workers.dev';
+
 // AWB共有バックエンド（守備推定の共有計算結果を配信する外部サービス）。
 // /eco/territoriesが成功すればその結果を最優先で使い、ローカルのグローバル位相探索
 // （computeGlobalTransferPhase）は実行しない（無駄な計算を避けるため）。失敗時は
@@ -3943,14 +3947,14 @@ async function fetchAwbEstimates() {
 }
 
 // API取得失敗時は直前のliveDataを保持したまま次のポーリングを待つ（画面を空にしない）。
-// マップ描画用の生データ取得はcorsproxy経由のWynncraft API直叩きのまま変更しない。
+// マップ描画用の生データ取得は自前Worker経由のWynncraft API直叩きのまま変更しない。
 // 守備推定はまずAWB共有バックエンド（/eco/territories）を叩き、成功すればその結果を
 // _awbEstimatesに保持してツールチップ表示の最優先ソースにする（showLiveTooltip参照）。
 // この経路が使われた回はローカルのグローバル位相探索（computeGlobalTransferPhase）・
 // updateQualityCacheを実行しない。失敗した場合のみ、今まで通りローカル計算を実行する。
 async function fetchLiveTerritoryData() {
   try {
-    const res = await fetch(`https://corsproxy.io/?url=${encodeURIComponent('https://api.wynncraft.com/v3/guild/list/territory')}`, { cache: 'no-store' });
+    const res = await fetch(`${CF_PROXY_URL}/proxy?url=${encodeURIComponent('https://api.wynncraft.com/v3/guild/list/territory')}`, { cache: 'no-store' });
     if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`);
     const data = await res.json();
 
@@ -3978,7 +3982,7 @@ async function fetchLiveTerritoryData() {
 // ギルドカラーはLiveモードをONにした時の1回のみ取得する（ほぼ変化しないため）。
 async function fetchGuildColors() {
   try {
-    const res = await fetch(`https://corsproxy.io/?url=${encodeURIComponent('https://athena.wynntils.com/cache/get/guildList')}`);
+    const res = await fetch(`${CF_PROXY_URL}/proxy?url=${encodeURIComponent('https://athena.wynntils.com/cache/get/guildList')}`);
     if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`);
     const list = await res.json();
     const map = {};

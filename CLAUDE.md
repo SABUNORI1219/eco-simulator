@@ -16,6 +16,9 @@ eco-simulator/
 ├── dev-server.py        # ローカル開発用サーバー（キャッシュ無効化ヘッダー付与。詳細は「起動方法」参照）
 ├── main-map.png        # マップ画像（4608×6644px）※手動配置が必要
 ├── assets/icons/others/disconnected.png  # 非接続❌アイコン（16px四方）※手動配置が必要
+├── cf-proxy/            # 自前CORSプロキシ（Cloudflare Worker）。GitHub Pagesの成果物とは
+│                        # 独立したサブディレクトリ。詳細は「外部API」内「自前CORSプロキシ
+│                        # （Cloudflare Worker）」参照
 └── CLAUDE.md           # このファイル（.gitignore対象）
 ```
 
@@ -163,7 +166,7 @@ python dev-server.py 8080
 | `toggleFilterValue(mode, key)` | 指定モードの指定カテゴリのON/OFFをトグルして`refreshUI()` |
 | `clearFilter()` | `filterMode`を`'none'`に戻す（トグル状態はリセットしない） |
 | `onLiveModeToggle()` | Live Modeチェックボックスのon/offを処理。ONでギルドカラー取得＋ポーリング開始＋マップ選択クリア、OFFでポーリング停止＋`liveData`クリア＋Web Worker終了 |
-| `fetchLiveTerritoryData()` | `/v3/guild/list/territory`（corsproxy経由、マップ描画用の生データ）を取得し`liveData`を更新する。その後`fetchAwbEstimates()`を`await`し、成功すれば結果を`_awbEstimates`に保持するのみでローカルの`computeGlobalTransferPhase()`・`updateQualityCache()`は実行しない（2026-08変更、無駄な計算を避けるため）。AWBが失敗した場合のみ`_awbEstimates`を`null`にし、従来どおり`computeGlobalTransferPhase()`を`await`した後`updateQualityCache()`を呼ぶ。最後に`updateLiveGuildOptions()`→`refreshLiveTooltipIfOpen()`を呼ぶ。マップ描画用の生データ取得自体が失敗した場合は直前のデータを保持したままエラー表示（`updateLiveBadge()`） |
+| `fetchLiveTerritoryData()` | `/v3/guild/list/territory`（自前Cloudflare Worker経由、マップ描画用の生データ）を取得し`liveData`を更新する。その後`fetchAwbEstimates()`を`await`し、成功すれば結果を`_awbEstimates`に保持するのみでローカルの`computeGlobalTransferPhase()`・`updateQualityCache()`は実行しない（2026-08変更、無駄な計算を避けるため）。AWBが失敗した場合のみ`_awbEstimates`を`null`にし、従来どおり`computeGlobalTransferPhase()`を`await`した後`updateQualityCache()`を呼ぶ。最後に`updateLiveGuildOptions()`→`refreshLiveTooltipIfOpen()`を呼ぶ。マップ描画用の生データ取得自体が失敗した場合は直前のデータを保持したままエラー表示（`updateLiveBadge()`） |
 | `fetchGuildColors()` | ギルドカラーを取得して`guildColorMap`を更新（Liveモード ON 時の1回のみ呼ばれる） |
 | `getGuildColor(prefix)` | `guildColorMap`からカラーコードを返す（未取得/不明時は`#FFFFFF`） |
 | `startLivePolling()` / `stopLivePollingTimer()` | `LIVE_POLL_INTERVAL_MS`（60秒、2026-08にAWB統合と合わせて30秒から変更）間隔のポーリングを開始/停止（`_livePollTimer`） |
@@ -655,10 +658,14 @@ stored[r] = consumption[r] × f + generation[r] × (1/60 − f)       f = (1 −
 
 ## 外部API
 
-**corsproxy.io呼び出しのURL形式（2026-08変更）。** 従来の`https://corsproxy.io/?<url>`（クエリキー無しでURLを直接連結する形式）は、corsproxy.io側の仕様変更により403で拒否されるようになった。現在は`https://corsproxy.io/?url=${encodeURIComponent(<url>)}`（`url=`クエリパラメータ＋URLエンコード）形式に統一している（`loadGuilds()`・`fetchLiveTerritoryData()`・`fetchGuildColors()`の3箇所すべて対応済み）。**Node.js等ブラウザ以外からの直接リクエストは、URL形式を新形式にしても`{"error":"Server-side requests are not allowed on your plan..."}`（403）で拒否される**（corsproxy.io無料プランがOriginヘッダーの無いサーバー間リクエストを別途ブロックしているためと見られる）。実際のブラウザ（Live Modeを有効化した状態）からのリクエストはPlaywrightで200成功を確認済み。したがって**corsproxy.io経由の疎通確認は必ず実ブラウザで行うこと。`curl`やNode `fetch`単体での403は、URL形式の問題ではなくこの制限による可能性があるため、ブラウザ検証なしにURL形式を疑わないこと。**
+**corsproxy.io（第三者の無料中継サービス）への依存は2026-08に完全に解消した。** 過去に2回
+（URL形式変更による403、その後の401）corsproxy.io側の仕様変更で障害を起こしており、
+「Add From On-map Guild」というLiveモードに依存しない基本機能まで巻き込まれたことを機に、
+自分専用のCloudflare Worker（`cf-proxy/`、詳細は次項）に置き換えた。corsproxy.io関連の
+コード・コメント・定数はscript.js側から完全に削除済み。
 
-- `https://corsproxy.io/?url=${encodeURIComponent('https://api.wynncraft.com/v3/guild/list/territory')}`
-  - `loadGuilds()`（Add From On-map Guild用）と Live モード（`fetchLiveTerritoryData()`）の両方がこのURLを叩く。新しいエンドポイントではない。
+- `${CF_PROXY_URL}/proxy?url=${encodeURIComponent('https://api.wynncraft.com/v3/guild/list/territory')}`
+  - `loadGuilds()`（Add From On-map Guild用）と Live モード（`fetchLiveTerritoryData()`）の両方がこのURLを叩く。
   - レスポンス形式（実測、437領地全件）:
     ```json
     "Ragni": {
@@ -678,22 +685,68 @@ stored[r] = consumption[r] × f + generation[r] × (1/60 − f)       f = (1 −
   - `resources[].type`は`EMERALD`/`ORE`/`WOOD`/`FISH`/`CROP`。内部表現（`emeralds`/`ore`/`wood`/`fish`/`crops`）へは`LIVE_RESOURCE_TYPE_MAP`でマッピングする（特に`CROP`→`crops`に注意）。
   - **`resources[].baseGeneration`が実際のレスポンスに存在する（2026-08時点で確認済み）。** 領地固有の基礎生成量をこのフィールドから直接取得できる。
   - APIが使えない場合はプレースホルダー（`loadGuilds()`側）またはステータス表示（Liveモード側）にエラーを出し、グレースフルデグラデーションする。
-  - **`corsproxy.io`は元のAPIが返す`Cache-Control: max-age=10`を、独自の`Cache-Control: public, max-age=3600, s-maxage=3600`（1時間）に上書きして転送する（2026-08時点で確認済み）。** `fetch()`には`{ cache: 'no-store' }`を必ず付けること（`loadGuilds()`・`fetchLiveTerritoryData()`の両方で対応済み）。付けないと60秒間隔のポーリング（2026-08にAWB統合と合わせて30秒から変更）でもブラウザがこのキャッシュを使い、最大1時間近く同じレスポンスを返し続けることがある（実測: 40〜45分間、全437領地の`resources`・`_globalTransferPhase`が完全に不変のまま推移する事例を確認）。
-- `https://corsproxy.io/?url=${encodeURIComponent('https://athena.wynntils.com/cache/get/guildList')}`
+  - **自前Workerは元のAPIが返す`Cache-Control: max-age=10`をそのまま転送する（上書きしない、実測確認済み）。** corsproxy.io時代は独自に`public, max-age=3600, s-maxage=3600`（1時間）へ上書きしており、これが過去のブラウザキャッシュ関連の障害の原因だった（詳細は「守備ステータスの推定」内の該当節を参照、これは当時の記録としてそのまま残している）。`fetch()`の`{ cache: 'no-store' }`（`loadGuilds()`・`fetchLiveTerritoryData()`）は、自前Worker移行後は上記の上書き問題自体は発生しなくなったが、ブラウザ自身のHTTPキャッシュを避ける目的は引き続き有効なため削除せず維持している。
+- `${CF_PROXY_URL}/proxy?url=${encodeURIComponent('https://athena.wynntils.com/cache/get/guildList')}`
   - ギルドカラー取得用。Liveモードを ON にした時の1回のみ取得する（`fetchGuildColors()`。ポーリングのたびには叩かない）。
   - レスポンス形式: `[{ "_id": "...", "prefix": "SEQ", "color": "#RRGGBB" }, ...]`（配列、2700件超）。`color`が無い要素は`#FFFFFF`にフォールバックする（`getGuildColor()`）。
   - 取得に失敗した場合は全ギルドを`#FFFFFF`として続行する。
+
+### 自前CORSプロキシ（Cloudflare Worker、2026-08導入）
+
+**`cf-proxy/`ディレクトリに、GitHub Pagesでホストされる静的サイトの成果物（`script.js`等）とは
+独立したCloudflare Workerプロジェクトを置いている。** api.wynncraft.com / athena.wynntils.comは
+CORSヘッダーを返さないため、ブラウザから直接叩けずプロキシが必要（corsproxy.io依存の理由と
+同じ）。
+
+**構成**: `cf-proxy/wrangler.jsonc`（Worker設定）・`cf-proxy/package.json`（`wrangler`を
+devDependencyとして保持）・`cf-proxy/src/index.js`（Worker本体、単一ファイル）。`node_modules/`・
+`.wrangler/`（ローカル実行キャッシュ）は`cf-proxy/.gitignore`で除外済み。このプロキシは現状
+シークレットを一切使わない（ホワイトリスト・許可Originはいずれもコード内の定数で完結する）ため
+`.dev.vars`等の秘匿情報ファイルは存在しないが、将来追加された場合に備え`.gitignore`に保険として
+`.dev.vars*`も含めている。
+
+**Workerの処理内容（`src/index.js`）**:
+1. `GET /proxy?url=<エンコード済みの転送先URL>`のみを受け付ける。それ以外のパスは404、GET/OPTIONS以外のメソッドは405。
+2. **転送先ドメインのホワイトリストチェック**: `url`パラメータのホスト名が`api.wynncraft.com`または`athena.wynntils.com`（httpsのみ）でなければ403で拒否し、転送しない。
+3. **Originチェック**: リクエストの`Origin`ヘッダーが、本番の公開URL（`https://sabunori1219.github.io`）または`dev-server.py`のローカル開発用Origin（`http://localhost:8080`・`http://127.0.0.1:8080`、ポート8080固定）のいずれかと一致する場合のみ通す。一致しなければ403（CORSヘッダー無しで返すため、ブラウザ側は`Failed to fetch`として観測される）。**Originヘッダーが無いリクエスト（curl等の非ブラウザクライアント）は許可する**（Originヘッダーは非ブラウザクライアントなら任意に偽装できるため、ここで弾いても実質的な防御にはならない。ホワイトリストで転送先を2ドメインの公開ゲームAPIに限定済みでもあるため、無Originを許可しても秘匿情報の漏洩にはつながらないという判断。詳細な理由は`src/index.js`のコメント参照）。
+4. ホワイトリスト・Origin双方を通過したリクエストのみ転送先へ`fetch()`し、レスポンス（ステータス・ボディとも）をそのまま返す（エラーの隠蔽をしない）。レスポンスヘッダーに`Access-Control-Allow-Origin`（一致したOriginをそのまま反映。本番Originとローカル開発Originを両方許可しているため固定値ではなく動的に決める）・`Access-Control-Allow-Methods: GET`を追加/上書きする。転送先への`fetch()`自体が失敗した場合（DNS/タイムアウト等）は502を返す（呼び出し元のscript.jsは`res.ok`で判定するため、例外を投げず必ずレスポンスとして返す）。
+5. `OPTIONS`（プリフライト）には204+CORSヘッダーのみを返す。
+
+**再デプロイ手順**（`src/index.js`を変更した場合）:
+```bash
+cd cf-proxy
+npm install        # 初回のみ（package-lock.jsonからwranglerを復元）
+npx wrangler login  # 初回のみ。ブラウザが開くので認証する（アカウント: y22.taguchi@gmail.com）
+npx wrangler deploy
+```
+デプロイ後のURL（固定）: `https://eco-simulator-cf-proxy.eco-service.workers.dev`。script.js側は
+`CF_PROXY_URL`定数（script.js先頭付近、`AWB_ECO_SERVICE_URL`の直前）でこのURLを保持している。
+Worker名（`wrangler.jsonc`の`name`）・workers.devサブドメイン（Cloudflareアカウントに紐づく、
+ダッシュボードの「Workers」→「サブドメイン」から変更可能）のいずれかを変更した場合は、
+`CF_PROXY_URL`もあわせて更新すること。
+
+**単体疎通確認**（script.jsを触らずWorker単独で検証する場合）:
+```bash
+# 正常系（本番Originを付けた場合、および無Origin＝curlのデフォルト）
+curl "https://eco-simulator-cf-proxy.eco-service.workers.dev/proxy?url=https%3A%2F%2Fapi.wynncraft.com%2Fv3%2Fguild%2Flist%2Fterritory"
+# ホワイトリスト外ドメイン→403
+curl "https://eco-simulator-cf-proxy.eco-service.workers.dev/proxy?url=https%3A%2F%2Fexample.com"
+# 不正なOrigin→403（CORSヘッダーは付与されない）
+curl -D - -o /dev/null "https://eco-simulator-cf-proxy.eco-service.workers.dev/proxy?url=https%3A%2F%2Fapi.wynncraft.com%2Fv3%2Fguild%2Flist%2Fterritory" -H "Origin: https://evil.example.com"
+```
+2026-08導入時にこの3パターンに加え、athena.wynntils.com宛て・本番Origin・ローカル開発Origin
+（`http://localhost:8080`）でのリクエストも実ブラウザ（Playwright）で200成功を確認済み。
 
 ### AWB共有バックエンド（2026-08導入）
 
 **Liveモードのツールチップ「Estimated Defence」の取得元を、ブラウザ側でのローカル計算から、
 AWB（Another Wynn Bot）が運用する共有バックエンドの推定結果に切り替えた。** 複数クライアントが
 同じグローバル転送位相探索を重複して行う無駄を避け、より多くの観測を蓄積できるサーバー側に
-計算を寄せる狙い。**マップ描画用の生データ取得（corsproxy経由のWynncraft API直叩き、上記）は
-変更していない。** ギルド色分け・所有権表示・資源の生値表示は今まで通りこの経路を使う。
+計算を寄せる狙い。**マップ描画用の生データ取得（自前Cloudflare Worker経由のWynncraft API直叩き、
+上記）は変更していない。** ギルド色分け・所有権表示・資源の生値表示は今まで通りこの経路を使う。
 
 - `AWB_ECO_SERVICE_URL`（定数、script.js先頭付近）+ `/eco/territories`（`GET`、CORS対応済み・
-  corsproxy不要でブラウザから直接叩ける）。現在の値: `https://full-agnes-sabuo-projects-4618b097.koyeb.app`。
+  自前Workerも不要でブラウザから直接叩ける）。現在の値: `https://full-agnes-sabuo-projects-4618b097.koyeb.app`。
 - `fetchLiveTerritoryData()`が毎ポーリング（`fetchAwbEstimates()`経由で）叩く。タイムアウトは
   `AWB_FETCH_TIMEOUT_MS`＝8秒（`AbortController`）。
 - レスポンス形式（領地名をキーにしたオブジェクト、実測・全437領地ぶん確認済み）:
