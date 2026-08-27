@@ -1019,7 +1019,7 @@ function isResolutionReliable(f) {
 //   f: estimateGlobalTransferPhase()で求めたグローバル位相
 export function estimateDefenseStats({ observedRating, isHQ, mult, confirmedExtra, resourceSnapshot, f }) {
   if (f === null || f === undefined) {
-    return { levels: null, ehp: null, dps: null, secondsToTransfer: null, residual: null, candidateCount: 0, consumption: null };
+    return { levels: null, subBonuses: null, ehp: null, dps: null, secondsToTransfer: null, residual: null, candidateCount: 0, consumption: null };
   }
 
   const stored = {}, generation = {};
@@ -1033,18 +1033,18 @@ export function estimateDefenseStats({ observedRating, isHQ, mult, confirmedExtr
   // 除外されていないチャンネルが1つも無い、または分解能が粗すぎる場合は確定推定を諦める。
   const hasReliableChannel = NON_EMERALD_RESOURCES.some(r => !model[r].excluded) && isResolutionReliable(f);
   if (!hasReliableChannel) {
-    return { levels: null, ehp: null, dps: null, secondsToTransfer: null, residual: null, candidateCount: 0, consumption: null };
+    return { levels: null, subBonuses: null, ehp: null, dps: null, secondsToTransfer: null, residual: null, candidateCount: 0, consumption: null };
   }
 
   const candidates = deriveTerritoryCandidates({ observedRating, isHQ, confirmedExtra }, f, model);
   if (candidates.length === 0) {
-    return { levels: null, ehp: null, dps: null, secondsToTransfer: null, residual: null, candidateCount: 0, consumption: null };
+    return { levels: null, subBonuses: null, ehp: null, dps: null, secondsToTransfer: null, residual: null, candidateCount: 0, consumption: null };
   }
 
   const includedResources = NON_EMERALD_RESOURCES.filter(r => !model[r].excluded);
   const sumSq = includedResources.reduce((s, r) => s + stored[r] ** 2, 0);
   if (sumSq <= 0) {
-    return { levels: null, ehp: null, dps: null, secondsToTransfer: null, residual: null, candidateCount: 0, consumption: null };
+    return { levels: null, subBonuses: null, ehp: null, dps: null, secondsToTransfer: null, residual: null, candidateCount: 0, consumption: null };
   }
 
   let best = null;
@@ -1076,12 +1076,14 @@ export function estimateDefenseStats({ observedRating, isHQ, mult, confirmedExtr
     validCount++;
     const normResidual = residual / sumSq;
     if (best === null || normResidual < best.residual) {
-      best = { damage: c.damage, attack: c.attack, health: c.health, defense: c.defense, residual: normResidual, consumption };
+      best = { damage: c.damage, attack: c.attack, health: c.health, defense: c.defense,
+               aura: c.aura, volley: c.volley, minions: c.minions, multi: c.multi,
+               residual: normResidual, consumption };
     }
   }
 
   if (best === null) {
-    return { levels: null, ehp: null, dps: null, secondsToTransfer: null, residual: null, candidateCount: 0, consumption: null };
+    return { levels: null, subBonuses: null, ehp: null, dps: null, secondsToTransfer: null, residual: null, candidateCount: 0, consumption: null };
   }
 
   const stats = computeStatsFromLevels(best.health, best.damage, best.attack, best.defense, mult);
@@ -1090,6 +1092,7 @@ export function estimateDefenseStats({ observedRating, isHQ, mult, confirmedExtr
 
   return {
     levels: { damage: best.damage, attack: best.attack, health: best.health, defense: best.defense },
+    subBonuses: { aura: best.aura, volley: best.volley, minions: best.minions, multi: best.multi },
     ehp: stats.finalHp,
     dps: stats.dps,
     secondsToTransfer,

@@ -95,6 +95,7 @@ python dev-server.py 8080
 | `filterToggles` | `{}` | モードごとのカテゴリON/OFF状態。初期値はすべて`true`。モード切替時も保持される。共有リンクには含めない |
 | `liveMode` | `boolean` | LiveモードのON/OFF。共有リンクには含めない（ページを開き直せばOFFに戻る） |
 | `liveData` | `{}\|null` | 直近取得した`/v3/guild/list/territory`のレスポンス（生の形のまま） |
+| `_awbEstimates` | `{}\|null` | 直近取得したAWB共有バックエンド（`/eco/territories`）のレスポンス（2026-08導入）。`name → {levels, tier, ehp, hp, dps, damageRange, attackSpeed, defensePercent, observedAt, approximate, ...}`。取得失敗時・未取得時・Liveモード OFF 時は`null`。詳細は「外部API」内「AWB共有バックエンド」参照 |
 | `guildColorMap` | `{}` | `prefix → "#RRGGBB"`。Liveモードを ON にした時の1回のみ取得 |
 | `liveTooltipPinnedName` | `string\|null` | Liveモード・スマホでタップにより固定表示中の領地名。次のタップ（別の場所 or 同じ領地）まで表示し続ける |
 | `_globalTransferPhase` | `number\|null` | 守備ステータス推定のグローバル転送位相f。Liveデータ取得のたびに`phase-worker.js`（Web Worker）で再計算する |
@@ -162,15 +163,15 @@ python dev-server.py 8080
 | `toggleFilterValue(mode, key)` | 指定モードの指定カテゴリのON/OFFをトグルして`refreshUI()` |
 | `clearFilter()` | `filterMode`を`'none'`に戻す（トグル状態はリセットしない） |
 | `onLiveModeToggle()` | Live Modeチェックボックスのon/offを処理。ONでギルドカラー取得＋ポーリング開始＋マップ選択クリア、OFFでポーリング停止＋`liveData`クリア＋Web Worker終了 |
-| `fetchLiveTerritoryData()` | `/v3/guild/list/territory`を取得し`liveData`を更新、`computeGlobalTransferPhase()`を`await`した後`updateQualityCache()`→`refreshLiveTooltipIfOpen()`を呼ぶ。失敗時は直前のデータを保持したままエラー表示（`updateLiveBadge()`） |
+| `fetchLiveTerritoryData()` | `/v3/guild/list/territory`（corsproxy経由、マップ描画用の生データ）を取得し`liveData`を更新する。その後`fetchAwbEstimates()`を`await`し、成功すれば結果を`_awbEstimates`に保持するのみでローカルの`computeGlobalTransferPhase()`・`updateQualityCache()`は実行しない（2026-08変更、無駄な計算を避けるため）。AWBが失敗した場合のみ`_awbEstimates`を`null`にし、従来どおり`computeGlobalTransferPhase()`を`await`した後`updateQualityCache()`を呼ぶ。最後に`updateLiveGuildOptions()`→`refreshLiveTooltipIfOpen()`を呼ぶ。マップ描画用の生データ取得自体が失敗した場合は直前のデータを保持したままエラー表示（`updateLiveBadge()`） |
 | `fetchGuildColors()` | ギルドカラーを取得して`guildColorMap`を更新（Liveモード ON 時の1回のみ呼ばれる） |
 | `getGuildColor(prefix)` | `guildColorMap`からカラーコードを返す（未取得/不明時は`#FFFFFF`） |
-| `startLivePolling()` / `stopLivePollingTimer()` | 30秒間隔のポーリングを開始/停止（`_livePollTimer`） |
-| `startLiveTimeTicking()` / `stopLiveTimeTicking()` | 1秒間隔（`_liveTimeTickTimer`）で`draw()`＋`refreshLiveTooltipIfOpen()`のみを呼ぶ（2026-08追加）。マップの赤破線ハイライトの経過時間・Held表示・ツールチップの観測時刻表示は、データ自体はポーリング（30秒間隔）でしか更新されないが、経過時間の「表示」自体は`Date.now()`からその場で計算できるため、ポーリングとは独立に1秒間隔で再描画する。**新規データ取得・`computeGlobalTransferPhase()`（f再計算）は一切行わない。** `onLiveModeToggle()`のON/OFFと`startLivePolling()`/`stopLivePollingTimer()`に連動して開始/停止する |
+| `startLivePolling()` / `stopLivePollingTimer()` | `LIVE_POLL_INTERVAL_MS`（60秒、2026-08にAWB統合と合わせて30秒から変更）間隔のポーリングを開始/停止（`_livePollTimer`） |
+| `startLiveTimeTicking()` / `stopLiveTimeTicking()` | 1秒間隔（`_liveTimeTickTimer`）で`draw()`＋`refreshLiveTooltipIfOpen()`のみを呼ぶ（2026-08追加）。マップの赤破線ハイライトの経過時間・Held表示・ツールチップの観測時刻表示は、データ自体はポーリング（60秒間隔）でしか更新されないが、経過時間の「表示」自体は`Date.now()`からその場で計算できるため、ポーリングとは独立に1秒間隔で再描画する。**新規データ取得・`computeGlobalTransferPhase()`（f再計算）は一切行わない。** `onLiveModeToggle()`のON/OFFと`startLivePolling()`/`stopLivePollingTimer()`に連動して開始/停止する |
 | `renderLiveDataScreen()` | Custom SettingsのLive Data画面の`Enable Live Mode`チェックボックスの状態を同期する |
 | `drawTerritoriesLive()` | Liveモード時のマップ描画（`draw()`から`drawTerritories()`の代わりに呼ばれる） |
 | `getFilterCategoriesLive(name)` | Liveモード時のMap Filter判定（全437領地が対象、実データの`defences`/`treasury`/`resources`を使う） |
-| `showLiveTooltip(mx, my, name, above)` | Liveモード時のツールチップ内容を構築（実データ＋確定できるボーナス＋推定値を表示）。推定値は`_qualityCache`にTier A/Bのエントリがあればそれを優先表示し、無ければ現在ポーリングの生の推定（確定/簡易）を表示する。呼ばれるたびに引数を`_lastLiveTooltipArgs`に保持する |
+| `showLiveTooltip(mx, my, name, above)` | Liveモード時のツールチップ内容を構築（実データ＋確定できるボーナス＋推定値を表示）。推定値の優先順位（2026-08変更）: 1) `_awbEstimates`（AWB共有バックエンドの今回のポーリングでの応答）にこの領地のエントリがあり`levels`が1項目以上非nullならそれを`renderAwbEstimateHTML()`で表示 2) 無ければ`_qualityCache`のTier A/Bエントリ 3) 無ければ現在ポーリングの生の確定推定 4) 簡易推定。AWBが今回失敗した場合、またはこの領地のエントリ自体が無い場合は、その領地だけ2〜4にフォールバックする。呼ばれるたびに引数を`_lastLiveTooltipArgs`に保持する |
 | `refreshLiveTooltipIfOpen()` | 表示中のLiveツールチップ（`_lastLiveTooltipArgs`が非nullかつ`tooltip.style.display==='block'`）があれば、同じ引数で`showLiveTooltip()`を再実行し内容を現在のf/liveDataで再計算する。`fetchLiveTerritoryData()`が毎ポーリング呼ぶ（2026-08追加。マウスを動かさず同じ領地にホバーし続けた場合に表示が固定される問題の修正、詳細は「守備ステータスの推定」参照） |
 | `isTooltipTarget(name)` | ホバー/長押しでツールチップを表示すべき対象かを判定（通常時は登録済み領地、Liveモード時は`liveData`を持つ領地） |
 | `ratingColor(rating)` | Very Low〜Very Highの難易度ラベルに対応する文字色を返す（showTooltip/showLiveTooltipで共有） |
@@ -185,6 +186,8 @@ python dev-server.py 8080
 | `renderDefenseEstimateHTML(estimate, cacheMeta?)` | 推定結果（Damage/Attack Speed/HP/Defence%をアイコン付き1行ずつ・EHP/DPS単一値・転送までの残り秒数）のHTMLを構築する。`levels`が`null`の場合は空文字列を返す。`cacheMeta`（`{observedAt, tier}`、Item 9）を渡すと観測時刻とTier Aの旨を見出し直下に1行追加する |
 | `updateQualityCache()` | 推定結果の品質付きキャッシュ（Item 9、`_qualityCache`）を更新する。`fetchLiveTerritoryData()`から`computeGlobalTransferPhase()`の直後に呼ばれる。まず既存エントリに`EcoLogic.shouldDiscardCache()`を適用して破棄する（**この破棄判定のみ最新の`liveData`を使う**。領地喪失・defences変化等を鮮度優先で検知するため）。次に`_phaseSourceLiveData`（fと同じスナップショット、2026-08）の全所有領地（直近10分以内に取得した領地は除く）について`EcoLogic.estimateDefenseStats()`・`EcoLogic.computeTerritoryEmeraldAdmissible()`・`EcoLogic.determineTier()`でTierを判定、Tier A/Bのみ`EcoLogic.computeQualityScore()`で品質を計算し`EcoLogic.shouldUpdateCache()`が`true`のときだけ`_qualityCache`を更新する。`cachedBefore.tier==='B'`から`tier==='A'`へ変わりかつ新しい品質のほうが低い更新は`[cache-diag]`として`diagLog()`に記録する（調査用・診断ログ有効時のみ、詳細は「低品質キャッシュがTier Bを上書きする件」「調査用診断ログの出力制御」参照） |
 | `renderDefenseEstimateApproximateHTML(estimate)` | 簡易推定（フォールバック）のHTMLを構築する。見出し・箇条書きの色を確定推定（マゼンタ`#FF55FF`）とは異なるグレー系（`#8B96A3`）にして視覚的に区別し、末尾に英語の注記を付す。4スタッツとも決定不能な場合は空文字列を返し、個別に決定不能なスタッツは`?`で表示する |
+| `fetchAwbEstimates()` | AWB共有バックエンドの`GET /eco/territories`を叩き、成功すればレスポンスのJSONをそのまま返す（2026-08導入）。タイムアウト（`AWB_FETCH_TIMEOUT_MS`＝8秒、`AbortController`）・ネットワークエラー・非2xxはいずれも`null`を返す |
+| `renderAwbEstimateHTML(entry)` | AWB共有バックエンドの1領地ぶんのレスポンスをツールチップ用HTMLに変換する（2026-08導入）。AWB側が既にDamage/HP等の最終値を計算済みのため、ローカルの`computeStatsFromLevels()`等は使わずレスポンスの値をそのまま表示する。`levels`内のdamage/attack/health/defenseは個別に`null`になりうるため、1項目でもnullなら4項目まとめてnull扱いにはせず項目ごとに`?`表示へフォールバックする。4項目すべてnullの場合のみ空文字列を返す（呼び出し側でローカル計算にフォールバックさせる）。`entry.approximate`が`true`の場合は簡易推定と同じグレー系配色にする |
 | `fmtHeldDuration(acquiredStr)` | `acquired`からの経過時間を、桁に応じて段階的な形式（1分未満`XXs`／1時間未満`XXm XXs`／1日未満`XXh XXm`／それ以上`XXd XXh`）で返す |
 | `recentlyCapturedElapsedMs(info)` | `acquired`から10分（`RECENTLY_CAPTURED_MS`）以内なら経過msを返す、それ以外は`null`。Liveモードのマップハイライトと`computeGlobalTransferPhase()`のグローバルf探索対象除外の両方で共有する |
 | `getLiveResourceFlags(info)` | マップ上の資源アイコン描画用。`resources[].generation`（emeraldsは`baseGeneration`）から産出中の資源・Cityを判定する。**ダブル資源地（`baseGeneration>=7200`）の判定（`oreDouble`/`woodDouble`/`fishDouble`/`cropsDouble`）も返す（2026-08追加、下記バグ修正参照）** |
@@ -210,6 +213,12 @@ python dev-server.py 8080
 - コストはレベルNに設定されたコスト（`/hr`）のみを消費（累積加算ではない）
 
 ### 守備ステータスの推定（Liveモード専用）
+
+**2026-08時点で、ツールチップの表示自体は原則AWB共有バックエンド（`/eco/territories`）の推定結果を
+優先表示する（詳細は「外部API」内「AWB共有バックエンド」参照）。** 以下に記す
+グローバル位相探索・Step 1/Step 2・Item 9キャッシュ等のローカル計算ロジックは、AWBへのリクエストが
+失敗した場合のフォールバックとして、削除せずそのまま維持している。ロジック自体・以下の調査結果は
+AWB側の実装とは独立に成立するものであり、変更していない。
 
 **`defences`レーティングだけでは個別のDefenseレベルが一切絞れない。** difficultyは4レベルの単純な合計（`difficulty = Damage + Attack + Health + Defense + (TowerAura>0 ? TowerAura+5 : 0) + (TowerVolley>0 ? TowerVolley+3 : 0)`、HQはレーティングを算出後に1段階上げる）であるため、全組み合わせ331,776通り（12⁴ × Aura 4 × Volley 4）中、**VERY_LOW=132、LOW=19,808、MEDIUM=136,058、HIGH=172,476、VERY_HIGH=3,302通り**が該当し、各レベルは0〜11の全域を取りうる。レーティング単独では絞り込みの主役にならない。
 
@@ -453,6 +462,10 @@ confirmedExtra/defences/treasuryが完全に一致したまま、**わずか68�
 
 ### 守備ステータス推定
 
+**2026-08時点で、ツールチップ表示は原則AWB共有バックエンド（`/eco/territories`）の推定結果を優先し、
+以下のローカル計算はAWBが失敗した場合のフォールバックとして残している**（詳細は「外部API」内
+「AWB共有バックエンド」、「守備ステータスの推定（Liveモード専用）」参照）。
+
 `defences`レーティングは4つのDefenseレベルの単純な合計から決まるため、レーティング単独では個別レベルが絞れない（HIGHの場合172,476通り）。
 
 絞り込みには**`stored`の比**を使う。資源は毎分1回転送され、維持費は1分ぶんが一括で届いて次の転送までに消費される。同時に自前の生産分も次の転送でまとめて送出されるため、資源rについて
@@ -554,8 +567,8 @@ stored[r] = consumption[r] × f + generation[r] × (1/60 − f)       f = (1 −
 - 画面2（Connection Editor）: `+ Add New Line` でインライン入力フォームを展開し、2領地間の接続線を追加。追加済み接続線は `a ↔ b` 形式でリスト表示し、無効な接続（片方未登録）はグレーアウト。`Clear All Lines` で全削除（確認ダイアログあり）。接続リストの各項目は`#0f172a`背景＋`1px solid #334155`の枠線を持つ箱として表示する（モーダル背景と同色になって項目の境界が見えなくなるのを避けるため）。
 - Connection Editorの2つの入力欄は、クリック時に`showPicker()`で候補を表示する。ただし「登録済み領地が0件」「datalistが空」「画面幅640px以下」のいずれかに該当する場合は呼ばない。未対応ブラウザでの例外は`try`/`catch`で握りつぶし、`<datalist>`の標準挙動にフォールバックする。
 - 画面3（Resource Editor）: Connection Editorと同じ構造・スタイルで実装。`+ Add Override` でインライン入力フォームを展開し、領地名（登録済みのみ、input+datalist）・エメラルド段（Normal/City/Rainbowのラジオ）・資源（Ore/Wood/Fish/Cropsのチェックボックス、最大2つ）・Amount（Normal/Doubleのラジオ）を設定して追加する。Rainbow選択時は資源・Amountを無効化し、資源を2つ選択している間はAmountをNormal固定で無効化・残りのチェックボックスも無効化する。追加済みオーバーライドは `Detlas → City + Ore 3,600` の形式でリスト表示し、対象領地が未登録のものはグレーアウト。`Clear All Overrides` で全削除（確認ダイアログあり）。領地名入力欄もConnection Editorと同じ`showPicker()`仕様。
-- 画面4（Live Data）: `Enable Live Mode`チェックボックスと、ギルド取り込み（下記）の**2項目のみ**で構成する（`renderLiveDataScreen()`はチェックボックスの状態同期のみを行う）。**手動更新ボタン（Refresh Now）は設けない。** APIのキャッシュは10秒、`resources`の更新は1分間隔であり、30秒ごとの自動ポーリングが動いている以上、手動更新を押しても同じ内容が返るだけで意味がないため。**候補数・サンプル数などの内部指標もUIには表示しない**（仕組みを知らない利用者には意味が通じない、ゲーム内に存在しない概念であるため）。ONにするとギルドカラーを1回だけ取得し、30秒間隔のポーリングを開始する（`onLiveModeToggle()`）。**Liveモードが ON のときは、マップ上に常時「LIVE」バッジを表示する**（`#live-badge`、右下のFilterボタンの上・`position: fixed`）。モードに気づかず「自分の設定と違う」と混乱するのを防ぐため。バッジは通常時は緑、**データ取得に失敗している間だけ赤（`.error`クラス）に切り替える**（`updateLiveBadge()`）。ステータス欄は設けない。
-  - **ギルド取り込み**: Guild名検索欄（input+datalist、`liveData`から取得できたギルド一覧を`updateLiveGuildOptions()`が都度再構築、`[prefix] name (領地数)`形式で表示）と`Import This Guild`ボタン（`importLiveGuild()`）を持つ。実行すると確認ダイアログ（`現在の登録済み領地をすべて置き換えます。よろしいですか？`）の上で`addedTerritories`を全置換し、そのギルドの全領地を登録する。`treasury`と`hq`は実データをそのまま設定するが、**`defense`は常にすべて0のまま登録し、推定値は一切入れない。** ユーザーが自分でDefenseを設定する方針とする（守備ステータスの推定値は単一値まで確定するようになったが、それでも「実測」ではなく「推定」であるため、シミュレーション状態には混ぜない）。生産ボーナス（Efficient Emeralds/Emerald Rate/Efficient Resources/Resource Rate/Larger Emerald Storage/Larger Resource Storage）は**一意に確定したものだけ**を設定し、複数候補が残るものは0のままとする（`computeLiveConfirmedInfo()`を再利用）。取り込み後はLiveモードを自動的にOFFにし（表示がLiveデータのままだと取り込んだ内容が確認できないため）、Custom Settingsモーダルを閉じて`refreshUI()`する。カスタム接続線・資源オーバーライドはクリアしない。共有リンクへの影響は無い（取り込み結果は通常の登録状態として扱われる）。
+- 画面4（Live Data）: `Enable Live Mode`チェックボックスと、ギルド取り込み（下記）の**2項目のみ**で構成する（`renderLiveDataScreen()`はチェックボックスの状態同期のみを行う）。**手動更新ボタン（Refresh Now）は設けない。** APIのキャッシュは10秒、`resources`の更新は1分間隔であり、60秒ごとの自動ポーリングが動いている以上、手動更新を押しても同じ内容が返るだけで意味がないため。**候補数・サンプル数などの内部指標もUIには表示しない**（仕組みを知らない利用者には意味が通じない、ゲーム内に存在しない概念であるため）。ONにするとギルドカラーを1回だけ取得し、60秒間隔のポーリングを開始する（`onLiveModeToggle()`）。**Liveモードが ON のときは、マップ上に常時「LIVE」バッジを表示する**（`#live-badge`、右下のFilterボタンの上・`position: fixed`）。モードに気づかず「自分の設定と違う」と混乱するのを防ぐため。バッジは通常時は緑、**データ取得に失敗している間だけ赤（`.error`クラス）に切り替える**（`updateLiveBadge()`）。ステータス欄は設けない。
+  - **ギルド取り込み**: Guild名検索欄（input+datalist、`liveData`から取得できたギルド一覧を`updateLiveGuildOptions()`が都度再構築、`[prefix] name (領地数)`形式で表示）と`Import This Guild`ボタン（`importLiveGuild()`）を持つ。実行すると確認ダイアログ（`現在の登録済み領地をすべて置き換えます。よろしいですか？`）の上で`addedTerritories`を全置換し、そのギルドの全領地を登録する。`treasury`と`hq`は実データをそのまま設定するが、**`defense`は常にすべて0のまま登録し、推定値は一切入れない。** ユーザーが自分でDefenseを設定する方針とする（守備ステータスの推定値は単一値まで確定するようになったが、それでも「実測」ではなく「推定」であるため、シミュレーション状態には混ぜない）。**Import This Guildへの推定反映は2026-08時点で未着手（見送り中）。** AWB共有バックエンドのレスポンスに`subBonuses`（Stronger Minions/Tower Multi-Attacks/Tower Aura/Tower Volley）フィールドが未実装のため、AWB側チャットでの対応を待ってから着手する。生産ボーナス（Efficient Emeralds/Emerald Rate/Efficient Resources/Resource Rate/Larger Emerald Storage/Larger Resource Storage）は**一意に確定したものだけ**を設定し、複数候補が残るものは0のままとする（`computeLiveConfirmedInfo()`を再利用）。取り込み後はLiveモードを自動的にOFFにし（表示がLiveデータのままだと取り込んだ内容が確認できないため）、Custom Settingsモーダルを閉じて`refreshUI()`する。カスタム接続線・資源オーバーライドはクリアしない。共有リンクへの影響は無い（取り込み結果は通常の登録状態として扱われる）。
 
 ### FILTERモーダル（右下ボタン／モバイルはタブバー）
 - 画面右下固定の `Filter` ボタン（`#custom-settings-btn`と同スタイル）から開く。**`filterMode !== 'none'`のときは背景を`#334155`にしてハイライトする。** 幅640px以下では非表示になり、モバイルタブバーの`Filter`タブから開く（ボトムシートではなくモーダル）。
@@ -660,11 +673,67 @@ stored[r] = consumption[r] × f + generation[r] × (1/60 − f)       f = (1 −
   - `resources[].type`は`EMERALD`/`ORE`/`WOOD`/`FISH`/`CROP`。内部表現（`emeralds`/`ore`/`wood`/`fish`/`crops`）へは`LIVE_RESOURCE_TYPE_MAP`でマッピングする（特に`CROP`→`crops`に注意）。
   - **`resources[].baseGeneration`が実際のレスポンスに存在する（2026-08時点で確認済み）。** 領地固有の基礎生成量をこのフィールドから直接取得できる。
   - APIが使えない場合はプレースホルダー（`loadGuilds()`側）またはステータス表示（Liveモード側）にエラーを出し、グレースフルデグラデーションする。
-  - **`corsproxy.io`は元のAPIが返す`Cache-Control: max-age=10`を、独自の`Cache-Control: public, max-age=3600, s-maxage=3600`（1時間）に上書きして転送する（2026-08時点で確認済み）。** `fetch()`には`{ cache: 'no-store' }`を必ず付けること（`loadGuilds()`・`fetchLiveTerritoryData()`の両方で対応済み）。付けないと30秒間隔のポーリングでもブラウザがこのキャッシュを使い、最大1時間近く同じレスポンスを返し続けることがある（実測: 40〜45分間、全437領地の`resources`・`_globalTransferPhase`が完全に不変のまま推移する事例を確認）。
+  - **`corsproxy.io`は元のAPIが返す`Cache-Control: max-age=10`を、独自の`Cache-Control: public, max-age=3600, s-maxage=3600`（1時間）に上書きして転送する（2026-08時点で確認済み）。** `fetch()`には`{ cache: 'no-store' }`を必ず付けること（`loadGuilds()`・`fetchLiveTerritoryData()`の両方で対応済み）。付けないと60秒間隔のポーリング（2026-08にAWB統合と合わせて30秒から変更）でもブラウザがこのキャッシュを使い、最大1時間近く同じレスポンスを返し続けることがある（実測: 40〜45分間、全437領地の`resources`・`_globalTransferPhase`が完全に不変のまま推移する事例を確認）。
 - `https://corsproxy.io/?url=${encodeURIComponent('https://athena.wynntils.com/cache/get/guildList')}`
   - ギルドカラー取得用。Liveモードを ON にした時の1回のみ取得する（`fetchGuildColors()`。ポーリングのたびには叩かない）。
   - レスポンス形式: `[{ "_id": "...", "prefix": "SEQ", "color": "#RRGGBB" }, ...]`（配列、2700件超）。`color`が無い要素は`#FFFFFF`にフォールバックする（`getGuildColor()`）。
   - 取得に失敗した場合は全ギルドを`#FFFFFF`として続行する。
+
+### AWB共有バックエンド（2026-08導入）
+
+**Liveモードのツールチップ「Estimated Defence」の取得元を、ブラウザ側でのローカル計算から、
+AWB（Another Wynn Bot）が運用する共有バックエンドの推定結果に切り替えた。** 複数クライアントが
+同じグローバル転送位相探索を重複して行う無駄を避け、より多くの観測を蓄積できるサーバー側に
+計算を寄せる狙い。**マップ描画用の生データ取得（corsproxy経由のWynncraft API直叩き、上記）は
+変更していない。** ギルド色分け・所有権表示・資源の生値表示は今まで通りこの経路を使う。
+
+- `AWB_ECO_SERVICE_URL`（定数、script.js先頭付近）+ `/eco/territories`（`GET`、CORS対応済み・
+  corsproxy不要でブラウザから直接叩ける）。現在の値: `https://full-agnes-sabuo-projects-4618b097.koyeb.app`。
+- `fetchLiveTerritoryData()`が毎ポーリング（`fetchAwbEstimates()`経由で）叩く。タイムアウトは
+  `AWB_FETCH_TIMEOUT_MS`＝8秒（`AbortController`）。
+- レスポンス形式（領地名をキーにしたオブジェクト、実測・全437領地ぶん確認済み）:
+  ```json
+  {
+    "Jofash Tunnel": {
+      "levels": { "damage": 5, "attack": 5, "health": 5, "defense": 5 },
+      "ehp": 6240000, "hp": 1560000, "dps": 9750, "damageRange": [3900, 5850],
+      "attackSpeed": 2, "defensePercent": 75,
+      "tier": "A", "observedAt": "2026-08-27T03:26:37.089Z",
+      "difficulty": "High", "approximate": false
+    }
+  }
+  ```
+  - `levels`内の`damage`/`attack`/`health`/`defense`は**個別に`null`になりうる**（実データで複数件
+    確認済み。例: `{"damage":null,"attack":4,"health":11,"defense":null}`）。1項目でもnullだからと
+    4項目まとめてnull扱いにはせず、`renderAwbEstimateHTML()`が項目ごとに`?`表示へフォールバックする。
+  - `tier`は`'A'|'B'|'C'`（ローカル計算のTier A/B/Cと同じ意味）。`approximate: true`はTier C相当の
+    簡易推定（当方の`estimateDefenseStatsApproximate()`に相当するサーバー側の推定）を示す。
+  - `ehp`/`hp`/`dps`/`damageRange`/`attackSpeed`/`defensePercent`は**AWB側が最終値まで計算済み**
+    （Connections/Externals由来の倍率等込み）のため、当方は受け取った値をそのまま表示するだけで、
+    ローカルの`computeStatsFromLevels()`は経由しない。
+  - `secondsToTransfer`相当のフィールドは提供されない。そのためAWB経由で表示するツールチップには
+    「Resources move in Xs」の行は出さない（ローカル計算経由の表示にのみ残る）。
+- **優先順位・フォールバック（`showLiveTooltip()`）**: 1) `_awbEstimates`の今回のポーリングでの
+  応答にこの領地のエントリがあり`levels`が1項目以上非nullならそれを最優先表示 2) 無ければ
+  `_qualityCache`のTier A/Bエントリ 3) 無ければ現在ポーリングの生の確定推定
+  （`getDefenseEstimate()`） 4) 簡易推定（`getDefenseEstimateApproximate()`）。
+  **AWBへのリクエスト自体が失敗した場合（ネットワークエラー・非2xx・タイムアウト）は
+  `_awbEstimates`を`null`にし、その回のポーリングは全領地が2〜4の既存ローカル計算パスに
+  フォールバックする。** ローカル計算ロジック・Item 9のキャッシュ機構（`_qualityCache`・
+  `updateQualityCache()`・`computeGlobalTransferPhase()`）は削除せずそのまま残している。
+  **AWBが成功したが、ある領地のエントリ自体が無い場合は、その領地だけ2〜4にフォールバックする
+  （全体を一律フォールバックにしない）。**
+- **この経路が使われたポーリング回（AWB成功時）は、ローカルの`computeGlobalTransferPhase()`・
+  `updateQualityCache()`を実行しない**（無駄な計算を避けるため）。そのため、AWBが継続して
+  成功している間は`_globalTransferPhase`・`_qualityCache`が更新されず、AWBのエントリが
+  無い領地のフォールバック表示（上記4項目の2〜4）は、AWBが直近に失敗した回で得られた
+  ローカル計算の結果を使い回すことになる（初回からAWBが常に成功し続けている場合、
+  これらの領地は推定を一切表示できない）。
+- `LIVE_POLL_INTERVAL_MS`を`30000`から`60000`に変更した（AWB統合に合わせ、ローカルクライアントからの
+  ポーリング頻度を下げる目的）。
+- **Import This Guildへの反映（守備構成の取り込み）は未実装。** AWBのレスポンスに`subBonuses`
+  （Stronger Minions/Tower Multi-Attacks/Tower Aura/Tower Volley）フィールドが無いため見送っている。
+  AWB側チャットでの対応を待ってから改めて着手する。
 
 ---
 

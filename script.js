@@ -99,6 +99,7 @@ let allTerritoryNames = [];  // Add Specified Territoryのdatalist用（territor
 // 守備推定は単一スナップショットで完結するため、stored の履歴（旧liveHistory）は持たない。
 let liveMode = false;
 let liveData = null;       // 直近取得した /v3/guild/list/territory のレスポンス（{ [territoryName]: {...} }、生の形のまま保持）
+let _awbEstimates = null;  // 直近取得したAWB共有バックエンド（/eco/territories）のレスポンス。取得失敗時・未取得時はnull
 let guildColorMap = {};    // prefix -> "#RRGGBB"（Liveモードを ON にした時に1回だけ取得）
 let _livePollTimer = null;
 let _liveTimeTickTimer = null; // 1秒間隔。新規データ取得・f再計算は一切行わず、経過時間表示のみ再計算する
@@ -1375,25 +1376,35 @@ function showLiveTooltip(mx, my, name, above) {
   html += `</div>`;
   html += `<div><span style="color:#FF55FF;">♦ Defence: </span><span style="color:${ratingColor(defenceLabel)};">${escapeHtml(defenceLabel)}</span></div>`;
 
-  // 守備ステータスの推定（Estimatedは確定値とは視覚的に区別する）。
-  // 品質付きキャッシュ（Item 9）にTier A/Bのエントリがあればそれを優先表示する（構成が変わって
-  // いない限り、過去に観測できた「良いf」での推定のほうが現在ポーリングの生の推定より信頼できるため）。
-  // 無ければ従来どおり現在ポーリングの生の推定（確定失敗時のみ簡易推定にフォールバック）を表示する。
+  // 守備ステータスの推定（Estimatedは確定値とは視覚的に区別する）。優先順位:
+  // 1) AWB共有バックエンド（/eco/territories）の今回のポーリングでの応答（_awbEstimates）
+  // 2) 品質付きキャッシュ（Item 9）のTier A/Bエントリ（構成が変わっていない限り、過去に
+  //    観測できた「良いf」での推定のほうが現在ポーリングの生の推定より信頼できるため）
+  // 3) 現在ポーリングの生の確定推定 4) 簡易推定
+  // AWBが今回失敗した場合（_awbEstimates===null）は全領地が2〜4にフォールバックする。
+  // AWBが成功したが該当領地のエントリ自体が無い、またはlevelsが4項目ともnullの場合は、
+  // その領地だけ2〜4にフォールバックする（全体を一律フォールバックにしない）。
   // Storage/資源ブースト等の確定ボーナス一覧（Upgrades:）は表示しない。推定の内部計算では使い続ける。
   // getDefenseEstimate/getDefenseEstimateApproximateは、ここで得たconfirmed（現在ポーリングの
   // 最新liveData由来）ではなく、_phaseSourceLiveData（fと同じスナップショット）を内部で
   // 参照し直す。両者を混ぜないことがCLAUDE.md「Res Tickと表示されている資源量が噛み合わない」
   // への対策の要のため、ここでは意図的にconfirmedExtra/resourceSnapshotを渡さない。
-  const cachedEntry = _qualityCache[name];
-  if (cachedEntry) {
-    html += renderDefenseEstimateHTML(cachedEntry.estimate, { observedAt: cachedEntry.observedAt, tier: cachedEntry.tier });
+  const awbEntry = _awbEstimates && _awbEstimates[name];
+  const awbHtml = awbEntry ? renderAwbEstimateHTML(awbEntry) : '';
+  if (awbHtml) {
+    html += awbHtml;
   } else {
-    const estimate = getDefenseEstimate(name);
-    if (estimate.levels) {
-      html += renderDefenseEstimateHTML(estimate);
+    const cachedEntry = _qualityCache[name];
+    if (cachedEntry) {
+      html += renderDefenseEstimateHTML(cachedEntry.estimate, { observedAt: cachedEntry.observedAt, tier: cachedEntry.tier });
     } else {
-      const approx = getDefenseEstimateApproximate(name);
-      html += renderDefenseEstimateApproximateHTML(approx);
+      const estimate = getDefenseEstimate(name);
+      if (estimate.levels) {
+        html += renderDefenseEstimateHTML(estimate);
+      } else {
+        const approx = getDefenseEstimateApproximate(name);
+        html += renderDefenseEstimateApproximateHTML(approx);
+      }
     }
   }
 
@@ -1872,6 +1883,44 @@ function renderDefenseEstimateApproximateHTML(estimate) {
     html += `<div style="margin-top:8px; color:#555555;">Resources move in ${estimate.secondsToTransfer}s</div>`;
   }
   html += `<div style="margin-top:4px; color:#555555; font-size:0.85em;">Approximate: hidden bonuses inferred from defence rating</div>`;
+
+  return html;
+}
+
+// AWB共有バックエンド（/eco/territories）から取得した推定エントリをツールチップ用HTMLに変換する。
+// AWB側が既にDamage/HP等の最終値（Connections/Externals由来の倍率込み）を計算済みのため、
+// ローカルのcomputeStatsFromLevels等は使わずレスポンスの値をそのまま表示する。
+// levels内のdamage/attack/health/defenseは個別にnullになりうる（実データで複数件確認済み）ため、
+// 1項目でもnullなら4項目まとめてnull扱いにはせず、項目ごとに"?"表示へフォールバックする。
+// 4項目すべてnullの場合のみ空文字列を返す（呼び出し側でローカル計算にフォールバックさせる）。
+function renderAwbEstimateHTML(entry) {
+  const L = entry.levels || {};
+  if (L.damage == null && L.attack == null && L.health == null && L.defense == null) return '';
+
+  const isApprox = !!entry.approximate;
+  const accentColor = isApprox ? '#8B96A3' : '#FF55FF';
+
+  let html = `<div style="color:${accentColor}; margin-top:8px;">${isApprox ? 'Estimated Defence (approximate):' : 'Estimated Defense:'}</div>`;
+
+  const elapsed = fmtHeldDuration(entry.observedAt) || '0s';
+  const tierTag = entry.tier === 'A' ? ' · verified' : '';
+  html += `<div style="color:#64748b; font-size:0.85em;">(observed ${elapsed} ago${tierTag})</div>`;
+
+  const [dmgMin, dmgMax] = entry.damageRange || [null, null];
+  html += defenseStatLine('damage', (dmgMin != null && dmgMax != null) ? `${fmtNum(dmgMin)}-${fmtNum(dmgMax)} Damage` : 'Damage', L.damage ?? null);
+  html += defenseStatLine('attack-speed', entry.attackSpeed != null ? `${entry.attackSpeed.toFixed(1)} Attacks per second` : 'Attacks per second', L.attack ?? null);
+  html += defenseStatLine('health', entry.hp != null ? `${fmtHp(entry.hp)} HP` : 'HP', L.health ?? null);
+  html += defenseStatLine('defense', entry.defensePercent != null ? `${fmtPct1(entry.defensePercent)}% Defence` : 'Defence', L.defense ?? null);
+
+  if (entry.ehp != null || entry.dps != null) {
+    html += `<div style="color:${accentColor}; margin-top:8px;">Estimated Stats${isApprox ? ' (approximate)' : ''}:</div>`;
+    if (entry.ehp != null) html += `<div><span style="color:${accentColor};">- </span><span style="color:#94a3b8;">EHP ${fmt(entry.ehp)}</span></div>`;
+    if (entry.dps != null) html += `<div><span style="color:${accentColor};">- </span><span style="color:#94a3b8;">DPS ${fmt(entry.dps)}</span></div>`;
+  }
+
+  if (isApprox) {
+    html += `<div style="margin-top:4px; color:#555555; font-size:0.85em;">Approximate: hidden bonuses inferred from defence rating</div>`;
+  }
 
   return html;
 }
@@ -3826,7 +3875,14 @@ async function loadGuilds() {
 //  addedTerritories等のシミュレーション状態は一切書き換えない（Phase 6の取り込み操作を除く）。
 // ═══════════════════════════════════════════════════════════
 const LIVE_RESOURCE_TYPE_MAP = { EMERALD: 'emeralds', ORE: 'ore', WOOD: 'wood', FISH: 'fish', CROP: 'crops' };
-const LIVE_POLL_INTERVAL_MS = 30000;
+const LIVE_POLL_INTERVAL_MS = 60000;
+
+// AWB共有バックエンド（守備推定の共有計算結果を配信する外部サービス）。
+// /eco/territoriesが成功すればその結果を最優先で使い、ローカルのグローバル位相探索
+// （computeGlobalTransferPhase）は実行しない（無駄な計算を避けるため）。失敗時は
+// 既存のローカル計算パスにフォールバックする（docs/eco-simulator-awb-integration_1.md参照）。
+const AWB_ECO_SERVICE_URL = 'https://full-agnes-sabuo-projects-4618b097.koyeb.app';
+const AWB_FETCH_TIMEOUT_MS = 8000;
 
 // LIVEバッジの表示切り替え。データ取得に失敗している間だけエラー色にする。
 function updateLiveBadge() {
@@ -3836,8 +3892,31 @@ function updateLiveBadge() {
   badge.classList.toggle('error', liveMode && !!_liveFetchError);
 }
 
+// AWB共有バックエンドから守備推定（tier/levels/ehp/hp/dps/damageRange/attackSpeed/
+// defensePercent/observedAt/approximate、領地名をキーにしたオブジェクト）を取得する。
+// タイムアウト・ネットワークエラー・非2xxはいずれもnullを返し、呼び出し側でローカル計算に
+// フォールバックさせる。
+async function fetchAwbEstimates() {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), AWB_FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${AWB_ECO_SERVICE_URL}/eco/territories`, { cache: 'no-store', signal: controller.signal });
+    if (!res.ok) throw new Error(`AWB API error: ${res.status} ${res.statusText}`);
+    return await res.json();
+  } catch (err) {
+    console.warn('AWB eco service fetch error:', err);
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 // API取得失敗時は直前のliveDataを保持したまま次のポーリングを待つ（画面を空にしない）。
-// 守備推定に使うグローバル転送位相（_globalTransferPhase）はデータ取得のたびに1回だけ再計算する。
+// マップ描画用の生データ取得はcorsproxy経由のWynncraft API直叩きのまま変更しない。
+// 守備推定はまずAWB共有バックエンド（/eco/territories）を叩き、成功すればその結果を
+// _awbEstimatesに保持してツールチップ表示の最優先ソースにする（showLiveTooltip参照）。
+// この経路が使われた回はローカルのグローバル位相探索（computeGlobalTransferPhase）・
+// updateQualityCacheを実行しない。失敗した場合のみ、今まで通りローカル計算を実行する。
 async function fetchLiveTerritoryData() {
   try {
     const res = await fetch(`https://corsproxy.io/?url=${encodeURIComponent('https://api.wynncraft.com/v3/guild/list/territory')}`, { cache: 'no-store' });
@@ -3846,10 +3925,17 @@ async function fetchLiveTerritoryData() {
 
     liveData = data;
     _liveFetchError = null;
-    await computeGlobalTransferPhase(); // Web Worker内で実行するためメインスレッドはブロックしない
-    updateQualityCache(); // 品質付きキャッシュ（Item 9）の破棄判定・更新
+
+    const awbData = await fetchAwbEstimates();
+    if (awbData) {
+      _awbEstimates = awbData;
+    } else {
+      _awbEstimates = null;
+      await computeGlobalTransferPhase(); // Web Worker内で実行するためメインスレッドはブロックしない
+      updateQualityCache(); // 品質付きキャッシュ（Item 9）の破棄判定・更新
+    }
     updateLiveGuildOptions();
-    refreshLiveTooltipIfOpen(); // 表示中のツールチップがあれば内容を現在のf/liveDataで再計算する
+    refreshLiveTooltipIfOpen(); // 表示中のツールチップがあれば内容を現在のAWB/f/liveDataで再計算する
   } catch (err) {
     _liveFetchError = err.message || 'Unknown Error';
     console.warn('Live territory fetch error:', err);
@@ -4080,6 +4166,7 @@ async function onLiveModeToggle(reason = 'user-checkbox') {
     stopLiveTimeTicking();
     liveData = null;
     _liveFetchError = null;
+    _awbEstimates = null;
     _defenseEstimateCache = {};
     _qualityCache = {};
     _globalTransferPhase = null;
