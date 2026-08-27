@@ -239,6 +239,14 @@ button.danger:hover { background: #b91c1c; }
   font-size: 10px;
   text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000; pointer-events: none;
 }
+/* Import This Guildが反映した未編集の推定値のマーカー（2026-08導入）。確定ボーナスとの
+   混同を避けるため、Liveモードの推定表示と同じマゼンタ系（#FF55FF）で揃える。 */
+.upgrade-item.import-estimated { border-color: #FF55FF; box-shadow: 0 0 0 1px rgba(255,85,255,0.5); }
+.upgrade-estimated-dot {
+  position: absolute; top: 2px; left: 2px; width: 6px; height: 6px;
+  background: #FF55FF; border-radius: 50%; pointer-events: none;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.6);
+}
 #upgrade-desc { font-size: 11px; color: #94a3b8; margin-bottom: 14px; text-align: center; line-height: 1.4; }
 
 /* Tooltip */

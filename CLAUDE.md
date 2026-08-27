@@ -78,7 +78,7 @@ python dev-server.py 8080
 | 変数 | 型 | 内容 |
 |---|---|---|
 | `territories` | `{}` | territories.jsonの全437領地データ |
-| `addedTerritories` | `{}` | 登録済み領地 `name → { defense, bonuses, hq }` |
+| `addedTerritories` | `{}` | 登録済み領地 `name → { defense, bonuses, hq, treasury, importEstimated? }`。`importEstimated`（2026-08導入、Import This Guildパート2）は`{ defense: {damage,attack,health,defense}, bonuses: {'Stronger Minions',...} }`形式で、フィールドごとに`true`=Import This Guild由来の推定値のまま・`false`=手動編集済み・未設定=未確定のtri-state。Share Linkには含まれない表示専用メタ情報 |
 | `selectedTerritories` | `Set` | マップ上でクリック選択された未登録領地 |
 | `listSelectedTerritories` | `Set` | Managerリストで選択された登録済み領地（一括編集用） |
 | `tributeValues` | `{}` | 外部資源流入/流出量 `{ emeralds, ore, crops, fish, wood }` |
@@ -138,8 +138,8 @@ python dev-server.py 8080
 | `updateOverview()` | Overviewパネル更新（Tribute込みのNet表示） |
 | `updateTerritoryList()` | Managerリスト更新（list-selected状態を反映） |
 | `refreshUI()` | `_hqDistanceCache`無効化 → Overview/リスト/描画を更新 |
-| `openModal(name, bulkNames?)` | 領地設定モーダルを開く（bulkNames指定で一括編集モード） |
-| `saveModal()` | single/bulkモードを判定して保存 |
+| `openModal(name, bulkNames?)` | 領地設定モーダルを開く（bulkNames指定で一括編集モード）。単体モードでは`addedTerritories[name].importEstimated`を見て、Import This Guild由来の推定値のまま（tri-stateが`true`）のDefense/Bonus項目にマゼンタの縁取り・ドット（`.import-estimated`）を付け、ホバー時の名前ツールチップにも注記を追加する（2026-08導入、一括モードでは値と同様に表示しない） |
+| `saveModal()` | single/bulkモードを判定して保存。保存前後で値が実際に変わったフィールドのみ`importEstimated`を`false`に落とす（変えていないフィールドはマークを維持し、以後のImport This Guildでの自動更新対象のままにする） |
 | `closeModal()` | モーダルを閉じてモードをsingleにリセット |
 | `updateModalStats()` | モーダルのプレビュー統計を更新（bulkは簡易表示） |
 | `openTributeModal()` | Tributeモーダルを開いて入力フォームを生成 |
@@ -195,7 +195,8 @@ python dev-server.py 8080
 | `updateLiveBadge()` | `#live-badge`の表示切り替え。データ取得に失敗している間だけエラー色（`.error`クラス）にする |
 | `computeLiveConfirmedInfo(name, info, bfsCache?)` | 実データから確定できるボーナス（ストレージレベル・Efficient/Rate系の組み合わせ）を算出する共通処理。showLiveTooltip/getDefenseEstimate/importLiveGuild/computeGlobalTransferPhaseで共有する。`bfsCache`を渡すと同じギルドHQからのBFS距離を使い回す。`resourceSnapshot[r]`（r=ore/crops/wood/fish）には`baseGeneration`も保持する（グローバルf探索のエメラルドveto判定＝Trio A検出に使う。2026-08追加） |
 | `updateLiveGuildOptions()` | `liveData`からギルド一覧を再構築し、Import This Guild用のdatalistを更新する |
-| `importLiveGuild()` | Liveデータを使って指定ギルドの全領地を`addedTerritories`へ取り込む。取り込み後はLiveモードを自動OFFにする |
+| `getBestLiveEstimate(name)` | Import This Guildで使う「その時点で利用可能な最新の推定」を返す（2026-08導入、パート2）。優先順位はパート1の`showLiveTooltip()`と同じ（AWB→`_qualityCache`のTier A/B→現在ポーリングの生の確定推定→簡易推定）。`{levels, subBonuses}`を返し、4項目とも決定不能な場合は`null`。`subBonuses`は簡易推定（4番目のフォールバック）では常に`null` |
+| `importLiveGuild()` | Liveデータを使って指定ギルドの現在の保有領地に`addedTerritories`を合わせて取り込む。名前が引き続き存在する領地はdefense/bonuses/importEstimatedを引き継ぐ（2026-08変更、以前は毎回全消去していた）。確定ボーナスは毎回無条件で反映、Damage/Attack/Health/Defense＋4サブボーナスは`getBestLiveEstimate()`の推定値のうち`importEstimated`が`false`でないフィールドだけを反映する（詳細はCUSTOM SETTINGSモーダルの「ギルド取り込み」参照）。取り込み後はLiveモードを自動OFFにする |
 
 ---
 
@@ -555,7 +556,7 @@ stored[r] = consumption[r] × f + generation[r] × (1/60 − f)       f = (1 −
 
 ### モーダル
 - 右上にSettings/Dataのタブ切り替えボタンを持つ（表示条件: `currentModalMode === 'single'` かつ HQ設定済みの場合のみ。それ以外はボタン自体を非表示にしSettingsタブ固定）。開くときは常にSettingsタブから開始する。
-- **Settingsタブ（単体モード）**: Defense(4種×Lv0〜11) + HQ設定 + Bonus(17種) + リアルタイムプレビュー
+- **Settingsタブ（単体モード）**: Defense(4種×Lv0〜11) + HQ設定 + Bonus(17種) + リアルタイムプレビュー。Import This Guild由来で未編集の推定値は`.import-estimated`（マゼンタの縁取り・ドット）で示す（2026-08導入、詳細はCUSTOM SETTINGSモーダルの「ギルド取り込み」参照）
 - **Settingsタブ（一括モード）**: 選択領地数を表示、Defense + Bonus のみ編集、保存で全選択領地に適用
 - **Dataタブ**: Trading Routes（HQからの経路・Trade Time）とResources（生産量・stored・traversing）を表示する読み取り専用タブ。Settingsタブと同系統の見た目に揃えている。**Minecraftiaは使わない**（body既定のSegoe UI）。**マップ上の領地名描画のMinecraftiaは維持している。** セクション見出しは箱の外に置き、`.data-section-label`（`.modal-section label`と同スタイル。`text-transform: uppercase`により大文字表示になる）。Trading Routesの箱は`#modal-stats`と同じ（`#0f172a`／枠線なし）、Resourcesの箱はツールチップと同じ（`#000000`／`2px solid #2C075F`）。**2つの箱でスタイルが異なるのは意図的。**
 - `.upgrade-container` には `user-select: none` / `-webkit-touch-callout: none` を指定している。指定しないとiOS Safariで長押し時にネイティブのテキスト選択UIが割り込み、自前のツールチップが表示されなくなるため。**モーダル全体には指定しないこと**（他の箇所のテキストがコピーできなくなるため）。
@@ -568,7 +569,11 @@ stored[r] = consumption[r] × f + generation[r] × (1/60 − f)       f = (1 −
 - Connection Editorの2つの入力欄は、クリック時に`showPicker()`で候補を表示する。ただし「登録済み領地が0件」「datalistが空」「画面幅640px以下」のいずれかに該当する場合は呼ばない。未対応ブラウザでの例外は`try`/`catch`で握りつぶし、`<datalist>`の標準挙動にフォールバックする。
 - 画面3（Resource Editor）: Connection Editorと同じ構造・スタイルで実装。`+ Add Override` でインライン入力フォームを展開し、領地名（登録済みのみ、input+datalist）・エメラルド段（Normal/City/Rainbowのラジオ）・資源（Ore/Wood/Fish/Cropsのチェックボックス、最大2つ）・Amount（Normal/Doubleのラジオ）を設定して追加する。Rainbow選択時は資源・Amountを無効化し、資源を2つ選択している間はAmountをNormal固定で無効化・残りのチェックボックスも無効化する。追加済みオーバーライドは `Detlas → City + Ore 3,600` の形式でリスト表示し、対象領地が未登録のものはグレーアウト。`Clear All Overrides` で全削除（確認ダイアログあり）。領地名入力欄もConnection Editorと同じ`showPicker()`仕様。
 - 画面4（Live Data）: `Enable Live Mode`チェックボックスと、ギルド取り込み（下記）の**2項目のみ**で構成する（`renderLiveDataScreen()`はチェックボックスの状態同期のみを行う）。**手動更新ボタン（Refresh Now）は設けない。** APIのキャッシュは10秒、`resources`の更新は1分間隔であり、60秒ごとの自動ポーリングが動いている以上、手動更新を押しても同じ内容が返るだけで意味がないため。**候補数・サンプル数などの内部指標もUIには表示しない**（仕組みを知らない利用者には意味が通じない、ゲーム内に存在しない概念であるため）。ONにするとギルドカラーを1回だけ取得し、60秒間隔のポーリングを開始する（`onLiveModeToggle()`）。**Liveモードが ON のときは、マップ上に常時「LIVE」バッジを表示する**（`#live-badge`、右下のFilterボタンの上・`position: fixed`）。モードに気づかず「自分の設定と違う」と混乱するのを防ぐため。バッジは通常時は緑、**データ取得に失敗している間だけ赤（`.error`クラス）に切り替える**（`updateLiveBadge()`）。ステータス欄は設けない。
-  - **ギルド取り込み**: Guild名検索欄（input+datalist、`liveData`から取得できたギルド一覧を`updateLiveGuildOptions()`が都度再構築、`[prefix] name (領地数)`形式で表示）と`Import This Guild`ボタン（`importLiveGuild()`）を持つ。実行すると確認ダイアログ（`現在の登録済み領地をすべて置き換えます。よろしいですか？`）の上で`addedTerritories`を全置換し、そのギルドの全領地を登録する。`treasury`と`hq`は実データをそのまま設定するが、**`defense`は常にすべて0のまま登録し、推定値は一切入れない。** ユーザーが自分でDefenseを設定する方針とする（守備ステータスの推定値は単一値まで確定するようになったが、それでも「実測」ではなく「推定」であるため、シミュレーション状態には混ぜない）。**Import This Guildへの推定反映は2026-08時点で未着手（見送り中）。** AWB共有バックエンドのレスポンスに`subBonuses`（Stronger Minions/Tower Multi-Attacks/Tower Aura/Tower Volley）フィールドが未実装のため、AWB側チャットでの対応を待ってから着手する。生産ボーナス（Efficient Emeralds/Emerald Rate/Efficient Resources/Resource Rate/Larger Emerald Storage/Larger Resource Storage）は**一意に確定したものだけ**を設定し、複数候補が残るものは0のままとする（`computeLiveConfirmedInfo()`を再利用）。取り込み後はLiveモードを自動的にOFFにし（表示がLiveデータのままだと取り込んだ内容が確認できないため）、Custom Settingsモーダルを閉じて`refreshUI()`する。カスタム接続線・資源オーバーライドはクリアしない。共有リンクへの影響は無い（取り込み結果は通常の登録状態として扱われる）。
+  - **ギルド取り込み**: Guild名検索欄（input+datalist、`liveData`から取得できたギルド一覧を`updateLiveGuildOptions()`が都度再構築、`[prefix] name (領地数)`形式で表示）と`Import This Guild`ボタン（`importLiveGuild()`）を持つ。実行すると確認ダイアログ（`現在の登録済み領地をすべて置き換えます。よろしいですか？`）の上でそのギルドの現在の保有領地に`addedTerritories`を合わせ、`treasury`/`hq`は実データをそのまま設定する。生産ボーナス（Efficient Emeralds/Emerald Rate/Efficient Resources/Resource Rate/Larger Emerald Storage/Larger Resource Storage）は**一意に確定したものだけ**を毎回無条件で設定し、複数候補が残るものは0のままとする（`computeLiveConfirmedInfo()`を再利用、Trio A/Bの確定値のため手動編集保持の対象外）。
+    - **守備構成の推定反映（2026-08導入、パート2）。** Damage/Attack/Health/Defenseの4値と、Stronger Minions/Tower Multi-Attacks/Tower Aura/Tower Volleyの4サブボーナスを、`getBestLiveEstimate(name)`（優先順位はパート1の`showLiveTooltip()`と同じ: 1) AWB共有バックエンドの応答 2) `_qualityCache`のTier A/Bエントリ 3) 現在ポーリングの生の確定推定 4) 簡易推定）で取得した推定値から反映する。`levels`/`subBonuses`の各項目は個別に`null`になりうるため、値がある項目だけを反映する（`subBonuses`自体が`null`の領地、主にTier C/簡易推定の領地では4サブボーナスとも触れない）。
+    - **反映した値は`addedTerritories[name].importEstimated`（`{ defense: {damage,attack,health,defense}, bonuses: {'Stronger Minions',...} }`、フィールドごとに`true`=推定由来・`false`=手動編集済み・未設定=未確定のtri-state）でマークし、`openModal()`がUpgrade UIにマゼンタの縁取り・ドット（`.import-estimated`/`.upgrade-estimated-dot`、`style.css`）とホバー時の注記（`showUpgradeTooltip()`の`isEstimated`引数）で表示する。** `saveModal()`が保存前後の値を比較し、実際に値が変わったフィールドだけ`false`にする（変えずに保存した場合はマークを維持する）。**再度Import This Guildを実行すると、`false`でないフィールド（`true`または未確定）だけを最新の推定で上書きする。** 名前が引き続き存在する領地は`defense`/`bonuses`/`importEstimated`を丸ごと引き継ぐ（以前は毎回全消去していたが、手動編集の保持のため変更した）。このギルドの現在の保有領地に含まれなくなった領地は削除する（"replace all"の既存仕様は維持）。1領地分の処理（確定ボーナス反映・推定反映の両方を含む）で例外が発生しても、その領地だけスキップして残りの取り込みは継続する。
+    - `importEstimated`はShare Linkには含まれない表示専用のメタ情報（`buildShareBits()`/`parseShareBits()`のビットレイアウトに変更なし）。
+    - 取り込み後はLiveモードを自動的にOFFにし（表示がLiveデータのままだと取り込んだ内容が確認できないため）、Custom Settingsモーダルを閉じて`refreshUI()`する。カスタム接続線・資源オーバーライドはクリアしない。共有リンクへの影響は無い（取り込み結果は通常の登録状態として扱われる）。
 
 ### FILTERモーダル（右下ボタン／モバイルはタブバー）
 - 画面右下固定の `Filter` ボタン（`#custom-settings-btn`と同スタイル）から開く。**`filterMode !== 'none'`のときは背景を`#334155`にしてハイライトする。** 幅640px以下では非表示になり、モバイルタブバーの`Filter`タブから開く（ボトムシートではなくモーダル）。
@@ -696,6 +701,7 @@ AWB（Another Wynn Bot）が運用する共有バックエンドの推定結果�
   {
     "Jofash Tunnel": {
       "levels": { "damage": 5, "attack": 5, "health": 5, "defense": 5 },
+      "subBonuses": { "aura": 1, "volley": 2, "minions": 0, "multi": 0 },
       "ehp": 6240000, "hp": 1560000, "dps": 9750, "damageRange": [3900, 5850],
       "attackSpeed": 2, "defensePercent": 75,
       "tier": "A", "observedAt": "2026-08-27T03:26:37.089Z",
@@ -705,9 +711,14 @@ AWB（Another Wynn Bot）が運用する共有バックエンドの推定結果�
   ```
   - `levels`内の`damage`/`attack`/`health`/`defense`は**個別に`null`になりうる**（実データで複数件
     確認済み。例: `{"damage":null,"attack":4,"health":11,"defense":null}`）。1項目でもnullだからと
-    4項目まとめてnull扱いにはせず、`renderAwbEstimateHTML()`が項目ごとに`?`表示へフォールバックする。
+    4項目まとめてnull扱いにはせず、`renderAwbEstimateHTML()`が項目ごとに`?`表示へフォールバックする
+    （Import This Guildの`importLiveGuild()`も同様に項目ごとに反映する）。
   - `tier`は`'A'|'B'|'C'`（ローカル計算のTier A/B/Cと同じ意味）。`approximate: true`はTier C相当の
     簡易推定（当方の`estimateDefenseStatsApproximate()`に相当するサーバー側の推定）を示す。
+    `subBonuses`（`{aura, volley, minions, multi}`）は`tier`が`'C'`の場合`null`（2026-08、AWB側対応
+    により追加。ツールチップには表示しないが`importLiveGuild()`が使う。実装上、`subBonuses`が
+    非`null`のときに内部の4項目の一部だけが`null`になるケースは現状発生しないが、`importLiveGuild()`
+    は念のため項目ごとに`null`チェックしている）。
   - `ehp`/`hp`/`dps`/`damageRange`/`attackSpeed`/`defensePercent`は**AWB側が最終値まで計算済み**
     （Connections/Externals由来の倍率等込み）のため、当方は受け取った値をそのまま表示するだけで、
     ローカルの`computeStatsFromLevels()`は経由しない。
@@ -731,9 +742,10 @@ AWB（Another Wynn Bot）が運用する共有バックエンドの推定結果�
   これらの領地は推定を一切表示できない）。
 - `LIVE_POLL_INTERVAL_MS`を`30000`から`60000`に変更した（AWB統合に合わせ、ローカルクライアントからの
   ポーリング頻度を下げる目的）。
-- **Import This Guildへの反映（守備構成の取り込み）は未実装。** AWBのレスポンスに`subBonuses`
-  （Stronger Minions/Tower Multi-Attacks/Tower Aura/Tower Volley）フィールドが無いため見送っている。
-  AWB側チャットでの対応を待ってから改めて着手する。
+- **レスポンスには`subBonuses`（`{aura, volley, minions, multi}`、`tier`が`'C'`の場合は`null`）が
+  含まれる（2026-08、AWB側対応により追加）。** `Import This Guild`はこれを使って守備構成
+  （Damage/Attack/Health/Defenseの4値＋4サブボーナス）を反映する（詳細はCUSTOM SETTINGS
+  モーダルの「ギルド取り込み」、`getBestLiveEstimate()`参照）。
 
 ---
 

@@ -1946,8 +1946,10 @@ function positionTooltip(mx, my, above) {
   tooltip.style.top  = ty + 'px';
 }
 
-function showUpgradeTooltip(mx, my, displayName, above) {
-  tooltip.innerHTML = `<div style="color:#ffffff;">${escapeHtml(displayName)}</div>`;
+function showUpgradeTooltip(mx, my, displayName, above, isEstimated) {
+  let html = `<div style="color:#ffffff;">${escapeHtml(displayName)}</div>`;
+  if (isEstimated) html += `<div style="color:#FF55FF; font-size:0.85em; margin-top:2px;">Estimated from Import This Guild</div>`;
+  tooltip.innerHTML = html;
   tooltip.style.display = 'block';
   positionTooltip(mx, my, above);
 }
@@ -2739,15 +2741,25 @@ function openModal(name, bulkNames = null) {
         currentLevel = (st.defense || {})[item.id] || 0;
         displayName = cfg.name;
       }
-      
+
+      // Import This Guildが反映した推定値のうち、まだ手動編集されていないもの（tri-state:
+      // true=推定由来・false=手動編集済み・未設定=未確定）だけをマゼンタの縁取り・ドットで示す。
+      // 一括編集モードでは領地ごとに値が異なりうるため表示しない（currentLevelの'-'表示と同様）。
+      const importEstimated = st.importEstimated || {};
+      const isEstimatedField = !isBulk && (isBonus
+        ? (importEstimated.bonuses || {})[item.name] === true
+        : (importEstimated.defense || {})[item.id] === true);
+      if (isEstimatedField) itemEl.classList.add('import-estimated');
+
       const iconName = displayName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
       const iconPath = `./assets/icons/upgrades/${iconName}.png`;
-      
+
       itemEl.innerHTML = `
         <img src="${iconPath}" alt="${displayName}" onerror="this.src='./assets/icons/resources/emerald.png'">
         <div class="upgrade-level">${isBulk ? '-' : currentLevel}</div>
+        ${isEstimatedField ? '<div class="upgrade-estimated-dot" aria-hidden="true"></div>' : ''}
       `;
-      
+
       const sel = document.createElement('select');
       sel.className = isBonus ? 'bonus-sel' : 'defense-sel';
       if (isBonus) sel.dataset.bonus = item.name;
@@ -2788,9 +2800,9 @@ function openModal(name, bulkNames = null) {
         updateModalStats();
       });
 
-      // PC: ホバーでツールチップ表示（名前のみ）
+      // PC: ホバーでツールチップ表示（名前のみ、Import This Guild由来の推定値なら注記を追加）
       itemEl.addEventListener('mouseenter', (e) => {
-        showUpgradeTooltip(e.clientX, e.clientY, displayName, false);
+        showUpgradeTooltip(e.clientX, e.clientY, displayName, false, isEstimatedField);
       });
       itemEl.addEventListener('mouseleave', () => {
         hideTooltip();
@@ -2812,7 +2824,7 @@ function openModal(name, bulkNames = null) {
           upLongPressTimer = null;
           if (upTouchMoved) return;
           upLongPressTriggered = true;
-          showUpgradeTooltip(upTouchStart.x, upTouchStart.y, displayName, true);
+          showUpgradeTooltip(upTouchStart.x, upTouchStart.y, displayName, true, isEstimatedField);
         }, 500);
       }, { passive: true });
 
@@ -2912,16 +2924,21 @@ function saveModal() {
     const treasury = document.getElementById('modal-treasury').value;
 
     for (const n of currentBulkTerritories) {
-      if (addedTerritories[n]) {
-        for (const [k, v] of Object.entries(defenseToApply)) {
-          addedTerritories[n].defense[k] = v;
-        }
-        for (const [k, v] of Object.entries(bonusesToApply)) {
-          addedTerritories[n].bonuses[k] = v;
-        }
-        if (treasury !== "") {
-          addedTerritories[n].treasury = treasury;
-        }
+      const st = addedTerritories[n];
+      if (!st) continue;
+      st.importEstimated = st.importEstimated || { defense: {}, bonuses: {} };
+      // 値が実際に変わったフィールドは「Import This Guild由来の推定」マークを外す
+      // （手動で明示的に選び直したフィールドとして扱い、以後の再Importで上書きしない）。
+      for (const [k, v] of Object.entries(defenseToApply)) {
+        if (st.defense[k] !== v) st.importEstimated.defense[k] = false;
+        st.defense[k] = v;
+      }
+      for (const [k, v] of Object.entries(bonusesToApply)) {
+        if (st.bonuses[k] !== v) st.importEstimated.bonuses[k] = false;
+        st.bonuses[k] = v;
+      }
+      if (treasury !== "") {
+        st.treasury = treasury;
       }
     }
     listSelectedTerritories.clear();
@@ -2946,7 +2963,21 @@ function saveModal() {
   if (isHQ) {
     for (const n of Object.keys(addedTerritories)) addedTerritories[n].hq = false;
   }
-  addedTerritories[name] = { defense, bonuses, hq: isHQ, treasury };
+
+  // 保存前の値と比較し、実際に変わったフィールドだけ「Import This Guild由来の推定」マークを外す。
+  // 変化していないフィールド（開いただけで何も変えなかった等）はマークを維持する。
+  const prev = addedTerritories[name];
+  const importEstimated = (prev && prev.importEstimated) ? prev.importEstimated : { defense: {}, bonuses: {} };
+  if (prev) {
+    for (const k of Object.keys(defense)) {
+      if ((prev.defense || {})[k] !== defense[k]) importEstimated.defense[k] = false;
+    }
+    for (const k of Object.keys(bonuses)) {
+      if ((prev.bonuses || {})[k] !== bonuses[k]) importEstimated.bonuses[k] = false;
+    }
+  }
+
+  addedTerritories[name] = { defense, bonuses, hq: isHQ, treasury, importEstimated };
   closeModal();
   refreshUI();
 }
@@ -4237,11 +4268,53 @@ function tryShowLiveGuildPicker() {
   }
 }
 
+// Import This Guildで使う「その時点で利用可能な最新の推定」を返す（2026-08、パート2導入）。
+// パート1のshowLiveTooltip()と同じ優先順位（1: AWB共有バックエンドの今回のポーリングでの応答
+// 2: 品質付きキャッシュのTier A/Bエントリ 3: 現在ポーリングの生の確定推定 4: 簡易推定）で
+// levels/subBonusesを取得する。4項目とも決定不能な場合はnullを返す。subBonusesは簡易推定
+// （4番目のフォールバック）では常にnull（決定不能）になる。
+function getBestLiveEstimate(name) {
+  const awbEntry = _awbEstimates && _awbEstimates[name];
+  if (awbEntry && awbEntry.levels) {
+    const L = awbEntry.levels;
+    if (L.damage != null || L.attack != null || L.health != null || L.defense != null) {
+      return { levels: L, subBonuses: awbEntry.subBonuses || null };
+    }
+  }
+
+  const cachedEntry = _qualityCache[name];
+  if (cachedEntry && cachedEntry.estimate.levels) {
+    return { levels: cachedEntry.estimate.levels, subBonuses: cachedEntry.estimate.subBonuses || null };
+  }
+
+  const estimate = getDefenseEstimate(name);
+  if (estimate.levels) {
+    return { levels: estimate.levels, subBonuses: estimate.subBonuses || null };
+  }
+
+  const approx = getDefenseEstimateApproximate(name);
+  const L = approx.levels;
+  if (L.damage === null && L.attack === null && L.health === null && L.defense === null) return null;
+  return { levels: L, subBonuses: null };
+}
+
+// AWBのsubBonusesキー → BONUS_CONFIGのボーナス名。
+const SUB_BONUS_NAME_MAP = { minions: 'Stronger Minions', multi: 'Tower Multi-Attacks', aura: 'Tower Aura', volley: 'Tower Volley' };
+
 // Liveデータを使って実際のギルド構成をシミュレーターへ取り込む。
-// Defenseレベルは推定であり範囲でしか出ない。範囲の中央値等を勝手に代入すると、
-// シミュレーション結果が「実測っぽい嘘の数字」になり、ユーザーが自分で設定した値と
-// 区別できなくなる。そのためDefenseは常に0のまま登録し、ユーザーが自分で入力する方針とする。
-// 生産ボーナスもPhase 4で一意に確定したものだけを入れ、複数候補が残るものは0のままとする。
+// Defense（Damage/Attack/Health/Defense）とSub-bonus（Stronger Minions/Tower Multi-Attacks/
+// Tower Aura/Tower Volley）は、getBestLiveEstimate()で取得した推定値を反映する
+// （2026-08、パート2で追加）。反映した値は`importEstimated`（{defense:{...}, bonuses:{...}}、
+// フィールドごとにtrue=推定由来・false=手動編集済み・未設定=未確定のtri-state）でマークし、
+// モーダルのUpgrade UIにマゼンタの縁取り・ドットで表示する（`openModal()`参照）。
+// ユーザーが手動編集した値（`saveModal()`が値の変化を検知した時点でマークをfalseにする）は、
+// 再Importでも上書きしない（`importEstimated.xxx[key] === false`のフィールドはスキップする）。
+// 名前が引き続き存在する領地は、再Import時にdefense/bonuses/importEstimatedを引き継ぐ
+// （手動編集された値・マークを保持するため。以前は毎回全消去していた）。このギルドの現在の
+// 保有領地に含まれなくなった領地は削除する（"replace all"の既存仕様は維持）。
+// 生産ボーナス（Efficient Emeralds等、Trio A/B）は一意に確定したものだけを毎回無条件で反映する
+// （こちらは確率的な「推定」ではなくgeneration倍率等からの確定値のため、手動編集保持の対象外・
+// 従来どおり複数候補が残るものは反映しない）。
 function importLiveGuild() {
   const sel = document.getElementById('live-import-guild-select');
   const uuid = liveGuildDisplayToUuid[sel.value];
@@ -4252,25 +4325,33 @@ function importLiveGuild() {
 
   if (!confirm('This will replace all currently registered territories. Continue?')) return;
 
+  const previousTerritories = addedTerritories;
   addedTerritories = {};
   for (const [name, info] of entries) {
+    const prev = previousTerritories[name];
+    const prevEstimated = (prev && prev.importEstimated) || {};
     addedTerritories[name] = {
-      defense: { damage: 0, attack: 0, health: 0, defense: 0 },
-      bonuses: {},
+      defense: prev ? { ...prev.defense } : { damage: 0, attack: 0, health: 0, defense: 0 },
+      bonuses: prev ? { ...prev.bonuses } : {},
       hq: info.hq === true,
-      treasury: LIVE_RATING_MAP[info.treasury] || 'Very Low'
+      treasury: LIVE_RATING_MAP[info.treasury] || 'Very Low',
+      importEstimated: {
+        defense: { ...(prevEstimated.defense || {}) },
+        bonuses: { ...(prevEstimated.bonuses || {}) }
+      }
     };
   }
 
-  // try/catch: 1領地分のcomputeLiveConfirmedInfo()が例外を投げると、この直後の
+  // try/catch: 1領地分の処理が例外を投げると、この直後の
   // sel.value=''/updateLiveImportGuildDatalist()/Liveモード自動OFF/refreshUI()に到達できず、
   // addedTerritoriesは既に全置換済み（直前のループ）のままUIがLiveモード表示に固まって残る。
-  // bonusesは直前のループで既に{}に初期化済みのため、1領地分の例外はログのみに留めて
-  // そのままスキップ（ボーナス確定なし＝安全側）し、残りの領地の取り込みは継続する。
+  // 1領地分の例外はログのみに留めてそのままスキップ（確定ボーナス・推定反映なし＝安全側）し、
+  // 残りの領地の取り込みは継続する。
   for (const [name, info] of entries) {
     try {
+      const st = addedTerritories[name];
       const confirmed = computeLiveConfirmedInfo(name, info);
-      const bonuses = addedTerritories[name].bonuses;
+      const bonuses = st.bonuses;
       if (confirmed.emComboMatches && confirmed.emComboMatches.matches.length === 1) {
         const m = confirmed.emComboMatches.matches[0];
         if (m['Efficient Emeralds'] !== undefined) bonuses['Efficient Emeralds'] = m['Efficient Emeralds'];
@@ -4283,8 +4364,31 @@ function importLiveGuild() {
       }
       if (confirmed.emStorageLv !== null) bonuses['Larger Emerald Storage'] = confirmed.emStorageLv;
       if (confirmed.resStorageLv !== null) bonuses['Larger Resource Storage'] = confirmed.resStorageLv;
+
+      const best = getBestLiveEstimate(name);
+      if (best) {
+        const estDef = st.importEstimated.defense;
+        for (const key of ['damage', 'attack', 'health', 'defense']) {
+          const v = best.levels[key];
+          if (v === null || v === undefined) continue;
+          if (estDef[key] === false) continue; // 手動編集済み。上書きしない
+          st.defense[key] = v;
+          estDef[key] = true;
+        }
+
+        if (best.subBonuses) {
+          const estBonus = st.importEstimated.bonuses;
+          for (const [subKey, bonusName] of Object.entries(SUB_BONUS_NAME_MAP)) {
+            const v = best.subBonuses[subKey];
+            if (v === null || v === undefined) continue;
+            if (estBonus[bonusName] === false) continue; // 手動編集済み。上書きしない
+            bonuses[bonusName] = v;
+            estBonus[bonusName] = true;
+          }
+        }
+      }
     } catch (err) {
-      console.error(`[import] EXCEPTION computing confirmed bonuses for ${name}:`, err);
+      console.error(`[import] EXCEPTION computing confirmed bonuses/defense estimate for ${name}:`, err);
     }
   }
 
