@@ -47,7 +47,8 @@ let addedTerritories = {};  // name -> { defense, bonuses, hq, treasury }
 let TERRITORY_IDS = [];      // index -> name（territory-ids.json）
 let TERRITORY_ID_MAP = {};   // name -> index
 let currentModalTerritory = null;
-let mapImage = null;
+const mapImgEl = document.getElementById('map-img');
+const mapFallbackEl = document.getElementById('map-fallback');
 
 // アイコン画像の読み込み
 const resImages = {
@@ -434,6 +435,13 @@ function handleClick(cx, cy, isTouch = false) {
 // ═══════════════════════════════════════════════════════════
 //  DRAWING
 // ═══════════════════════════════════════════════════════════
+function updateMapImageTransform() {
+  mapImgEl.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+  mapImgEl.style.imageRendering = (scale < 1) ? 'auto' : 'pixelated';
+  const loaded = mapImgEl.complete && mapImgEl.naturalWidth > 0;
+  mapFallbackEl.style.display = loaded ? 'none' : 'flex';
+}
+
 function draw() {
   const dpr = window.devicePixelRatio || 1;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -441,17 +449,7 @@ function draw() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.save();
 
-  if (mapImage && mapImage.complete && mapImage.naturalWidth > 0) {
-    ctx.imageSmoothingEnabled = (scale < 1);
-    ctx.drawImage(mapImage, panX, panY, MAP_CONFIG.imageWidth * scale, MAP_CONFIG.imageHeight * scale);
-  } else {
-    ctx.fillStyle = '#0a0f1e';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#334155';
-    ctx.font = '16px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Now Loading...', canvas.width / 2, canvas.height / 2);
-  }
+  updateMapImageTransform();
 
   drawConnections();
   if (liveMode) {
@@ -4053,14 +4051,21 @@ function getGuildColor(prefix) {
 // ═══════════════════════════════════════════════════════════
 //  定点観測ロガー（調査用、Liveモード専用）
 //  URLに?watch=1を付けたときのみ有効。Liveモードが ON の間だけ5分間隔で動作し、
-//  監視対象領地の状態（Tier・表示中の守備レベル・候補数・veto有無・品質・キャッシュ観測時刻・
-//  生資源値）をコンソールへ出力し、_watchLogにも蓄積する。あわせてLiveモードが（ユーザーの
-//  手動トグル以外の経路で）OFFになった事象・Liveモード中の未捕捉例外も_liveModeEventsに記録する。
+//  監視対象ギルドの「その回の所有全領地」の状態（Tier・表示中の守備レベル・候補数・veto有無・
+//  品質・キャッシュ観測時刻・生資源値・AWB情報・実際に表示に使われたソース）をコンソールへ
+//  出力し、_watchLogにも蓄積する。あわせてLiveモードが（ユーザーの手動トグル以外の経路で）
+//  OFFになった事象・Liveモード中の未捕捉例外も_liveModeEventsに記録する。
 //  exportWatchLog()で全記録をJSONファイルとしてダウンロードできる。
+//
+//  2026-08、AWB統合後のTier低下疑惑調査のため対象を固定8領地→自ギルド所有全領地に拡張し、
+//  AWB情報・実際の表示ソース判定・ローカルキャッシュ参考情報を追加した（本番のshowLiveTooltip()/
+//  fetchLiveTerritoryData()の挙動自体は一切変更していない、純粋な観測用の追加）。
 // ═══════════════════════════════════════════════════════════
 const WATCH_LOGGING_ENABLED = new URLSearchParams(window.location.search).get('watch') === '1';
 const WATCH_LOG_INTERVAL_MS = 5 * 60 * 1000;
-// 監視対象領地（ベース名。(HQ)/(Conn)/(Ext)等の接尾辞は付けない）。書き換えやすいようここに集約する。
+// 監視対象ギルドを特定するための手がかり領地（ベース名。(HQ)/(Conn)/(Ext)等の接尾辞は付けない）。
+// このうち最初にliveData上で所有者が確認できた領地の所有ギルドを「監視対象ギルド」とし、
+// そのギルドがその回に所有する全領地を対象にする（getWatchTargetGuildUuid()参照）。
 const WATCH_TERRITORY_BASE_NAMES = ["Bantisu Approach", "Krolton's Cave", "Nemract", "Troms", "Elkurn", "Lexdale Penitentiary", "Llevigar Farm", "Timasca"];
 let _watchLogTimer = null;
 let _watchLog = [];
@@ -4072,6 +4077,18 @@ let _liveModeEvents = [];
 // 値が混ざっても照合できるよう、比較前に必ずこのヘルパーを通す。
 function stripTerritorySuffix(name) {
   return name.replace(/\((?:HQ|Conn|Ext)\)$/, '');
+}
+
+// WATCH_TERRITORY_BASE_NAMESのうち、その回のliveDataで所有者が確認できる最初の領地の
+// 所有ギルドuuidを返す（見つからなければnull）。複数ギルドが分散して所有していても、
+// 8領地のうち1つでも所有が確認できれば追跡を続けられるよう先頭から順に探す。
+function getWatchTargetGuildUuid() {
+  if (!liveData) return null;
+  for (const baseName of WATCH_TERRITORY_BASE_NAMES) {
+    const info = liveData[stripTerritorySuffix(baseName)];
+    if (info && info.guild && info.guild.uuid) return info.guild.uuid;
+  }
+  return null;
 }
 
 // candidateCount===1だがエメラルドvetoでTier Cに落ちたかどうかを判定する。fと同じスナップショット
@@ -4091,12 +4108,15 @@ function computeWatchVetoStatus(name, candidateCount) {
   return EcoLogic.isVetoed(candidateCount, emeraldAdmissible, _globalTransferPhase);
 }
 
-// showLiveTooltip()と同じ優先順位（品質付きキャッシュのTier A/B優先→無ければ現在ポーリングの
-// 生の確定推定→それも不可なら簡易推定）で、監視対象1領地分のスナップショットを組み立てる。
+// showLiveTooltip()と全く同じ優先順位判定（1: AWB共有バックエンドの今回の応答（levelsが
+// 1項目でも非nullなら採用）2: 品質付きキャッシュのTier A/B 3: 現在ポーリングの生の確定推定
+// 4: 簡易推定）を、監視対象1領地分について再現する。本番のshowLiveTooltip()自体は変更せず、
+// 判定ロジックだけをここに複製している（調査用の一時コード）。
+// AWBが使われた場合でも、比較用にローカル_qualityCacheの有無・tier・観測時刻からの経過時間を
+// 別途`localCache`として記録する（「ローカルにもっと良いキャッシュがあったか」を後から判定するため）。
 // stored/generationの両方を残す（fと合わせてisCachedConsumptionStillPlausible相当の判定を
 // 事後に再現できるようにするため。2026-08、resourceMismatchStreak導入時の検証で必要になった）。
-function buildWatchEntry(baseName) {
-  const name = stripTerritorySuffix(baseName);
+function buildWatchEntry(name) {
   const info = liveData && liveData[name];
   if (!info || !info.guild || !info.guild.name) return { name, owned: false };
 
@@ -4106,39 +4126,81 @@ function buildWatchEntry(baseName) {
     if (key) stored[key] = { stored: r.stored, generation: r.generation };
   }
 
+  // AWB情報（showLiveTooltip()の採否判定に使う非nullカウントと、参考情報としてのtier/approximate）。
+  const awbEntry = _awbEstimates && _awbEstimates[name];
+  const awbLevels = (awbEntry && awbEntry.levels) || null;
+  const awbNonNullCount = awbLevels
+    ? ['damage', 'attack', 'health', 'defense'].filter((k) => awbLevels[k] != null).length
+    : 0;
+  const awbUsable = awbNonNullCount > 0; // renderAwbEstimateHTML()が空文字列を返さない条件と同じ
+  const awb = {
+    hasEntry: !!awbEntry,
+    tier: awbEntry ? awbEntry.tier : null,
+    approximate: awbEntry ? !!awbEntry.approximate : null,
+    nonNullLevelsCount: awbEntry ? awbNonNullCount : null
+  };
+
+  // ローカルキャッシュ参考情報（実際に表示へ使われたかどうかに関わらず常に記録する）。
   const cachedEntry = _qualityCache[name];
-  if (cachedEntry) {
+  const localCache = cachedEntry ? {
+    exists: true,
+    tier: cachedEntry.tier,
+    quality: cachedEntry.quality,
+    ageMs: Date.now() - new Date(cachedEntry.observedAt).getTime(),
+    resourceMismatchStreak: cachedEntry.resourceMismatchStreak || 0
+  } : { exists: false, tier: null, quality: null, ageMs: null, resourceMismatchStreak: null };
+
+  let displayedSource, displayedTier, levels = null, candidateCount = null, vetoed = false, consumption = null;
+  if (awbUsable) {
+    displayedSource = 'awb';
+    displayedTier = awbEntry.tier;
+    levels = awbLevels;
+  } else if (cachedEntry) {
     // キャッシュされているのは常にTier A/B（candidateCount===1かつ非veto）のため、
     // candidateCount/vetoedは再計算せず固定値で返す。
-    return {
-      name, owned: true, guild: info.guild.name, source: 'cache',
-      tier: cachedEntry.tier, levels: cachedEntry.estimate.levels,
-      candidateCount: cachedEntry.estimate.candidateCount, vetoed: false,
-      consumption: cachedEntry.estimate.consumption,
-      resourceMismatchStreak: cachedEntry.resourceMismatchStreak || 0,
-      quality: cachedEntry.quality, observedAt: cachedEntry.observedAt, stored
-    };
+    displayedSource = 'cache';
+    displayedTier = cachedEntry.tier;
+    levels = cachedEntry.estimate.levels;
+    candidateCount = cachedEntry.estimate.candidateCount;
+    consumption = cachedEntry.estimate.consumption;
+  } else {
+    const estimate = getDefenseEstimate(name);
+    candidateCount = estimate.candidateCount;
+    vetoed = computeWatchVetoStatus(name, candidateCount);
+    if (estimate.levels) {
+      displayedSource = 'live';
+      displayedTier = 'C';
+      levels = estimate.levels;
+      consumption = estimate.consumption;
+    } else {
+      const approx = getDefenseEstimateApproximate(name);
+      displayedSource = 'approx';
+      displayedTier = 'C';
+      levels = approx.levels;
+    }
   }
 
-  const estimate = getDefenseEstimate(name);
-  const candidateCount = estimate.candidateCount;
-  const vetoed = computeWatchVetoStatus(name, candidateCount);
-  if (estimate.levels) {
-    return { name, owned: true, guild: info.guild.name, source: 'live', tier: 'C', levels: estimate.levels, candidateCount, vetoed, consumption: estimate.consumption, resourceMismatchStreak: null, quality: null, observedAt: null, stored };
-  }
-
-  const approx = getDefenseEstimateApproximate(name);
-  return { name, owned: true, guild: info.guild.name, source: 'approx', tier: 'C', levels: approx.levels, candidateCount, vetoed, consumption: null, resourceMismatchStreak: null, quality: null, observedAt: null, stored };
+  return { name, owned: true, guild: info.guild.name, displayedSource, displayedTier, levels, candidateCount, vetoed, consumption, awb, localCache, stored };
 }
 
 function logWatchSnapshot() {
   if (!liveMode || !liveData) return;
+  const guildUuid = getWatchTargetGuildUuid();
+  const ownedNames = guildUuid ? Array.from(getOwnedNamesForGuild(guildUuid, liveData)) : [];
   // fはこのスナップショット全体で共通の値のため、entry単位ではなくレコード直下に1回だけ記録する
   // （2026-08追加。resourceMismatchStreak導入の検証で、stored/generationだけでなくfも無いと
   // isCachedConsumptionStillPlausible相当の判定を事後に再現できないと判明したため）。
-  const record = { at: new Date().toISOString(), f: _globalTransferPhase, entries: WATCH_TERRITORY_BASE_NAMES.map(buildWatchEntry) };
+  // awbActiveThisRoundは「今回_awbEstimatesが非nullか」＝fetchLiveTerritoryData()がこの回
+  // computeGlobalTransferPhase()/updateQualityCache()をスキップしたかどうかと同義
+  // （awbData取得成功時のみ_awbEstimatesが非nullになるため。fetchLiveTerritoryData()参照）。
+  const record = {
+    at: new Date().toISOString(), f: _globalTransferPhase,
+    awbActiveThisRound: _awbEstimates !== null,
+    guildUuid, ownedCount: ownedNames.length,
+    entries: ownedNames.map(buildWatchEntry)
+  };
   _watchLog.push(record);
-  console.log(`[watch] ${record.at}`, record.entries);
+  console.log(`[watch] ${record.at} (${ownedNames.length} territories owned, awbActive=${record.awbActiveThisRound})`, record.entries);
 }
 
 // Liveモードの自動OFF・Liveモード中の未捕捉例外を記録する（reasonは呼び出し元が渡す文字列）。
@@ -4508,8 +4570,7 @@ async function init() {
   allTerritoryNames = Object.keys(territories).sort();
   updateTerritorySelectDatalist();
 
-  mapImage = new Image();
-  mapImage.onload = () => {
+  mapImgEl.onload = () => {
     const scaleX = window.innerWidth / MAP_CONFIG.imageWidth;
     const scaleY = window.innerHeight / MAP_CONFIG.imageHeight;
     scale = Math.min(scaleX, scaleY) * 0.9;
@@ -4517,13 +4578,13 @@ async function init() {
     panY = (window.innerHeight - MAP_CONFIG.imageHeight * scale) / 2;
     draw();
   };
-  mapImage.onerror = () => {
+  mapImgEl.onerror = () => {
     scale = Math.min(window.innerWidth / MAP_CONFIG.imageWidth, window.innerHeight / MAP_CONFIG.imageHeight) * 0.9;
     panX = (window.innerWidth - MAP_CONFIG.imageWidth * scale) / 2;
     panY = (window.innerHeight - MAP_CONFIG.imageHeight * scale) / 2;
     draw();
   };
-  mapImage.src = MAP_CONFIG.imagePath;
+  mapImgEl.src = MAP_CONFIG.imagePath;
 
   resizeCanvas();
   window.addEventListener('resize', resizeCanvas);

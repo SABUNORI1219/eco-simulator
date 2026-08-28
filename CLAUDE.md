@@ -72,7 +72,9 @@ python dev-server.py 8080
 - Y軸反転あり（ゲームのY負の大きい値 = 南 = 画像の下）
 - 変換式: `pixel = game + offset`（offset X=+2560, Y=+6632）
 - canvasは`devicePixelRatio`対応済み。`draw()`冒頭で`setTransform(dpr,...)`を行い、以降はCSSピクセル座標系で描画する。`clampPan()`は`window.innerWidth/innerHeight`を基準にする。
-- `draw()`でマップ画像を描画する際、`scale >= 1`では`imageSmoothingEnabled = false`、`scale < 1`では`true`に切り替える。
+- **マップ背景は`<canvas>`ではなく`<img id="map-img">`で描画する（2026-08、AvoMap式のimg+canvas層構成に変更）。** `<canvas id="canvas">`の背面に配置し、`draw()`から呼ばれる`updateMapImageTransform()`が`mapImgEl.style.transform = "translate(panXpx, panYpx) scale(scale)"`（`transform-origin: 0 0`固定）をJSから設定する。canvasは領地オーバーレイ（`drawConnections()`/`drawTerritories()`/`drawTerritoriesLive()`）専用の透明レイヤーになり、地図画像のピクセルは一切描画しない。座標変換ロジック（`gameToImage`/`imageToCanvas`/`gameToCanvas`/`canvasToGame`）自体は変更していない。`<img>`は`pointer-events: none`でマウス/タッチイベントを素通しし、当たり判定・イベントリスナーは引き続きcanvas側で受ける。
+- `scale >= 1`では`image-rendering: pixelated`、`scale < 1`では既定値（`auto`）に切り替える（`updateMapImageTransform()`、旧`ctx.imageSmoothingEnabled`と同じ条件）。
+- ロード中/エラー時のフォールバックは、`<div id="map-fallback">`（暗い背景＋中央グレーテキスト、z-index:1で`#map-img`の前面・`#canvas`の背面）の表示切り替えで行う（`mapImgEl.complete && mapImgEl.naturalWidth > 0`の判定）。`mapImage = new Image()`によるオフスクリーン読み込みは廃止し、`init()`はDOM上の`#map-img`要素自体に`onload`/`onerror`/`src`を設定する。
 
 ---
 
@@ -116,7 +118,8 @@ python dev-server.py 8080
 | 関数 | 役割 |
 |---|---|
 | `init()` | territories.json読み込み・マップ画像ロード・URLハッシュ復元・初期描画 |
-| `draw()` | キャンバス全体の再描画（マップ→接続線→領地） |
+| `draw()` | 再描画。`updateMapImageTransform()`呼び出し（地図画像側の位置更新）→接続線→領地の順（2026-08、マップ画像自体はcanvasに描画しない） |
+| `updateMapImageTransform()` | `panX`/`panY`/`scale`から`#map-img`の`transform`・`image-rendering`を更新し、`#map-fallback`の表示/非表示を切り替える（2026-08導入） |
 | `drawConnections()` | 全Trading Route接続線を描画（黒・高不透明度） |
 | `drawTerritories()` | 全領地の矩形・アウトライン・名前を描画 |
 | `hitTest(cx, cy)` | 登録済み領地のみのクリック判定 |
