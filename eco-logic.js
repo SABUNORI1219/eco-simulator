@@ -277,6 +277,34 @@ export function isConnectedToHQ(name, addedTerritories, hqPaths) {
   return hqPaths.dist[name] !== undefined;
 }
 
+// ライブの実所有領地に対するHQ接続判定用の距離を返す（Liveモード専用）。getHQPaths()と同じ
+// 「経由可能な領地を制限したBFS」だが、addedTerritories（シミュレーション状態）ではなく
+// ownedNames（getOwnedNamesForGuildで得たライブの実所有領地名のSet）を対象にする。
+// customConnectionsはシミュレーター専用機能のため対象外とし、静的なterritories隣接関係
+// （Trading Routes）のみを使う。hqNameがownedNamesに含まれない場合（HQ自体が不明/未所有）は{}を返す。
+export function getLiveHQDistances(territories, ownedNames, hqName) {
+  if (!hqName || !ownedNames.has(hqName)) return {};
+  const dist = { [hqName]: 0 };
+  const queue = [hqName];
+  let qi = 0;
+  while (qi < queue.length) {
+    const curr = queue[qi++];
+    const neighbors = (territories[curr] && territories[curr]['Trading Routes']) || [];
+    for (const nb of neighbors) {
+      if (!ownedNames.has(nb)) continue;
+      if (dist[nb] === undefined) { dist[nb] = dist[curr] + 1; queue.push(nb); }
+    }
+  }
+  return dist;
+}
+
+// getLiveHQDistances()の結果からHQ接続判定を行う。HQ自身（isHQ）は常にtrue。
+export function isLiveConnectedToHQ(name, isHQ, ownedNames, dist) {
+  if (isHQ) return true;
+  if (!ownedNames.has(name)) return false;
+  return dist[name] !== undefined;
+}
+
 // ═══════════════════════════════════════════════════════════
 //  DEFENSE STATS（HP・DPS・EHP・difficulty・rating）
 // ═══════════════════════════════════════════════════════════

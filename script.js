@@ -451,6 +451,11 @@ function draw() {
 
   updateMapImageTransform();
 
+  // canvasコンテキスト全体に効くグローバル設定。地図画像はcanvasに描画しなくなったが、
+  // drawIcon()（資源/HQアイコン）は引き続きctx.drawImage()で描画するため、
+  // 旧来の「拡大時はドット絵的にシャープ」という見た目を保つにはここで明示的に再設定する必要がある。
+  ctx.imageSmoothingEnabled = (scale < 1);
+
   drawConnections();
   if (liveMode) {
     drawTerritoriesLive();
@@ -1378,36 +1383,26 @@ function showLiveTooltip(mx, my, name, above) {
   html += `</div>`;
   html += `<div><span style="color:#FF55FF;">♦ Defence: </span><span style="color:${ratingColor(defenceLabel)};">${escapeHtml(defenceLabel)}</span></div>`;
 
-  // 守備ステータスの推定（Estimatedは確定値とは視覚的に区別する）。優先順位:
-  // 1) AWB共有バックエンド（/eco/territories）の今回のポーリングでの応答（_awbEstimates）
-  // 2) 品質付きキャッシュ（Item 9）のTier A/Bエントリ（構成が変わっていない限り、過去に
-  //    観測できた「良いf」での推定のほうが現在ポーリングの生の推定より信頼できるため）
-  // 3) 現在ポーリングの生の確定推定 4) 簡易推定
-  // AWBが今回失敗した場合（_awbEstimates===null）は全領地が2〜4にフォールバックする。
-  // AWBが成功したが該当領地のエントリ自体が無い、またはlevelsが4項目ともnullの場合は、
-  // その領地だけ2〜4にフォールバックする（全体を一律フォールバックにしない）。
-  // Storage/資源ブースト等の確定ボーナス一覧（Upgrades:）は表示しない。推定の内部計算では使い続ける。
+  // 守備ステータスの推定（Estimatedは確定値とは視覚的に区別する）。ソース選定は
+  // pickBestLiveSource()に集約している（tierランクでAWBとローカルキャッシュを比較、
+  // どちらも無ければ現在ポーリングの生の確定推定→簡易推定にフォールバック。詳細は同関数の
+  // コメント参照）。Storage/資源ブースト等の確定ボーナス一覧（Upgrades:）は表示しない。
+  // 推定の内部計算では使い続ける。
   // getDefenseEstimate/getDefenseEstimateApproximateは、ここで得たconfirmed（現在ポーリングの
   // 最新liveData由来）ではなく、_phaseSourceLiveData（fと同じスナップショット）を内部で
   // 参照し直す。両者を混ぜないことがCLAUDE.md「Res Tickと表示されている資源量が噛み合わない」
   // への対策の要のため、ここでは意図的にconfirmedExtra/resourceSnapshotを渡さない。
-  const awbEntry = _awbEstimates && _awbEstimates[name];
-  const awbHtml = awbEntry ? renderAwbEstimateHTML(awbEntry) : '';
-  if (awbHtml) {
-    html += awbHtml;
+  const picked = pickBestLiveSource(name);
+  if (picked.source === 'disconnected') {
+    html += renderDisconnectedEstimateHTML();
+  } else if (picked.source === 'awb') {
+    html += renderAwbEstimateHTML(picked.awbEntry);
+  } else if (picked.source === 'cache') {
+    html += renderDefenseEstimateHTML(picked.cachedEntry.estimate, { observedAt: picked.cachedEntry.observedAt, tier: picked.cachedEntry.tier });
+  } else if (picked.source === 'live') {
+    html += renderDefenseEstimateHTML(picked.estimate);
   } else {
-    const cachedEntry = _qualityCache[name];
-    if (cachedEntry) {
-      html += renderDefenseEstimateHTML(cachedEntry.estimate, { observedAt: cachedEntry.observedAt, tier: cachedEntry.tier });
-    } else {
-      const estimate = getDefenseEstimate(name);
-      if (estimate.levels) {
-        html += renderDefenseEstimateHTML(estimate);
-      } else {
-        const approx = getDefenseEstimateApproximate(name);
-        html += renderDefenseEstimateApproximateHTML(approx);
-      }
-    }
+    html += renderDefenseEstimateApproximateHTML(picked.approx);
   }
 
   tooltip.innerHTML = html;
@@ -1477,6 +1472,39 @@ function getOwnedNamesForGuild(guildUuid, dataset = liveData) {
     if (info.guild && info.guild.uuid === guildUuid) result.add(n);
   }
   return result;
+}
+
+// HQと自領地の連続を敵ギルドに断たれた（cut）領地は、Defense/Bonusを全て0にリセットする運用が
+// 原則人力で適用される。cut中はstored/generation自体も転送位相モデルに従わない信頼できない値に
+// なるため、統計的な推定を試みること自体が無意味（garbage in, garbage out）。この判定はトポロジー・
+// 所有権に関する情報のため、fと同じスナップショット（_phaseSourceLiveData）ではなく常に最新の
+// liveDataを使う（鮮度優先。他の所有権系判定と同じ方針）。判定不能（ギルド不明・HQ不明等）な場合は
+// 安全側（非接続扱いにしない）にfalseを返す。
+// hqDistCacheを渡すと同一ギルドのBFS結果を使い回す（updateQualityCache()のように同じギルドの
+// 複数領地をループする場面向け。省略時は毎回計算する）。
+function isLiveTerritoryDisconnectedFromHQ(name, hqDistCache) {
+  const info = liveData && liveData[name];
+  if (!info || !info.guild) return false;
+  if (info.hq) return false; // HQ自身は常に接続扱い（EcoLogic.isLiveConnectedToHQ()と同じ規則だが、
+                              // ここではBFS/ownedNames構築自体を省略するための早期return）
+
+  const hqName = info.guild.hq;
+  if (!hqName || !territories[hqName]) return false; // HQ不明時は判定不能→安全側
+
+  const guildUuid = info.guild.uuid;
+  const ownedNames = getOwnedNamesForGuild(guildUuid, liveData);
+  let dist;
+  if (hqDistCache) {
+    if (!(guildUuid in hqDistCache)) {
+      hqDistCache[guildUuid] = EcoLogic.getLiveHQDistances(territories, ownedNames, hqName);
+    }
+    dist = hqDistCache[guildUuid];
+  } else {
+    dist = EcoLogic.getLiveHQDistances(territories, ownedNames, hqName);
+  }
+  // 接続判定自体はEcoLogic.isLiveConnectedToHQ()に一本化する（isHQは上のearly returnで
+  // 既に処理済みのためfalse固定で渡す）。判定ロジックを2箇所に持たない。
+  return !EcoLogic.isLiveConnectedToHQ(name, false, ownedNames, dist);
 }
 
 // fの探索（EcoLogic.estimateGlobalTransferPhase、数百ms〜1秒程度）はメインスレッドをブロック
@@ -1736,11 +1764,16 @@ function updateQualityCache() {
   // なお直前の破棄判定（上のループ）は意図的に最新のliveDataを使い続ける
   // （領地喪失・defences変化等は鮮度優先で即座に検知したいため）。
   const bfsCache = {}; // ギルドごとに1回だけBFSする（computeGlobalTransferPhaseと同じ最適化）
+  const liveConnCache = {}; // isLiveTerritoryDisconnectedFromHQ用。ギルドごとに1回だけBFSする
   for (const [name, info] of Object.entries(_phaseSourceLiveData)) {
     if (!info.guild || !info.guild.name || !info.resources) continue;
     try {
       // 取得直後はstoredが捕獲時にリセットされ転送位相モデルに従わないため、キャッシュ更新の対象外とする
       if (recentlyCapturedElapsedMs(info) !== null) continue;
+      // 非接続（cut）中はstored/generation自体が信頼できないため、候補が偶然1件に絞れたように
+      // 見えてもキャッシュしない（pickBestLiveSource()側のガードとは独立に、キャッシュへの
+      // 書き込み自体をここで止める）。
+      if (isLiveTerritoryDisconnectedFromHQ(name, liveConnCache)) continue;
 
       const confirmed = computeLiveConfirmedInfo(name, info, bfsCache);
       const confirmedExtra = buildConfirmedExtraFromLiveInfo(confirmed);
@@ -1807,6 +1840,21 @@ function defenseStatLine(icon, text, lv) {
   return `<div><img src="./assets/icons/upgrades/${icon}.png" class="res-icon-img" alt="${icon}"> <span style="color:#94a3b8;">${text}</span> <span style="color:#64748b;">(${lv === null ? '?' : lv})</span></div>`;
 }
 
+// HQから切断中（cut）の領地は、Defense/Bonusが全てLv0にリセットされる運用が原則人力で適用されるため、
+// 統計的推定を行わず確定でLv0を表示する（isLiveTerritoryDisconnectedFromHQ()参照）。確定値である旨を
+// 示すため、確定推定（マゼンタ）・簡易推定（グレー）のいずれとも異なる警告色（赤）で表示する。
+function renderDisconnectedEstimateHTML() {
+  const L = { damage: 0, attack: 0, health: 0, defense: 0 };
+  const stats = EcoLogic.computeStatsFromLevels(L.health, L.damage, L.attack, L.defense, 1);
+  let html = `<div style="color:#FF5555; margin-top:8px;">Estimated Defense (disconnected):</div>`;
+  html += `<div style="color:#94a3b8; font-size:0.85em;">Cut off from HQ — bonuses assumed reset to 0</div>`;
+  html += defenseStatLine('damage', `${fmtNum(stats.finalDmgMin)}-${fmtNum(stats.finalDmgMax)} Damage`, L.damage);
+  html += defenseStatLine('attack-speed', `${stats.atkSpd.toFixed(1)} Attacks per second`, L.attack);
+  html += defenseStatLine('health', `${fmtHp(stats.finalHp)} HP`, L.health);
+  html += defenseStatLine('defense', `${fmtPct1(stats.defPct)}% Defence`, L.defense);
+  return html;
+}
+
 // 推定できない場合（levelsがnull）はセクションごと空文字列を返す。範囲ではなく単一値を表示する。
 // Damage/HPはConnections/Externals由来の倍率（mult）を反映する。Attacks per second/Defence%には
 // 倍率を掛けない（computeStatsFromLevelsの仕様どおり）。
@@ -1858,6 +1906,71 @@ function getDefenseEstimateApproximate(name) {
     }),
     mult
   };
+}
+
+// AWB共有バックエンド/ローカル品質付きキャッシュ/現在ポーリングの生の確定推定/簡易推定の
+// 優先順位判定を一箇所に集約する（2026-08導入。showLiveTooltip()とgetBestLiveEstimate()で
+// 全く同じ判定が重複実装されていたため共通ヘルパーに切り出した。buildWatchEntry()の
+// displayedSource/displayedTierもこれに揃える）。
+//
+// tierのランク（高いほど優先）: Tier A=3 / Tier B=2 / Tier C(AWBのapproximate含む)=1 / なし=-1。
+// AWBエントリと_qualityCacheのtierをこのランクで比較し、高い方を採用する。同ランクはAWBを
+// 優先する（シンプルな挙動のため）。どちらも無ければ現在ポーリングの生の確定推定
+// （getDefenseEstimate）→簡易推定（getDefenseEstimateApproximate）の順にフォールバックする。
+function tierRank(tier) {
+  if (tier === 'A') return 3;
+  if (tier === 'B') return 2;
+  if (tier === 'C') return 1;
+  return -1;
+}
+
+// 戻り値: { source: 'disconnected'|'awb'|'cache'|'live'|'approx', tier, levels, subBonuses, awbEntry, cachedEntry, estimate, approx }
+// - source==='disconnected': HQから切断中（cut）。levels/subBonusesは確定で全て0/false、tierはnull
+// - source==='awb'  : awbEntry/levels/subBonusesがAWBの応答由来
+// - source==='cache': cachedEntryが_qualityCacheのエントリ、levels/subBonusesはcachedEntry.estimate由来
+// - source==='live' : estimateがgetDefenseEstimate()の生の結果（candidateCountを含む）
+// - source==='approx': 上と同じestimate（levels:nullだった元の結果、candidateCount参照用）に加え、
+//   approxがgetDefenseEstimateApproximate()の結果。levelsは4項目とも決定不能ならnull
+// 非接続（cut）判定はAWB・ローカルキャッシュ・生推定のいずれよりも優先する。cut中の資源データは
+// 信頼できないため、統計的な推定を一切試みず確定でLv0を返す（詳細は
+// isLiveTerritoryDisconnectedFromHQ()のコメント参照）。
+const DISCONNECTED_ESTIMATE_RESULT = Object.freeze({
+  source: 'disconnected', tier: null,
+  levels: Object.freeze({ damage: 0, attack: 0, health: 0, defense: 0 }),
+  subBonuses: Object.freeze({ minions: false, multi: false, aura: false, volley: false }),
+  awbEntry: null, cachedEntry: null, estimate: null, approx: null
+});
+
+// hqDistCacheを渡すと非接続判定のBFS結果をギルドごとに使い回す（isLiveTerritoryDisconnectedFromHQ()
+// 参照。buildWatchEntry()/importLiveGuild()のように同じギルドの複数領地をループする場面向け。
+// 省略時（単発のshowLiveTooltip()呼び出し等）は毎回計算する）。
+function pickBestLiveSource(name, hqDistCache) {
+  if (isLiveTerritoryDisconnectedFromHQ(name, hqDistCache)) return DISCONNECTED_ESTIMATE_RESULT;
+
+  const awbEntry = _awbEstimates && _awbEstimates[name];
+  const awbLevels = awbEntry && awbEntry.levels;
+  const awbUsable = !!(awbLevels && (awbLevels.damage != null || awbLevels.attack != null || awbLevels.health != null || awbLevels.defense != null));
+  const awbRank = awbUsable ? tierRank(awbEntry.tier) : -1;
+
+  const cachedEntry = _qualityCache[name];
+  const cacheRank = cachedEntry ? tierRank(cachedEntry.tier) : -1;
+
+  if (awbRank >= 0 || cacheRank >= 0) {
+    if (awbRank >= cacheRank) {
+      return { source: 'awb', tier: awbEntry.tier, levels: awbLevels, subBonuses: awbEntry.subBonuses || null, awbEntry, cachedEntry: cachedEntry || null, estimate: null, approx: null };
+    }
+    return { source: 'cache', tier: cachedEntry.tier, levels: cachedEntry.estimate.levels, subBonuses: cachedEntry.estimate.subBonuses || null, awbEntry: awbEntry || null, cachedEntry, estimate: null, approx: null };
+  }
+
+  const estimate = getDefenseEstimate(name);
+  if (estimate.levels) {
+    return { source: 'live', tier: 'C', levels: estimate.levels, subBonuses: estimate.subBonuses || null, awbEntry: null, cachedEntry: null, estimate, approx: null };
+  }
+
+  const approx = getDefenseEstimateApproximate(name);
+  const L = approx.levels;
+  const approxUsable = !(L.damage === null && L.attack === null && L.health === null && L.defense === null);
+  return { source: 'approx', tier: 'C', levels: approxUsable ? L : null, subBonuses: null, awbEntry: null, cachedEntry: null, estimate, approx };
 }
 
 // 4スタッツとも決定不能な場合は空文字列を返す（セクション自体を出さない）。
@@ -3996,10 +4109,14 @@ async function fetchAwbEstimates() {
 
 // API取得失敗時は直前のliveDataを保持したまま次のポーリングを待つ（画面を空にしない）。
 // マップ描画用の生データ取得は自前Worker経由のWynncraft API直叩きのまま変更しない。
-// 守備推定はまずAWB共有バックエンド（/eco/territories）を叩き、成功すればその結果を
-// _awbEstimatesに保持してツールチップ表示の最優先ソースにする（showLiveTooltip参照）。
-// この経路が使われた回はローカルのグローバル位相探索（computeGlobalTransferPhase）・
-// updateQualityCacheを実行しない。失敗した場合のみ、今まで通りローカル計算を実行する。
+// 守備推定はAWB共有バックエンド（/eco/territories）を叩き、成功すればその結果を_awbEstimatesに
+// 保持する。表示ソースの選定（AWB優先か、ローカル品質付きキャッシュを使うか）はpickBestLiveSource()が
+// tierを比較して決める（showLiveTooltip参照）ため、AWBの成否に関わらずローカルのグローバル位相探索
+// （computeGlobalTransferPhase）・updateQualityCacheを毎回実行する（2026-08、Fix A。以前はAWB成功時に
+// これらをスキップしていたため_qualityCacheが観測期間中ずっと空のままになり、AWB自身のTier C/approximate
+// が表示の大半を占め続ける「ローカル計算の飢餓化」を招いていた。実測: `watch-log-2026-08-28T08-02-53-382Z.json`
+// でAWB成功率100%・ローカルキャッシュ存在率0%を確認。AWB統合前は30秒間隔で同じ計算を実行していた実績が
+// あるため、現在の60秒間隔で毎回実行しても新たな性能問題は生じない想定）。
 async function fetchLiveTerritoryData() {
   try {
     const res = await fetch(`${CF_PROXY_URL}/proxy?url=${encodeURIComponent('https://api.wynncraft.com/v3/guild/list/territory')}`, { cache: 'no-store' });
@@ -4010,13 +4127,9 @@ async function fetchLiveTerritoryData() {
     _liveFetchError = null;
 
     const awbData = await fetchAwbEstimates();
-    if (awbData) {
-      _awbEstimates = awbData;
-    } else {
-      _awbEstimates = null;
-      await computeGlobalTransferPhase(); // Web Worker内で実行するためメインスレッドはブロックしない
-      updateQualityCache(); // 品質付きキャッシュ（Item 9）の破棄判定・更新
-    }
+    _awbEstimates = awbData || null;
+    await computeGlobalTransferPhase(); // Web Worker内で実行するためメインスレッドはブロックしない
+    updateQualityCache(); // 品質付きキャッシュ（Item 9）の破棄判定・更新
     updateLiveGuildOptions();
     refreshLiveTooltipIfOpen(); // 表示中のツールチップがあれば内容を現在のAWB/f/liveDataで再計算する
   } catch (err) {
@@ -4108,15 +4221,13 @@ function computeWatchVetoStatus(name, candidateCount) {
   return EcoLogic.isVetoed(candidateCount, emeraldAdmissible, _globalTransferPhase);
 }
 
-// showLiveTooltip()と全く同じ優先順位判定（1: AWB共有バックエンドの今回の応答（levelsが
-// 1項目でも非nullなら採用）2: 品質付きキャッシュのTier A/B 3: 現在ポーリングの生の確定推定
-// 4: 簡易推定）を、監視対象1領地分について再現する。本番のshowLiveTooltip()自体は変更せず、
-// 判定ロジックだけをここに複製している（調査用の一時コード）。
+// 表示ソースの判定はshowLiveTooltip()/getBestLiveEstimate()と共通のpickBestLiveSource()を使う
+// （2026-08、重複実装を解消）。
 // AWBが使われた場合でも、比較用にローカル_qualityCacheの有無・tier・観測時刻からの経過時間を
 // 別途`localCache`として記録する（「ローカルにもっと良いキャッシュがあったか」を後から判定するため）。
 // stored/generationの両方を残す（fと合わせてisCachedConsumptionStillPlausible相当の判定を
 // 事後に再現できるようにするため。2026-08、resourceMismatchStreak導入時の検証で必要になった）。
-function buildWatchEntry(name) {
+function buildWatchEntry(name, hqDistCache) {
   const info = liveData && liveData[name];
   if (!info || !info.guild || !info.guild.name) return { name, owned: false };
 
@@ -4126,13 +4237,12 @@ function buildWatchEntry(name) {
     if (key) stored[key] = { stored: r.stored, generation: r.generation };
   }
 
-  // AWB情報（showLiveTooltip()の採否判定に使う非nullカウントと、参考情報としてのtier/approximate）。
+  // AWB情報（参考情報としてのtier/approximate/非nullカウント。実際の採否はpickBestLiveSource()に委譲）。
   const awbEntry = _awbEstimates && _awbEstimates[name];
   const awbLevels = (awbEntry && awbEntry.levels) || null;
   const awbNonNullCount = awbLevels
     ? ['damage', 'attack', 'health', 'defense'].filter((k) => awbLevels[k] != null).length
     : 0;
-  const awbUsable = awbNonNullCount > 0; // renderAwbEstimateHTML()が空文字列を返さない条件と同じ
   const awb = {
     hasEntry: !!awbEntry,
     tier: awbEntry ? awbEntry.tier : null,
@@ -4150,34 +4260,22 @@ function buildWatchEntry(name) {
     resourceMismatchStreak: cachedEntry.resourceMismatchStreak || 0
   } : { exists: false, tier: null, quality: null, ageMs: null, resourceMismatchStreak: null };
 
-  let displayedSource, displayedTier, levels = null, candidateCount = null, vetoed = false, consumption = null;
-  if (awbUsable) {
-    displayedSource = 'awb';
-    displayedTier = awbEntry.tier;
-    levels = awbLevels;
-  } else if (cachedEntry) {
+  // 実際の表示ソース判定はpickBestLiveSource()（showLiveTooltip()/getBestLiveEstimate()と共通）。
+  const picked = pickBestLiveSource(name, hqDistCache);
+  const displayedSource = picked.source;
+  const displayedTier = picked.tier;
+  const levels = picked.levels;
+  let candidateCount = null, vetoed = false, consumption = null;
+  if (picked.source === 'cache') {
     // キャッシュされているのは常にTier A/B（candidateCount===1かつ非veto）のため、
     // candidateCount/vetoedは再計算せず固定値で返す。
-    displayedSource = 'cache';
-    displayedTier = cachedEntry.tier;
-    levels = cachedEntry.estimate.levels;
-    candidateCount = cachedEntry.estimate.candidateCount;
-    consumption = cachedEntry.estimate.consumption;
-  } else {
-    const estimate = getDefenseEstimate(name);
-    candidateCount = estimate.candidateCount;
+    candidateCount = picked.cachedEntry.estimate.candidateCount;
+    consumption = picked.cachedEntry.estimate.consumption;
+  } else if (picked.source === 'live' || picked.source === 'approx') {
+    // 両ソースともgetDefenseEstimate()の同じ結果（picked.estimate）を経由している。
+    candidateCount = picked.estimate.candidateCount;
     vetoed = computeWatchVetoStatus(name, candidateCount);
-    if (estimate.levels) {
-      displayedSource = 'live';
-      displayedTier = 'C';
-      levels = estimate.levels;
-      consumption = estimate.consumption;
-    } else {
-      const approx = getDefenseEstimateApproximate(name);
-      displayedSource = 'approx';
-      displayedTier = 'C';
-      levels = approx.levels;
-    }
+    if (picked.source === 'live') consumption = picked.estimate.consumption;
   }
 
   return { name, owned: true, guild: info.guild.name, displayedSource, displayedTier, levels, candidateCount, vetoed, consumption, awb, localCache, stored };
@@ -4190,14 +4288,17 @@ function logWatchSnapshot() {
   // fはこのスナップショット全体で共通の値のため、entry単位ではなくレコード直下に1回だけ記録する
   // （2026-08追加。resourceMismatchStreak導入の検証で、stored/generationだけでなくfも無いと
   // isCachedConsumptionStillPlausible相当の判定を事後に再現できないと判明したため）。
-  // awbActiveThisRoundは「今回_awbEstimatesが非nullか」＝fetchLiveTerritoryData()がこの回
-  // computeGlobalTransferPhase()/updateQualityCache()をスキップしたかどうかと同義
-  // （awbData取得成功時のみ_awbEstimatesが非nullになるため。fetchLiveTerritoryData()参照）。
+  // awbActiveThisRoundは「今回_awbEstimatesが非nullか」＝AWB共有バックエンドの応答がこの回
+  // 成功したかどうかを示す（awbData取得成功時のみ_awbEstimatesが非nullになる）。Fix A（2026-08）
+  // 以降、computeGlobalTransferPhase()/updateQualityCache()はAWBの成否に関わらず毎回実行される
+  // ため、このフラグはもはや「ローカル計算をスキップしたか」を意味しない。あくまで
+  // pickBestLiveSource()内のtier比較でAWB側の候補が使えたかどうかの参考情報として残す。
+  const hqDistCache = {}; // isLiveTerritoryDisconnectedFromHQ用。ギルドごとに1回だけBFSする
   const record = {
     at: new Date().toISOString(), f: _globalTransferPhase,
     awbActiveThisRound: _awbEstimates !== null,
     guildUuid, ownedCount: ownedNames.length,
-    entries: ownedNames.map(buildWatchEntry)
+    entries: ownedNames.map(name => buildWatchEntry(name, hqDistCache))
   };
   _watchLog.push(record);
   console.log(`[watch] ${record.at} (${ownedNames.length} territories owned, awbActive=${record.awbActiveThisRound})`, record.entries);
@@ -4385,33 +4486,13 @@ function tryShowLiveGuildPicker() {
 }
 
 // Import This Guildで使う「その時点で利用可能な最新の推定」を返す（2026-08、パート2導入）。
-// パート1のshowLiveTooltip()と同じ優先順位（1: AWB共有バックエンドの今回のポーリングでの応答
-// 2: 品質付きキャッシュのTier A/Bエントリ 3: 現在ポーリングの生の確定推定 4: 簡易推定）で
-// levels/subBonusesを取得する。4項目とも決定不能な場合はnullを返す。subBonusesは簡易推定
-// （4番目のフォールバック）では常にnull（決定不能）になる。
-function getBestLiveEstimate(name) {
-  const awbEntry = _awbEstimates && _awbEstimates[name];
-  if (awbEntry && awbEntry.levels) {
-    const L = awbEntry.levels;
-    if (L.damage != null || L.attack != null || L.health != null || L.defense != null) {
-      return { levels: L, subBonuses: awbEntry.subBonuses || null };
-    }
-  }
-
-  const cachedEntry = _qualityCache[name];
-  if (cachedEntry && cachedEntry.estimate.levels) {
-    return { levels: cachedEntry.estimate.levels, subBonuses: cachedEntry.estimate.subBonuses || null };
-  }
-
-  const estimate = getDefenseEstimate(name);
-  if (estimate.levels) {
-    return { levels: estimate.levels, subBonuses: estimate.subBonuses || null };
-  }
-
-  const approx = getDefenseEstimateApproximate(name);
-  const L = approx.levels;
-  if (L.damage === null && L.attack === null && L.health === null && L.defense === null) return null;
-  return { levels: L, subBonuses: null };
+// パート1のshowLiveTooltip()と同じ優先順位判定をpickBestLiveSource()に委譲する（2026-08、
+// 重複実装を解消）。4項目とも決定不能な場合はnullを返す。subBonusesは簡易推定（フォールバック
+// 最終段）では常にnull（決定不能）になる。
+function getBestLiveEstimate(name, hqDistCache) {
+  const picked = pickBestLiveSource(name, hqDistCache);
+  if (!picked.levels) return null;
+  return { levels: picked.levels, subBonuses: picked.subBonuses };
 }
 
 // AWBのsubBonusesキー → BONUS_CONFIGのボーナス名。
@@ -4463,6 +4544,7 @@ function importLiveGuild() {
   // addedTerritoriesは既に全置換済み（直前のループ）のままUIがLiveモード表示に固まって残る。
   // 1領地分の例外はログのみに留めてそのままスキップ（確定ボーナス・推定反映なし＝安全側）し、
   // 残りの領地の取り込みは継続する。
+  const hqDistCache = {}; // isLiveTerritoryDisconnectedFromHQ用。ギルドごとに1回だけBFSする
   for (const [name, info] of entries) {
     try {
       const st = addedTerritories[name];
@@ -4481,7 +4563,7 @@ function importLiveGuild() {
       if (confirmed.emStorageLv !== null) bonuses['Larger Emerald Storage'] = confirmed.emStorageLv;
       if (confirmed.resStorageLv !== null) bonuses['Larger Resource Storage'] = confirmed.resStorageLv;
 
-      const best = getBestLiveEstimate(name);
+      const best = getBestLiveEstimate(name, hqDistCache);
       if (best) {
         const estDef = st.importEstimated.defense;
         for (const key of ['damage', 'attack', 'health', 'defense']) {

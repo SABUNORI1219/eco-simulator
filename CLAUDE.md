@@ -75,6 +75,7 @@ python dev-server.py 8080
 - **マップ背景は`<canvas>`ではなく`<img id="map-img">`で描画する（2026-08、AvoMap式のimg+canvas層構成に変更）。** `<canvas id="canvas">`の背面に配置し、`draw()`から呼ばれる`updateMapImageTransform()`が`mapImgEl.style.transform = "translate(panXpx, panYpx) scale(scale)"`（`transform-origin: 0 0`固定）をJSから設定する。canvasは領地オーバーレイ（`drawConnections()`/`drawTerritories()`/`drawTerritoriesLive()`）専用の透明レイヤーになり、地図画像のピクセルは一切描画しない。座標変換ロジック（`gameToImage`/`imageToCanvas`/`gameToCanvas`/`canvasToGame`）自体は変更していない。`<img>`は`pointer-events: none`でマウス/タッチイベントを素通しし、当たり判定・イベントリスナーは引き続きcanvas側で受ける。
 - `scale >= 1`では`image-rendering: pixelated`、`scale < 1`では既定値（`auto`）に切り替える（`updateMapImageTransform()`、旧`ctx.imageSmoothingEnabled`と同じ条件）。
 - ロード中/エラー時のフォールバックは、`<div id="map-fallback">`（暗い背景＋中央グレーテキスト、z-index:1で`#map-img`の前面・`#canvas`の背面）の表示切り替えで行う（`mapImgEl.complete && mapImgEl.naturalWidth > 0`の判定）。`mapImage = new Image()`によるオフスクリーン読み込みは廃止し、`init()`はDOM上の`#map-img`要素自体に`onload`/`onerror`/`src`を設定する。
+- **`ctx.imageSmoothingEnabled`は地図描画専用の設定ではなく、`draw()`が呼ばれるたびその`ctx`（canvas全体）に効くグローバル設定である。** 旧実装では地図画像の`drawImage()`直前に`(scale < 1)`をセットしていたが、その後に呼ばれる`drawConnections()`/`drawTerritories()`内の`drawIcon()`（資源/HQアイコンの`ctx.drawImage()`）にも同じ設定がそのまま適用されていた。img+canvas層構成への移行時にこの設定ごと削除してしまい、アイコン描画のスムージングが常時有効（ブラウザ既定）に戻る副作用が一度発生した（`draw()`冒頭、`drawConnections()`呼び出し前に`ctx.imageSmoothingEnabled = (scale < 1)`を復活させて修正済み）。**描画ブロックを移動・削除する際は、その中にこの種のcanvas全体設定が紛れ込んでいないか要注意。**
 
 ---
 
@@ -174,7 +175,7 @@ python dev-server.py 8080
 | `toggleFilterValue(mode, key)` | 指定モードの指定カテゴリのON/OFFをトグルして`refreshUI()` |
 | `clearFilter()` | `filterMode`を`'none'`に戻す（トグル状態はリセットしない） |
 | `onLiveModeToggle()` | Live Modeチェックボックスのon/offを処理。ONでギルドカラー取得＋ポーリング開始＋マップ選択クリア、OFFでポーリング停止＋`liveData`クリア＋Web Worker終了 |
-| `fetchLiveTerritoryData()` | `/v3/guild/list/territory`（自前Cloudflare Worker経由、マップ描画用の生データ）を取得し`liveData`を更新する。その後`fetchAwbEstimates()`を`await`し、成功すれば結果を`_awbEstimates`に保持するのみでローカルの`computeGlobalTransferPhase()`・`updateQualityCache()`は実行しない（2026-08変更、無駄な計算を避けるため）。AWBが失敗した場合のみ`_awbEstimates`を`null`にし、従来どおり`computeGlobalTransferPhase()`を`await`した後`updateQualityCache()`を呼ぶ。最後に`updateLiveGuildOptions()`→`refreshLiveTooltipIfOpen()`を呼ぶ。マップ描画用の生データ取得自体が失敗した場合は直前のデータを保持したままエラー表示（`updateLiveBadge()`） |
+| `fetchLiveTerritoryData()` | `/v3/guild/list/territory`（自前Cloudflare Worker経由、マップ描画用の生データ）を取得し`liveData`を更新する。その後`fetchAwbEstimates()`を`await`し、成功すれば結果を`_awbEstimates`に保持する。**AWBの成否に関わらず、`computeGlobalTransferPhase()`を`await`した後`updateQualityCache()`を毎回呼ぶ**（2026-08、Fix A。以前はAWB成功時にこの2つをスキップしていたが、`_qualityCache`が観測期間中ずっと空のままになる「ローカル計算の飢餓化」を招いたため廃止した。詳細は「守備ステータスの推定」内AWB共有バックエンドの節参照）。最後に`updateLiveGuildOptions()`→`refreshLiveTooltipIfOpen()`を呼ぶ。マップ描画用の生データ取得自体が失敗した場合は直前のデータを保持したままエラー表示（`updateLiveBadge()`） |
 | `fetchGuildColors()` | ギルドカラーを取得して`guildColorMap`を更新（Liveモード ON 時の1回のみ呼ばれる） |
 | `getGuildColor(prefix)` | `guildColorMap`からカラーコードを返す（未取得/不明時は`#FFFFFF`） |
 | `startLivePolling()` / `stopLivePollingTimer()` | `LIVE_POLL_INTERVAL_MS`（60秒、2026-08にAWB統合と合わせて30秒から変更）間隔のポーリングを開始/停止（`_livePollTimer`） |
@@ -182,7 +183,7 @@ python dev-server.py 8080
 | `renderLiveDataScreen()` | Custom SettingsのLive Data画面の`Enable Live Mode`チェックボックスの状態を同期する |
 | `drawTerritoriesLive()` | Liveモード時のマップ描画（`draw()`から`drawTerritories()`の代わりに呼ばれる） |
 | `getFilterCategoriesLive(name)` | Liveモード時のMap Filter判定（全437領地が対象、実データの`defences`/`treasury`/`resources`を使う） |
-| `showLiveTooltip(mx, my, name, above)` | Liveモード時のツールチップ内容を構築（実データ＋確定できるボーナス＋推定値を表示）。推定値の優先順位（2026-08変更）: 1) `_awbEstimates`（AWB共有バックエンドの今回のポーリングでの応答）にこの領地のエントリがあり`levels`が1項目以上非nullならそれを`renderAwbEstimateHTML()`で表示 2) 無ければ`_qualityCache`のTier A/Bエントリ 3) 無ければ現在ポーリングの生の確定推定 4) 簡易推定。AWBが今回失敗した場合、またはこの領地のエントリ自体が無い場合は、その領地だけ2〜4にフォールバックする。呼ばれるたびに引数を`_lastLiveTooltipArgs`に保持する |
+| `showLiveTooltip(mx, my, name, above)` | Liveモード時のツールチップ内容を構築（実データ＋確定できるボーナス＋推定値を表示）。推定値のソース選定は`pickBestLiveSource(name)`に委譲する（2026-08、Tier比較方式への変更に伴い`getBestLiveEstimate()`/`buildWatchEntry()`と共通のヘルパーへ切り出し）。`source`が`'awb'`なら`renderAwbEstimateHTML()`、`'cache'`なら`renderDefenseEstimateHTML(cachedEntry.estimate, {observedAt, tier})`、`'live'`なら`renderDefenseEstimateHTML(estimate)`、`'approx'`なら`renderDefenseEstimateApproximateHTML(approx)`で表示する。呼ばれるたびに引数を`_lastLiveTooltipArgs`に保持する |
 | `refreshLiveTooltipIfOpen()` | 表示中のLiveツールチップ（`_lastLiveTooltipArgs`が非nullかつ`tooltip.style.display==='block'`）があれば、同じ引数で`showLiveTooltip()`を再実行し内容を現在のf/liveDataで再計算する。`fetchLiveTerritoryData()`が毎ポーリング呼ぶ（2026-08追加。マウスを動かさず同じ領地にホバーし続けた場合に表示が固定される問題の修正、詳細は「守備ステータスの推定」参照） |
 | `isTooltipTarget(name)` | ホバー/長押しでツールチップを表示すべき対象かを判定（通常時は登録済み領地、Liveモード時は`liveData`を持つ領地） |
 | `ratingColor(rating)` | Very Low〜Very Highの難易度ラベルに対応する文字色を返す（showTooltip/showLiveTooltipで共有） |
@@ -206,7 +207,8 @@ python dev-server.py 8080
 | `updateLiveBadge()` | `#live-badge`の表示切り替え。データ取得に失敗している間だけエラー色（`.error`クラス）にする |
 | `computeLiveConfirmedInfo(name, info, bfsCache?)` | 実データから確定できるボーナス（ストレージレベル・Efficient/Rate系の組み合わせ）を算出する共通処理。showLiveTooltip/getDefenseEstimate/importLiveGuild/computeGlobalTransferPhaseで共有する。`bfsCache`を渡すと同じギルドHQからのBFS距離を使い回す。`resourceSnapshot[r]`（r=ore/crops/wood/fish）には`baseGeneration`も保持する（グローバルf探索のエメラルドveto判定＝Trio A検出に使う。2026-08追加） |
 | `updateLiveGuildOptions()` | `liveData`からギルド一覧を再構築し、Import This Guild用のdatalistを更新する |
-| `getBestLiveEstimate(name)` | Import This Guildで使う「その時点で利用可能な最新の推定」を返す（2026-08導入、パート2）。優先順位はパート1の`showLiveTooltip()`と同じ（AWB→`_qualityCache`のTier A/B→現在ポーリングの生の確定推定→簡易推定）。`{levels, subBonuses}`を返し、4項目とも決定不能な場合は`null`。`subBonuses`は簡易推定（4番目のフォールバック）では常に`null` |
+| `pickBestLiveSource(name)` | AWB共有バックエンド・ローカル品質付きキャッシュ・現在ポーリングの生の確定推定・簡易推定の優先順位判定を一箇所に集約するヘルパー（2026-08導入、Fix B。`showLiveTooltip()`と`getBestLiveEstimate()`で全く同じ判定が重複実装されていたため切り出した。`buildWatchEntry()`の`displayedSource`/`displayedTier`もこれに揃える）。tierをランク付け（A=3/B=2/C・approximate=1/なし=-1）し、AWBエントリ（`levels`が1項目以上非nullな場合のみ有効）と`_qualityCache`のtierを比較して高い方の`source`（`'awb'`\|`'cache'`\|`'live'`\|`'approx'`）を返す。同ランクはAWBを優先。どちらも無ければ`getDefenseEstimate()`→`getDefenseEstimateApproximate()`の順にフォールバックする。戻り値`{source, tier, levels, subBonuses, awbEntry, cachedEntry, estimate, approx}`は呼び出し側（HTML生成・levels抽出）が必要な情報を過不足なく含む |
+| `getBestLiveEstimate(name)` | Import This Guildで使う「その時点で利用可能な最新の推定」を返す（2026-08導入、パート2）。優先順位判定は`pickBestLiveSource()`に委譲する（2026-08、重複実装を解消）。`{levels, subBonuses}`を返し、4項目とも決定不能な場合は`null`。`subBonuses`は簡易推定（フォールバック最終段）では常に`null` |
 | `importLiveGuild()` | Liveデータを使って指定ギルドの現在の保有領地に`addedTerritories`を合わせて取り込む。名前が引き続き存在する領地はdefense/bonuses/importEstimatedを引き継ぐ（2026-08変更、以前は毎回全消去していた）。確定ボーナスは毎回無条件で反映、Damage/Attack/Health/Defense＋4サブボーナスは`getBestLiveEstimate()`の推定値のうち`importEstimated`が`false`でないフィールドだけを反映する（詳細はCUSTOM SETTINGSモーダルの「ギルド取り込み」参照）。取り込み後はLiveモードを自動OFFにする |
 
 ---
@@ -786,22 +788,31 @@ AWB（Another Wynn Bot）が運用する共有バックエンドの推定結果�
     ローカルの`computeStatsFromLevels()`は経由しない。
   - `secondsToTransfer`相当のフィールドは提供されない。そのためAWB経由で表示するツールチップには
     「Resources move in Xs」の行は出さない（ローカル計算経由の表示にのみ残る）。
-- **優先順位・フォールバック（`showLiveTooltip()`）**: 1) `_awbEstimates`の今回のポーリングでの
-  応答にこの領地のエントリがあり`levels`が1項目以上非nullならそれを最優先表示 2) 無ければ
-  `_qualityCache`のTier A/Bエントリ 3) 無ければ現在ポーリングの生の確定推定
-  （`getDefenseEstimate()`） 4) 簡易推定（`getDefenseEstimateApproximate()`）。
-  **AWBへのリクエスト自体が失敗した場合（ネットワークエラー・非2xx・タイムアウト）は
-  `_awbEstimates`を`null`にし、その回のポーリングは全領地が2〜4の既存ローカル計算パスに
-  フォールバックする。** ローカル計算ロジック・Item 9のキャッシュ機構（`_qualityCache`・
-  `updateQualityCache()`・`computeGlobalTransferPhase()`）は削除せずそのまま残している。
-  **AWBが成功したが、ある領地のエントリ自体が無い場合は、その領地だけ2〜4にフォールバックする
-  （全体を一律フォールバックにしない）。**
-- **この経路が使われたポーリング回（AWB成功時）は、ローカルの`computeGlobalTransferPhase()`・
-  `updateQualityCache()`を実行しない**（無駄な計算を避けるため）。そのため、AWBが継続して
-  成功している間は`_globalTransferPhase`・`_qualityCache`が更新されず、AWBのエントリが
-  無い領地のフォールバック表示（上記4項目の2〜4）は、AWBが直近に失敗した回で得られた
-  ローカル計算の結果を使い回すことになる（初回からAWBが常に成功し続けている場合、
-  これらの領地は推定を一切表示できない）。
+- **優先順位ロジックの2026-08修正（ローカル計算飢餓化＋Tier比較方式への変更）**: 導入直後の
+  実運用ログ（`watch-log-2026-08-28T08-02-53-382Z.json`、4時間10分・51ポーリング・55領地）を
+  分析したところ、AWB成功率100%（2805/2805）によりローカルの`computeGlobalTransferPhase()`・
+  `updateQualityCache()`が観測期間中一度も実行されず、`_qualityCache`が丸ごと空のまま
+  （55領地中Tier A/Bキャッシュが構築された領地は0件）だったことが判明した。表示された推定の
+  73.7%がAWB自身のTier C/approximateであり、これがユーザーの体感（Tier C相当が増えた）の
+  直接的な原因だった。**Fix A**: `fetchLiveTerritoryData()`内の「AWB成功時はローカル計算を
+  スキップする」分岐を廃止し、AWBの成否に関わらず`computeGlobalTransferPhase()`・
+  `updateQualityCache()`を**毎回**実行するように変更した（AWB統合前の頻度・挙動に戻すのみ。
+  実機検証で30秒間隔時代と同等の`[phase]`ログが60秒間隔で継続して出力され、新たな性能問題は
+  生じないことを確認済み）。**Fix B**: 「AWBに1項目でも非nullがあれば無条件で最優先」だった
+  従来の優先順位を、AWBとローカル`_qualityCache`の`tier`をランクで比較し、質の良い方を採用する
+  方式に変更した（詳細は`pickBestLiveSource()`参照）。
+- **優先順位・フォールバック（`pickBestLiveSource(name)`、`showLiveTooltip()`/`getBestLiveEstimate()`/
+  `buildWatchEntry()`の3箇所で共有）**: tierをランク付けし（Tier A=3 / Tier B=2 / Tier C
+  またはAWBの`approximate:true`＝1 / ローカルの生の確定推定＝1・Cと同格 / 簡易推定＝0）、
+  AWBエントリ（`levels`が1項目以上非nullな場合のみ有効）と`_qualityCache`のtierをこのランクで
+  比較して高い方を採用する。**同ランクの場合はAWBを優先**する（シンプルな挙動のため）。
+  どちらも無い（またはランク0未満）場合は、現在ポーリングの生の確定推定（`getDefenseEstimate()`）
+  →簡易推定（`getDefenseEstimateApproximate()`）の順にフォールバックする。**AWBが成功したが、
+  ある領地のエントリ自体が無い、または`levels`が4項目ともnullの場合は、その領地だけこの
+  フォールバックへ進む（全体を一律フォールバックにしない）。** ローカル計算ロジック・Item 9の
+  キャッシュ機構（`_qualityCache`・`updateQualityCache()`・`computeGlobalTransferPhase()`）は
+  削除せずそのまま残している。Fix A導入によりローカルキャッシュが継続的に育つようになったため、
+  AWBがTier C相当でもローカル側がTier A/Bまで育っていればローカル側が優先表示されるようになる。
 - `LIVE_POLL_INTERVAL_MS`を`30000`から`60000`に変更した（AWB統合に合わせ、ローカルクライアントからの
   ポーリング頻度を下げる目的）。
 - **レスポンスには`subBonuses`（`{aura, volley, minions, multi}`、`tier`が`'C'`の場合は`null`）が
