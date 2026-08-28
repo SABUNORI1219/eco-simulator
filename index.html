@@ -27,7 +27,13 @@
 
 <!-- Controls Panel -->
 <div class="panel" id="controls">
-  <h2>Territory Manager</h2>
+  <div class="panel-header">
+    <h2>Territory Manager</h2>
+    <div class="panel-btns">
+      <button class="icon-btn" id="undo-btn" onclick="undoAction()" title="Undo" disabled>↩</button>
+      <button class="icon-btn" id="redo-btn" onclick="redoAction()" title="Redo" disabled>↪</button>
+    </div>
+  </div>
 
   <div class="ctrl-section">
     <h3>Add Specified Territory</h3>

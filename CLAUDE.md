@@ -9,16 +9,16 @@ eco-simulator/
 ├── index.html          # HTML構造
 ├── style.css           # スタイル
 ├── script.js           # UIと状態管理（eco-logic.jsをimportして使う）
-├── eco-logic.js         # DOM非依存の純粋ロジック（定数・Treasury/生産/守備ステータス計算・BFSグラフ探索）
-├── phase-worker.js      # Liveモードのグローバル転送位相f探索をメインスレッドから切り離すWeb Worker
+├── eco-logic.js        # DOM非依存の純粋ロジック（定数・Treasury/生産/守備ステータス計算・BFSグラフ探索）
+├── phase-worker.js     # Liveモードのグローバル転送位相f探索をメインスレッドから切り離すWeb Worker
 ├── territories.json    # 全437領地のデータ（Location, Trading Routes, resources）
 ├── territory-ids.json  # 共有リンク用の固定領地ID配列（末尾追記のみ・詳細は下記警告参照）
-├── dev-server.py        # ローカル開発用サーバー（キャッシュ無効化ヘッダー付与。詳細は「起動方法」参照）
-├── main-map.png        # マップ画像（4608×6644px）※手動配置が必要
+├── dev-server.py       # ローカル開発用サーバー（キャッシュ無効化ヘッダー付与。詳細は「起動方法」参照）
+├── main-map.webp       # マップ画像（4608×6644px）※手動配置が必要
 ├── assets/icons/others/disconnected.png  # 非接続❌アイコン（16px四方）※手動配置が必要
-├── cf-proxy/            # 自前CORSプロキシ（Cloudflare Worker）。GitHub Pagesの成果物とは
-│                        # 独立したサブディレクトリ。詳細は「外部API」内「自前CORSプロキシ
-│                        # （Cloudflare Worker）」参照
+├── cf-proxy/           # 自前CORSプロキシ（Cloudflare Worker）。GitHub Pagesの成果物とは
+│                       # 独立したサブディレクトリ。詳細は「外部API」内「自前CORSプロキシ
+│                       # （Cloudflare Worker）」参照
 └── CLAUDE.md           # このファイル（.gitignore対象）
 ```
 
@@ -26,7 +26,7 @@ eco-simulator/
 
 **`index.html`の`<script>`タグは`type="module"`で読み込んでいる。** そのため`script.js`内のトップレベル関数はグローバルスコープに自動で出ない。`index.html`の`onclick`属性および`script.js`が生成する動的HTMLの`onclick`/`onchange`属性から呼ばれる関数は、`script.js`末尾の`Object.assign(window, {...})`で明示的にグローバル公開している。新しくonclick等から呼ぶ関数を追加した場合は、この公開リストにも追加すること。
 
-**マップ画像のタイル分割は意図的に実装していない。** iPhone Safariでは`main-map.png`が約3060万ピクセルあり、ブラウザのデコード上限を超えるため間引きされて画質が落ちることがある（読み込みのたびに結果が変わる）。根本対応にはタイル分割＋低解像度の全体画像＋LRU管理が必要でコストが見合わないため、スマホ版はPC版の下位互換という割り切りで対応していない。
+**マップ画像のタイル分割は意図的に実装していない。** iPhone Safariでは`main-map.webp`が約3060万ピクセルあり、ブラウザのデコード上限を超えるため間引きされて画質が落ちることがある（読み込みのたびに結果が変わる）。根本対応にはタイル分割＋低解像度の全体画像＋LRU管理が必要でコストが見合わないため、スマホ版はPC版の下位互換という割り切りで対応していない。
 
 ## 起動方法
 
@@ -104,6 +104,8 @@ python dev-server.py 8080
 | `_globalTransferPhase` | `number\|null` | 守備ステータス推定のグローバル転送位相f。Liveデータ取得のたびに`phase-worker.js`（Web Worker）で再計算する |
 | `_phaseSourceLiveData` | `{}\|null` | `_globalTransferPhase`の計算元になった`liveData`のスナップショット参照。`_globalTransferPhase`と必ず同時に更新する（2026-08導入）。守備ステータス推定は常に最新の`liveData`ではなくこちらを参照する（詳細は「守備ステータスの推定」内「Res Tickと表示されている資源量が噛み合わない」参照） |
 | `_qualityCache` | `{}` | 推定結果の品質付きキャッシュ（Item 9、2026-08導入）。`name → CachedEstimate`。メモリ内・Liveモードのセッションスコープのみ（OFFでクリア）。詳細は「推定結果の品質付きキャッシュ保持」参照 |
+| `_undoStack` | `[]` | Undo/Redo機能（2026-08導入）。`addedTerritories`の`structuredClone`の配列、末尾が直近の状態。上限50件（超過時は最古を`shift()`）。メモリ内のみ・ページリロードでリセット・共有リンクには含めない |
+| `_redoStack` | `[]` | 同上のRedo用スタック |
 
 **Live モードは「表示レイヤー」であり、シミュレーションの状態（`addedTerritories`等）は一切書き換えない。** 書き換えるのは「Import This Guild」によるギルド取り込み操作のみ。
 
@@ -140,7 +142,10 @@ python dev-server.py 8080
 | `calcTreasuryBuff(name, hqDist)` | 距離とTreasuryレベルから生産バフ率を返す |
 | `updateOverview()` | Overviewパネル更新（Tribute込みのNet表示） |
 | `updateTerritoryList()` | Managerリスト更新（list-selected状態を反映） |
-| `refreshUI()` | `_hqDistanceCache`無効化 → Overview/リスト/描画を更新 |
+| `refreshUI()` | `_hqDistanceCache`無効化 → Overview/リスト/描画を更新 → `updateUndoRedoButtons()` |
+| `pushUndoSnapshot()` | Undo/Redo機能（2026-08導入）。`addedTerritories`の`structuredClone`を`_undoStack`にpush（50件超過分は最古を`shift()`）、`_redoStack`を空にする。対象7関数（`addSelectedTerritory`/`addGuildTerritories`/`addSelectedTerritories`/`removeTerritory`/`clearAllTerritories`/`resetSelected`/`saveModal`）が、確認ダイアログ・早期returnの**後**（実際に`addedTerritories`を書き換える直前）に1回呼ぶ。Custom Settings配下の操作（`importLiveGuild`/接続線・資源オーバーライド編集/`saveTributes`）は対象外で呼ばない |
+| `undoAction()` / `redoAction()` | `_undoStack`/`_redoStack`が空なら何もしない。現在の`addedTerritories`を`structuredClone`して逆側のスタックにpush → 自スタックから`pop()`した内容で`addedTerritories`を置き換え → `listSelectedTerritories`から存在しない名前を除去 → `refreshUI()` |
+| `updateUndoRedoButtons()` | `_undoStack`/`_redoStack`の長さに応じて`#undo-btn`/`#redo-btn`の`disabled`を切り替える。`refreshUI()`末尾・`init()`から呼ぶ |
 | `openModal(name, bulkNames?)` | 領地設定モーダルを開く（bulkNames指定で一括編集モード）。単体モードでは`addedTerritories[name].importEstimated`を見て、Import This Guild由来の推定値のまま（tri-stateが`true`）のDefense/Bonus項目にマゼンタの縁取り・ドット（`.import-estimated`）を付け、ホバー時の名前ツールチップにも注記を追加する（2026-08導入、一括モードでは値と同様に表示しない） |
 | `saveModal()` | single/bulkモードを判定して保存。保存前後で値が実際に変わったフィールドのみ`importEstimated`を`false`に落とす（変えていないフィールドはマークを維持し、以後のImport This Guildでの自動更新対象のままにする） |
 | `closeModal()` | モーダルを閉じてモードをsingleにリセット |
@@ -542,6 +547,7 @@ stored[r] = consumption[r] × f + generation[r] × (1/60 − f)       f = (1 −
 - 🔗ボタン → Share Link生成・クリップボードコピー
 
 ### TERRITORY MANAGERパネル（右上）
+- **Undo/Redo（2026-08導入）**: パネルヘッダーにOverviewパネルと同じ`panel-header`/`panel-btns`構造で`#undo-btn`（↩）/`#redo-btn`（↪）を配置。対象は`addedTerritories`のみの変更（Add Specified Territory / Add From On-map Guild / Add Selected Territories / 個別削除 / Clear All / Reset Selected / モーダルSave）。Custom Settings配下の操作（Import This Guild・Connection Editor・Resource Editor・Tributes）は対象外で、それらを行ってもUndo/Redoスタックは変化しない。スタックはメモリ内のみ・上限50件・共有リンクには含めない・ページリロードでリセットする。詳細は状態変数・関数一覧の`_undoStack`/`_redoStack`/`pushUndoSnapshot()`/`undoAction()`/`redoAction()`/`updateUndoRedoButtons()`を参照
 - **Add Specified Territory**: テキスト入力+datalistで検索して単体登録
 - **Add from Guild**: Guild名入力+datalistで選択してAPIから一括登録
 - **Selected on Map**: マップ上でクリック選択した未登録領地の数を表示。"Add Selected Territories"ボタンで一括登録

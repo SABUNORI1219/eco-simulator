@@ -11,7 +11,7 @@ const { DEFENSE_LEVEL_STATS, DEFENSE_COST_TABLE, DEFENSE_TYPES, BONUS_CONFIG, RE
 //  CONFIGURATION
 // ═══════════════════════════════════════════════════════════
 const MAP_CONFIG = {
-  imagePath: './main-map.png',
+  imagePath: './main-map.webp',
   imageWidth: 4608,
   imageHeight: 6644,
   gameMinX: -2350,
@@ -84,6 +84,10 @@ let currentModalMode = 'single'; // 'single' | 'bulk'
 let currentBulkTerritories = [];
 let customConnections = [];  // [{ a: string, b: string }, ...]（a, bはlocaleCompare('en')昇順で正規化）
 let resourceOverrides = {};  // name -> { tier: 'normal'|'city'|'rainbow', resources: string[], double: boolean }
+
+// Undo/Redo（addedTerritoriesのみが対象。メモリ内のみ、ページリロードでリセット、共有リンクには含めない）
+let _undoStack = [];  // addedTerritoriesのdeep cloneの配列。末尾が直近の状態
+let _redoStack = [];  // 同上
 
 // マップオーバーレイの状態。表示状態にすぎないため共有リンクには含めない。
 let filterMode = 'none';   // 'none' | 'defense' | 'treasury' | 'resource'
@@ -446,7 +450,7 @@ function draw() {
     ctx.fillStyle = '#334155';
     ctx.font = '16px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('Place main-map.png in the project directory to show the map.', canvas.width / 2, canvas.height / 2);
+    ctx.fillText('Now Loading...', canvas.width / 2, canvas.height / 2);
   }
 
   drawConnections();
@@ -2487,6 +2491,7 @@ function addTerritory(name) {
 }
 
 function addSelectedTerritories() {
+  pushUndoSnapshot();
   const wasEmpty = Object.keys(addedTerritories).length === 0;
   for (const name of selectedTerritories) {
     if (territories[name] && !addedTerritories[name]) {
@@ -2508,6 +2513,7 @@ function updateSelectedCount() {
 }
 
 function removeTerritory(name) {
+  pushUndoSnapshot();
   delete addedTerritories[name];
   listSelectedTerritories.delete(name);
   refreshUI();
@@ -2516,6 +2522,7 @@ function removeTerritory(name) {
 function clearAllTerritories() {
   if (filterMode === 'none') {
     if (!confirm('Remove all territories?')) return;
+    pushUndoSnapshot();
     addedTerritories = {};
     listSelectedTerritories.clear();
     refreshUI();
@@ -2525,6 +2532,7 @@ function clearAllTerritories() {
   const namesToRemove = Object.keys(addedTerritories).filter(n => !addedTerritories[n].hq && isFilterVisible(n));
   if (namesToRemove.length === 0) return;
   if (!confirm(`Remove ${namesToRemove.length} filtered territories?`)) return;
+  pushUndoSnapshot();
   for (const n of namesToRemove) {
     delete addedTerritories[n];
     listSelectedTerritories.delete(n);
@@ -2536,6 +2544,7 @@ function resetSelected() {
   const names = [...listSelectedTerritories].filter(n => addedTerritories[n]);
   if (names.length === 0) return;
   if (!confirm(`Reset all upgrades for ${names.length} selected territories?`)) return;
+  pushUndoSnapshot();
   for (const n of names) {
     addedTerritories[n].defense = { damage: 0, attack: 0, health: 0, defense: 0 };
     addedTerritories[n].bonuses = {};
@@ -2584,6 +2593,7 @@ function updateTerritorySelectDatalist() {
 function addSelectedTerritory() {
   const sel = document.getElementById('territory-select');
   if (!sel.value) return;
+  pushUndoSnapshot();
   addTerritory(sel.value);
   sel.value = '';
   updateTerritorySelectDatalist();
@@ -2603,6 +2613,7 @@ function addGuildTerritories() {
     for (const name of window.guildTerritoryMap[guildName]) namesToAdd.add(name);
   }
 
+  pushUndoSnapshot();
   for (const name of namesToAdd) {
     if (!territories[name] || addedTerritories[name]) continue;
     let initialTreasury = 'Very Low';
@@ -2640,6 +2651,43 @@ function refreshUI() {
   updateOverview();
   updateTerritoryList();
   draw();
+  updateUndoRedoButtons();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  UNDO / REDO（addedTerritoriesのみ対象）
+// ═══════════════════════════════════════════════════════════
+function pushUndoSnapshot() {
+  _undoStack.push(structuredClone(addedTerritories));
+  if (_undoStack.length > 50) _undoStack.shift();
+  _redoStack = [];
+}
+
+function undoAction() {
+  if (_undoStack.length === 0) return;
+  _redoStack.push(structuredClone(addedTerritories));
+  addedTerritories = _undoStack.pop();
+  for (const name of [...listSelectedTerritories]) {
+    if (!addedTerritories[name]) listSelectedTerritories.delete(name);
+  }
+  refreshUI();
+}
+
+function redoAction() {
+  if (_redoStack.length === 0) return;
+  _undoStack.push(structuredClone(addedTerritories));
+  addedTerritories = _redoStack.pop();
+  for (const name of [...listSelectedTerritories]) {
+    if (!addedTerritories[name]) listSelectedTerritories.delete(name);
+  }
+  refreshUI();
+}
+
+function updateUndoRedoButtons() {
+  const undoBtn = document.getElementById('undo-btn');
+  const redoBtn = document.getElementById('redo-btn');
+  if (undoBtn) undoBtn.disabled = _undoStack.length === 0;
+  if (redoBtn) redoBtn.disabled = _redoStack.length === 0;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2923,6 +2971,7 @@ function saveModal() {
     });
     const treasury = document.getElementById('modal-treasury').value;
 
+    pushUndoSnapshot();
     for (const n of currentBulkTerritories) {
       const st = addedTerritories[n];
       if (!st) continue;
@@ -2959,6 +3008,7 @@ function saveModal() {
 
   const name = currentModalTerritory;
   if (!name) return;
+  pushUndoSnapshot();
   const isHQ = document.getElementById('modal-hq').checked;
   if (isHQ) {
     for (const n of Object.keys(addedTerritories)) addedTerritories[n].hq = false;
@@ -4420,7 +4470,8 @@ Object.assign(window, {
   toggleAddResourceForm, clearAllResourceOverrides, addResourceOverride, setFilterMode, updateModalStats,
   clearFilter, closeFilterModal, closeCustomSettings, toggleListSelection, removeTerritory,
   removeCustomConnection, removeResourceOverride, toggleFilterValue,
-  onLiveModeToggle, importLiveGuild, enableDiagLogging, disableDiagLogging, exportWatchLog
+  onLiveModeToggle, importLiveGuild, enableDiagLogging, disableDiagLogging, exportWatchLog,
+  undoAction, redoAction
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -4485,7 +4536,8 @@ async function init() {
     updateOverview();
     updateTerritoryList();
   }
-  
+  updateUndoRedoButtons();
+
   document.fonts.ready.then(() => draw());
 }
 
