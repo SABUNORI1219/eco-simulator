@@ -191,13 +191,13 @@ canvas.addEventListener('mousemove', e => {
     panX = e.clientX - dragStart.x;
     panY = e.clientY - dragStart.y;
     clampPan();
-    draw();
+    requestDraw();
     return;
   }
   const hit = hitTestAll(e.clientX, e.clientY);
   if (hit !== hoveredTerritory) {
     hoveredTerritory = hit;
-    draw();
+    requestDraw();
   }
   if (hit && isTooltipTarget(hit)) {
     showTooltip(e.clientX, e.clientY, hit);
@@ -234,7 +234,7 @@ canvas.addEventListener('wheel', e => {
   panY = e.clientY - ratio * (e.clientY - panY);
   scale = newScale;
   clampPan();
-  draw();
+  requestDraw();
 }, { passive: false });
 
 // ─── Touch Events ───
@@ -300,7 +300,7 @@ canvas.addEventListener('touchmove', e => {
     panX = t.clientX - touchDragStart.x;
     panY = t.clientY - touchDragStart.y;
     clampPan();
-    draw();
+    requestDraw();
   } else if (e.touches.length === 2) {
     touchMoved = true;
     clearLongPressTimer();
@@ -315,7 +315,7 @@ canvas.addEventListener('touchmove', e => {
     panY = midY - ratio * (midY - panY);
     scale = newScale;
     clampPan();
-    draw();
+    requestDraw();
   }
 }, { passive: false });
 
@@ -440,6 +440,21 @@ function updateMapImageTransform() {
   mapImgEl.style.imageRendering = (scale < 1) ? 'auto' : 'pixelated';
   const loaded = mapImgEl.complete && mapImgEl.naturalWidth > 0;
   mapFallbackEl.style.display = loaded ? 'none' : 'flex';
+}
+
+// wheel/mousemove(パン)/touchmoveはブラウザ・入力デバイスによっては1フレーム中に
+// 複数回発火しうる（例: トラックパッドの高頻度ホイールイベント）。それぞれで同期的にdraw()を
+// 呼ぶと同一フレーム内で何度も全描画が走り、ズーム/パン操作がもたつく原因になる（2026-08実測、
+// 修正前後でフレーム落ち率に有意差は無かったが、根本原因としてここが残っていたため対処）。
+// requestDraw()は同一アニメーションフレーム内の呼び出しを1回のdraw()にまとめる。
+let _drawRafPending = false;
+function requestDraw() {
+  if (_drawRafPending) return;
+  _drawRafPending = true;
+  requestAnimationFrame(() => {
+    _drawRafPending = false;
+    draw();
+  });
 }
 
 function draw() {
@@ -633,7 +648,7 @@ const NAME_GLYPH_REF_FONT_SIZE = 16;
 const _nameGlyphCache = new Map();
 
 function getNameGlyphBitmap(name, fillColor) {
-  const key = name + ' ' + fillColor;
+  const key = name + ' ' + fillColor;
   let entry = _nameGlyphCache.get(key);
   if (entry) return entry;
 
@@ -871,13 +886,18 @@ function drawTerritories() {
       const nameFillColor = isAdded ? '#ffffff' : isSelected ? '#93c5fd' : 'rgba(255,255,255,0.82)';
       const glyph = getNameGlyphBitmap(displayText, nameFillColor);
       const glyphScale = fontSize / glyph.refFontSize;
-      ctx.drawImage(
-        glyph.canvas,
-        cx - glyph.anchorX * glyphScale,
-        textY - glyph.anchorY * glyphScale,
-        glyph.width * glyphScale,
-        glyph.height * glyphScale
-      );
+      {
+        const nameDpr = window.devicePixelRatio || 1;
+        let dx = cx - glyph.anchorX * glyphScale;
+        let dy = textY - glyph.anchorY * glyphScale;
+        let dw = glyph.width * glyphScale;
+        let dh = glyph.height * glyphScale;
+        dx = Math.round(dx * nameDpr) / nameDpr;
+        dy = Math.round(dy * nameDpr) / nameDpr;
+        dw = Math.round(dw * nameDpr) / nameDpr;
+        dh = Math.round(dh * nameDpr) / nameDpr;
+        ctx.drawImage(glyph.canvas, dx, dy, dw, dh);
+      }
     } else if (isAdded && scale > 0.06) {
       // 引いた時の簡易表示
       if (isHQ) {
@@ -1048,13 +1068,18 @@ function drawTerritoriesLive() {
       const nameFillColor = isOwned ? '#ffffff' : isSelected ? '#93c5fd' : 'rgba(255,255,255,0.82)';
       const glyph = getNameGlyphBitmap(name, nameFillColor);
       const glyphScale = fontSize / glyph.refFontSize;
-      ctx.drawImage(
-        glyph.canvas,
-        cx - glyph.anchorX * glyphScale,
-        textY - glyph.anchorY * glyphScale,
-        glyph.width * glyphScale,
-        glyph.height * glyphScale
-      );
+      {
+        const nameDpr = window.devicePixelRatio || 1;
+        let dx = cx - glyph.anchorX * glyphScale;
+        let dy = textY - glyph.anchorY * glyphScale;
+        let dw = glyph.width * glyphScale;
+        let dh = glyph.height * glyphScale;
+        dx = Math.round(dx * nameDpr) / nameDpr;
+        dy = Math.round(dy * nameDpr) / nameDpr;
+        dw = Math.round(dw * nameDpr) / nameDpr;
+        dh = Math.round(dh * nameDpr) / nameDpr;
+        ctx.drawImage(glyph.canvas, dx, dy, dw, dh);
+      }
 
       if (isRecentlyCaptured) {
         const capturedMinutes = Math.floor(capturedElapsedMs / 60000);
@@ -4763,7 +4788,13 @@ async function init() {
   }
   updateUndoRedoButtons();
 
-  document.fonts.ready.then(() => draw());
+  document.fonts.ready.then(() => {
+    // Minecraftiaの読み込み完了前に領地名ビットマップが焼かれていた場合、フォールバックフォント
+    // （sans-serif）で焼き込まれたまま残ってしまう。読み込み完了時点でキャッシュを破棄し、
+    // 次のdraw()で正しいフォントで焼き直させる。
+    _nameGlyphCache.clear();
+    draw();
+  });
 }
 
 init();
