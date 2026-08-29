@@ -77,6 +77,15 @@ python dev-server.py 8080
 - ロード中/エラー時のフォールバックは、`<div id="map-fallback">`（暗い背景＋中央グレーテキスト、z-index:1で`#map-img`の前面・`#canvas`の背面）の表示切り替えで行う（`mapImgEl.complete && mapImgEl.naturalWidth > 0`の判定）。`mapImage = new Image()`によるオフスクリーン読み込みは廃止し、`init()`はDOM上の`#map-img`要素自体に`onload`/`onerror`/`src`を設定する。
 - **`ctx.imageSmoothingEnabled`は地図描画専用の設定ではなく、`draw()`が呼ばれるたびその`ctx`（canvas全体）に効くグローバル設定である。** 旧実装では地図画像の`drawImage()`直前に`(scale < 1)`をセットしていたが、その後に呼ばれる`drawConnections()`/`drawTerritories()`内の`drawIcon()`（資源/HQアイコンの`ctx.drawImage()`）にも同じ設定がそのまま適用されていた。img+canvas層構成への移行時にこの設定ごと削除してしまい、アイコン描画のスムージングが常時有効（ブラウザ既定）に戻る副作用が一度発生した（`draw()`冒頭、`drawConnections()`呼び出し前に`ctx.imageSmoothingEnabled = (scale < 1)`を復活させて修正済み）。**描画ブロックを移動・削除する際は、その中にこの種のcanvas全体設定が紛れ込んでいないか要注意。**
 
+### スマホ表示の残存ぼやけ対策（2026-08導入）
+
+地図画像（WebP化）・資源アイコン（`imageSmoothingEnabled`復活）で改善した後も、領地名テキスト・資源アイコンの座標・領地枠線の3点に軽度のぼやけが残っていたため、それぞれ個別に対処した。**接続線（斜め線）のアンチエイリアス対策は、動的に変化する内容が対象になりキャッシュ設計のコストが見合わないため対応していない（スコープ外）。**
+
+- **領地名（Minecraftia）テキスト**: canvasのテキスト描画にはアンチエイリアスを切るオプションが無く、`fontSize`がズームのたびに連続的な小数値になるため、ドット絵フォントのMinecraftiaが常に滲んで見えていた。`getNameGlyphBitmap(name, fillColor)`（キャッシュ`_nameGlyphCache`、キーは`` `${name} ${fillColor}` ``）が、固定の基準フォントサイズ（`NAME_GLYPH_REF_FONT_SIZE`=16px）で`strokeText`/`fillText`/`shadowBlur`込みの見た目を1回だけオフスクリーンcanvasに焼き、以後は`drawTerritories()`/`drawTerritoriesLive()`から`ctx.drawImage()`で拡大貼り付けする（スムージングは`draw()`冒頭の`ctx.imageSmoothingEnabled = (scale < 1)`にそのまま従う）。文字色（`isAdded`/`isSelected`等で変わる）はキャッシュキーに含めているため、状態ごとに正しいビットマップが使われる。**`drawTerritoriesLive()`側は、10分以内の捕獲領地に表示する赤文字の経過時間（`capturedText`、毎秒内容が変わるためキャッシュ対象外）を、名前ビットマップの直後に引き続き`ctx.strokeText`/`fillText`で描画する。** そのため`ctx.font`/`lineWidth`/`strokeStyle`/`textAlign`/`textBaseline`は従来通りctxに設定して`capturedText`に使い回すが、**`ctx.shadowBlur`だけは名前ビットマップのdrawImage呼び出し時に0にしておく必要がある**（ビットマップ自体に影が焼き込み済みのため、ctx側のshadowBlurを立てたままdrawImageするとビットマップ全体に二重に影がかかってしまう。`capturedText`描画の直前でのみ`shadowBlur=4`を立て、直後に0へ戻す）。
+- **資源アイコン**: `drawIcon(img, x, y, size)`内で`ctx.drawImage()`に渡す`dx`/`dy`/`w`/`h`が小数のままだったため、`imageSmoothingEnabled=false`でも描画先矩形の縁でブレンドが起きうる状態だった。`window.devicePixelRatio`込みでデバイスピクセル境界に丸める（`Math.round(v * dpr) / dpr`）よう修正済み。アイコン素材自体（crop/emerald/fish/ore/wood/guild_headquarter、いずれも16〜21px四方）はアルファチャンネルが0か255の2値のみで完全にクリスプであることを確認済み（中間値ピクセル数0）。
+- **領地枠線**: `strokeRect(x, y, w, h)`に渡す座標・線幅が連続的な小数値だったため、軸整列した矩形なのに縁が滲んでいた。`snapRectToPixel(x, y, w, h, lineWidth, dpr)`が、矩形の各辺をデバイスピクセル境界にスナップし、線幅がデバイスピクセル単位で奇数になる場合は0.5デバイスピクセル分オフセットする（一般的なcanvasクリスプ線描画の手法）。`drawTerritories()`/`drawTerritoriesLive()`それぞれの縁取り（黒系、`bodyLineWidth+2`）・本体（`bodyStrokeStyle`、`bodyLineWidth`）の計4箇所のstrokeRectで共通に使う。
+- 実装後、Playwrightでズーム・パン操作を行い例外が発生しないこと、`isSelected`/`isAdded`状態で正しい色の名前ビットマップが表示されることを確認済み（`drawImage`のcanvasソース呼び出しが1万回超発生＝ビットマップキャッシュが機能）。
+
 ---
 
 ## 主要な状態変数（script.js）
@@ -123,6 +132,8 @@ python dev-server.py 8080
 | `updateMapImageTransform()` | `panX`/`panY`/`scale`から`#map-img`の`transform`・`image-rendering`を更新し、`#map-fallback`の表示/非表示を切り替える（2026-08導入） |
 | `drawConnections()` | 全Trading Route接続線を描画（黒・高不透明度） |
 | `drawTerritories()` | 全領地の矩形・アウトライン・名前を描画 |
+| `getNameGlyphBitmap(name, fillColor)` | 領地名テキストのビットマップキャッシュ（2026-08導入、`_nameGlyphCache`、キーは`name`+`fillColor`）。固定の基準フォントサイズでオフスクリーンcanvasに1回だけ焼き、`drawTerritories()`/`drawTerritoriesLive()`が`ctx.drawImage()`で拡大貼り付けする。詳細は「座標系」内「スマホ表示の残存ぼやけ対策」参照 |
+| `snapRectToPixel(x, y, w, h, lineWidth, dpr)` | 領地枠線の`strokeRect()`をクリスプに描画するため、矩形の各辺・線幅をデバイスピクセル境界にスナップするヘルパー（2026-08導入）。`drawTerritories()`/`drawTerritoriesLive()`の縁取り・本体の計4箇所で使う |
 | `hitTest(cx, cy)` | 登録済み領地のみのクリック判定 |
 | `hitTestAll(cx, cy)` | 全領地（登録済み優先）のクリック/ホバー判定 |
 | `handleClick(cx, cy, isTouch?)` | 登録済み→モーダル、未登録→選択トグル。Liveモード中はこれらを行わず、`isTouch`のときのみ`handleLiveTap()`に委譲する |

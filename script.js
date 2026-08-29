@@ -547,8 +547,17 @@ function drawIcon(img, x, y, size) {
     } else {
       w = size * aspect;
     }
-    const dx = x + (size - w) / 2;
-    const dy = y + (size - h) / 2;
+    let dx = x + (size - w) / 2;
+    let dy = y + (size - h) / 2;
+
+    // ctxにはdpr込みのtransformが設定済み（CSSピクセル座標系で描画される）。
+    // ここでの丸めはCSSピクセル値のままdpr換算し、実際のデバイスピクセル境界に揃える。
+    const dpr = window.devicePixelRatio || 1;
+    dx = Math.round(dx * dpr) / dpr;
+    dy = Math.round(dy * dpr) / dpr;
+    w = Math.round(w * dpr) / dpr;
+    h = Math.round(h * dpr) / dpr;
+
     ctx.drawImage(img, dx, dy, w, h);
   }
 }
@@ -612,6 +621,71 @@ function drawSplitFill(x, y, w, h, colors, opacity) {
   }
 
   ctx.restore();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  領地名（Minecraftia）ビットマップキャッシュ
+//  canvasのテキスト描画にはアンチエイリアスを切るオプションが無く、ドット絵フォントである
+//  Minecraftiaが常に滲んで見える問題への対処。固定の基準サイズで1回だけオフスクリーンcanvasに
+//  焼き、以後はdrawImage()で（imageSmoothingEnabledはdraw()冒頭のグローバル設定に従う）拡大表示する。
+// ═══════════════════════════════════════════════════════════
+const NAME_GLYPH_REF_FONT_SIZE = 16;
+const _nameGlyphCache = new Map();
+
+function getNameGlyphBitmap(name, fillColor) {
+  const key = name + ' ' + fillColor;
+  let entry = _nameGlyphCache.get(key);
+  if (entry) return entry;
+
+  const dpr = window.devicePixelRatio || 1;
+  const fontSize = NAME_GLYPH_REF_FONT_SIZE;
+  const font = `${fontSize}px 'Minecraftia', sans-serif`;
+  const lineWidth = Math.max(2, fontSize * 0.15);
+  const shadowBlur = 4;
+  const padding = Math.ceil(lineWidth + shadowBlur + 4);
+
+  const measureCanvas = document.createElement('canvas');
+  const measureCtx = measureCanvas.getContext('2d');
+  measureCtx.font = font;
+  const textWidth = measureCtx.measureText(name).width;
+
+  const width = Math.ceil(textWidth) + padding * 2;
+  const height = Math.ceil(fontSize * 1.6) + padding * 2;
+  const anchorX = width / 2;
+  const anchorY = padding;
+
+  const off = document.createElement('canvas');
+  off.width = Math.max(1, Math.round(width * dpr));
+  off.height = Math.max(1, Math.round(height * dpr));
+  const octx = off.getContext('2d');
+  octx.scale(dpr, dpr);
+  octx.font = font;
+  octx.textAlign = 'center';
+  octx.textBaseline = 'top';
+  octx.shadowBlur = shadowBlur;
+  octx.shadowColor = 'rgba(0,0,0,0.9)';
+  octx.lineWidth = lineWidth;
+  octx.strokeStyle = 'rgba(0,0,0,0.85)';
+  octx.fillStyle = fillColor;
+  octx.strokeText(name, anchorX, anchorY);
+  octx.fillText(name, anchorX, anchorY);
+
+  entry = { canvas: off, width, height, anchorX, anchorY, refFontSize: fontSize };
+  _nameGlyphCache.set(key, entry);
+  return entry;
+}
+
+// 軸整列した矩形の枠線をデバイスピクセル境界にスナップし、strokeRect()をクリスプに描画するためのヘルパー。
+// x/y/w/hはCSSピクセル座標（ctxにdpr込みのtransformが設定済み）。線幅がデバイスピクセル単位で
+// 奇数になる場合は0.5デバイスピクセル分オフセットする（一般的なcanvasクリスプ線描画の手法）。
+function snapRectToPixel(x, y, w, h, lineWidth, dpr) {
+  const deviceLineWidth = Math.max(1, Math.round(lineWidth * dpr));
+  const offset = (deviceLineWidth % 2 !== 0) ? 0.5 / dpr : 0;
+  const x0 = Math.round(x * dpr) / dpr + offset;
+  const y0 = Math.round(y * dpr) / dpr + offset;
+  const x1 = Math.round((x + w) * dpr) / dpr + offset;
+  const y1 = Math.round((y + h) * dpr) / dpr + offset;
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0, lineWidth: deviceLineWidth / dpr };
 }
 
 function drawTerritories() {
@@ -705,16 +779,19 @@ function drawTerritories() {
     }
 
     // 縁取り（常に実線・黒系）
+    const rectDpr = window.devicePixelRatio || 1;
     ctx.setLineDash([]);
-    ctx.lineWidth = bodyLineWidth + 2;
+    const outlineSnap = snapRectToPixel(x, y, w, h, bodyLineWidth + 2, rectDpr);
+    ctx.lineWidth = outlineSnap.lineWidth;
     ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-    ctx.strokeRect(x, y, w, h);
+    ctx.strokeRect(outlineSnap.x, outlineSnap.y, outlineSnap.w, outlineSnap.h);
 
     // 本体
     ctx.setLineDash(bodyDash);
-    ctx.lineWidth = bodyLineWidth;
+    const bodySnap = snapRectToPixel(x, y, w, h, bodyLineWidth, rectDpr);
+    ctx.lineWidth = bodySnap.lineWidth;
     ctx.strokeStyle = bodyStrokeStyle;
-    ctx.strokeRect(x, y, w, h);
+    ctx.strokeRect(bodySnap.x, bodySnap.y, bodySnap.w, bodySnap.h);
     ctx.setLineDash([]);
 
     ctx.restore();
@@ -790,22 +867,17 @@ function drawTerritories() {
       }
 
       const fontSize = Math.min(18, Math.max(9, scale * 13));
-      ctx.font = `${fontSize}px 'Minecraftia', sans-serif`;
-      ctx.shadowBlur = 4;
-      ctx.shadowColor = 'rgba(0,0,0,0.9)';
-      ctx.lineWidth = Math.max(2, fontSize * 0.15);
-      ctx.strokeStyle = 'rgba(0,0,0,0.85)';
-      ctx.fillStyle = isAdded ? '#ffffff' : isSelected ? '#93c5fd' : 'rgba(255,255,255,0.82)';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-
       const displayText = name;
-
-      ctx.strokeText(displayText, cx, textY);
-      ctx.fillText(displayText, cx, textY);
-
-      ctx.shadowColor = 'transparent';
-      ctx.shadowBlur = 0;
+      const nameFillColor = isAdded ? '#ffffff' : isSelected ? '#93c5fd' : 'rgba(255,255,255,0.82)';
+      const glyph = getNameGlyphBitmap(displayText, nameFillColor);
+      const glyphScale = fontSize / glyph.refFontSize;
+      ctx.drawImage(
+        glyph.canvas,
+        cx - glyph.anchorX * glyphScale,
+        textY - glyph.anchorY * glyphScale,
+        glyph.width * glyphScale,
+        glyph.height * glyphScale
+      );
     } else if (isAdded && scale > 0.06) {
       // 引いた時の簡易表示
       if (isHQ) {
@@ -897,15 +969,18 @@ function drawTerritoriesLive() {
       bodyStrokeStyle = 'rgba(255,255,255,0.55)';
     }
 
+    const rectDpr = window.devicePixelRatio || 1;
     ctx.setLineDash([]);
-    ctx.lineWidth = bodyLineWidth + 2;
+    const outlineSnap = snapRectToPixel(x, y, w, h, bodyLineWidth + 2, rectDpr);
+    ctx.lineWidth = outlineSnap.lineWidth;
     ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-    ctx.strokeRect(x, y, w, h);
+    ctx.strokeRect(outlineSnap.x, outlineSnap.y, outlineSnap.w, outlineSnap.h);
 
     ctx.setLineDash(bodyDash);
-    ctx.lineWidth = bodyLineWidth;
+    const bodySnap = snapRectToPixel(x, y, w, h, bodyLineWidth, rectDpr);
+    ctx.lineWidth = bodySnap.lineWidth;
     ctx.strokeStyle = bodyStrokeStyle;
-    ctx.strokeRect(x, y, w, h);
+    ctx.strokeRect(bodySnap.x, bodySnap.y, bodySnap.w, bodySnap.h);
     ctx.setLineDash([]);
 
     ctx.restore();
@@ -963,29 +1038,37 @@ function drawTerritoriesLive() {
 
       const fontSize = Math.min(18, Math.max(9, scale * 13));
       ctx.font = `${fontSize}px 'Minecraftia', sans-serif`;
-      ctx.shadowBlur = 4;
-      ctx.shadowColor = 'rgba(0,0,0,0.9)';
       ctx.lineWidth = Math.max(2, fontSize * 0.15);
       ctx.strokeStyle = 'rgba(0,0,0,0.85)';
-      ctx.fillStyle = isOwned ? '#ffffff' : isSelected ? '#93c5fd' : 'rgba(255,255,255,0.82)';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
 
-      ctx.strokeText(name, cx, textY);
-      ctx.fillText(name, cx, textY);
+      // 領地名はビットマップキャッシュ（影も焼き込み済み）を貼り付けるため、
+      // ここでctx.shadowBlurを立てるとキャッシュ済みの影に二重に影がかかってしまう。0のまま描画する。
+      const nameFillColor = isOwned ? '#ffffff' : isSelected ? '#93c5fd' : 'rgba(255,255,255,0.82)';
+      const glyph = getNameGlyphBitmap(name, nameFillColor);
+      const glyphScale = fontSize / glyph.refFontSize;
+      ctx.drawImage(
+        glyph.canvas,
+        cx - glyph.anchorX * glyphScale,
+        textY - glyph.anchorY * glyphScale,
+        glyph.width * glyphScale,
+        glyph.height * glyphScale
+      );
 
       if (isRecentlyCaptured) {
         const capturedMinutes = Math.floor(capturedElapsedMs / 60000);
         const capturedSeconds = Math.floor(capturedElapsedMs / 1000) % 60;
         const capturedText = `${capturedMinutes}m ${capturedSeconds}s`;
         const capturedY = y - fontSize - 4;
+        ctx.shadowBlur = 4;
+        ctx.shadowColor = 'rgba(0,0,0,0.9)';
         ctx.fillStyle = '#ef4444';
         ctx.strokeText(capturedText, cx, capturedY);
         ctx.fillText(capturedText, cx, capturedY);
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
       }
-
-      ctx.shadowColor = 'transparent';
-      ctx.shadowBlur = 0;
     } else if (isHQ && scale > 0.06) {
       ctx.fillStyle = guildColor;
       const size = Math.max(8, scale * 50);
@@ -1841,13 +1924,12 @@ function defenseStatLine(icon, text, lv) {
 }
 
 // HQから切断中（cut）の領地は、Defense/Bonusが全てLv0にリセットされる運用が原則人力で適用されるため、
-// 統計的推定を行わず確定でLv0を表示する（isLiveTerritoryDisconnectedFromHQ()参照）。確定値である旨を
-// 示すため、確定推定（マゼンタ）・簡易推定（グレー）のいずれとも異なる警告色（赤）で表示する。
+// 統計的推定を行わず確定でLv0を表示する（isLiveTerritoryDisconnectedFromHQ()参照）。表示は確定推定
+// （renderDefenseEstimateHTML）と同じ見出し・配色（マゼンタ）にする。
 function renderDisconnectedEstimateHTML() {
   const L = { damage: 0, attack: 0, health: 0, defense: 0 };
   const stats = EcoLogic.computeStatsFromLevels(L.health, L.damage, L.attack, L.defense, 1);
-  let html = `<div style="color:#FF5555; margin-top:8px;">Estimated Defense (disconnected):</div>`;
-  html += `<div style="color:#94a3b8; font-size:0.85em;">Cut off from HQ — bonuses assumed reset to 0</div>`;
+  let html = `<div style="color:#FF55FF; margin-top:8px;">Estimated Defense:</div>`;
   html += defenseStatLine('damage', `${fmtNum(stats.finalDmgMin)}-${fmtNum(stats.finalDmgMax)} Damage`, L.damage);
   html += defenseStatLine('attack-speed', `${stats.atkSpd.toFixed(1)} Attacks per second`, L.attack);
   html += defenseStatLine('health', `${fmtHp(stats.finalHp)} HP`, L.health);
