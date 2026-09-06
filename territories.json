@@ -30,8 +30,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Tree Island",
-      "Skien's Island"
+      "Skien's Island",
+      "Tree Island"
     ],
     "Location": {
       "start": [-41, -4174],
@@ -54,9 +54,9 @@
     },
     "Trading Routes": [
       "Entrance to Nivla Woods",
-      "Ancient Waterworks",
       "Farmers Settlement",
       "Arachnid Woods",
+      "Ancient Waterworks",
       "Webbed Fracture"
     ],
     "Guild": {
@@ -79,10 +79,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Thanos",
       "Secluded Ponds",
-      "Path to Ozoth's Spire",
-      "Gylia Fisherman Camp"
+      "Thanos",
+      "Gylia Fisherman Camp",
+      "Path to Ozoth's Spire"
     ],
     "Guild": {
       "uuid": "",
@@ -104,8 +104,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Black Road",
       "Ternaves Tunnel",
+      "Black Road",
       "Savannah Plains",
       "Essren's Hut"
     ],
@@ -129,10 +129,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Nodguj Nation",
       "Mage Island",
-      "Selchar",
-      "Durum Isles Barn"
+      "Durum Isles Barn",
+      "Nodguj Nation",
+      "Selchar"
     ],
     "Guild": {
       "uuid": "",
@@ -154,10 +154,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Skien's Island",
       "Durum Isles Barn",
       "Durum Barley Islet",
       "Durum Malt Islet",
+      "Skien's Island",
       "Rooster Island"
     ],
     "Location": {
@@ -180,10 +180,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Trunkstump Goblin Camp",
-      "Brigand Outpost",
       "Cliffhearth Orc Camp",
-      "Sanguine Spider Den"
+      "Trunkstump Goblin Camp",
+      "Brigand Outpost"
     ],
     "Location": {
       "start": [-2060, -4831],
@@ -205,9 +204,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Nesaak",
       "Bob's Tomb",
-      "Frigid Crossroads"
+      "Frigid Crossroads",
+      "Nesaak"
     ],
     "Guild": {
       "uuid": "",
@@ -230,9 +229,9 @@
     },
     "Trading Routes": [
       "Llevigar Stables",
-      "Orc Lake",
+      "Meteor Trail",
       "Stonecave Orc Camp",
-      "Meteor Trail"
+      "Orc Lake"
     ],
     "Location": {
       "start": [-2059, -4831],
@@ -254,10 +253,10 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Dark Forest Village",
       "Faltach Manor",
+      "Mesquis Tower",
       "Path to Talor",
-      "Mesquis Tower"
+      "Dark Forest Village"
     ],
     "Location": {
       "start": [-785, -5229],
@@ -279,8 +278,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Olux",
       "Lizardman Lake",
+      "Olux",
       "Fading Forest"
     ],
     "Location": {
@@ -303,11 +302,11 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Silent Road",
+      "Abandoned Mines Entrance",
+      "Mining Base Camp",
       "Abandoned Mines",
       "Plains Lake",
-      "Mining Base Camp",
-      "Abandoned Mines Entrance",
+      "Silent Road",
       "Essren's Hut"
     ],
     "Location": {
@@ -330,10 +329,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Lava Springs",
-      "Black Road",
       "Detlas",
-      "Mine Base Plains"
+      "Lava Springs",
+      "Mine Base Plains",
+      "Black Road"
     ],
     "Guild": {
       "uuid": "",
@@ -355,10 +354,10 @@
       "wood": "3600"
     },
     "Trading Routes": [
+      "Bloody Trail",
       "Overtaken Outpost",
       "Caritat Mansion",
-      "Orc Battlegrounds",
-      "Bloody Trail"
+      "Orc Battlegrounds"
     ],
     "Location": {
       "start": [-1460, -5025],
@@ -380,9 +379,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
+      "Cinfras's Small Farm",
       "Aldorei River",
-      "Aldorei Cliffside Waterfalls",
-      "Cinfras's Small Farm"
+      "Aldorei Cliffside Waterfalls"
     ],
     "Guild": {
       "uuid": "",
@@ -404,9 +403,9 @@
       "wood": "0"
     },
     "Trading Routes": [
+      "Sanguine Spider Den",
       "Llevigar Stables",
       "Orc Road",
-      "Sanguine Spider Den",
       "Llevigar"
     ],
     "Location": {
@@ -429,10 +428,10 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Twisted Ridge",
-      "Viscera Pits",
       "Lexdale Penitentiary",
-      "Entrance to Kander"
+      "Entrance to Kander",
+      "Viscera Pits",
+      "Twisted Ridge"
     ],
     "Location": {
       "start": [-771, -5504],
@@ -454,8 +453,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Frosty Spikes",
-      "Time Valley"
+      "Time Valley",
+      "Frosty Spikes"
     ],
     "Location": {
       "start": [-324, -1130],
@@ -500,9 +499,9 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Nomads' Refuge",
-      "Maltic",
       "Emerald Trail",
+      "Maltic",
+      "Nomads' Refuge",
       "Ragni Countryside South",
       "Ancient Waterworks"
     ],
@@ -526,10 +525,10 @@
       "wood": "0"
     },
     "Trading Routes": [
+      "Entrance to Almuj",
       "Lava Springs",
-      "Cathedral Harbour",
       "Bremminglar",
-      "Entrance to Almuj"
+      "Cathedral Harbour"
     ],
     "Guild": {
       "uuid": "",
@@ -551,10 +550,10 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Santa's Hideout",
       "Half Moon Island",
       "Durum Barley Islet",
       "Durum Oat Islet",
+      "Santa's Hideout",
       "Nodguj Nation"
     ],
     "Location": {
@@ -579,8 +578,8 @@
     "Trading Routes": [
       "Temple Island",
       "Path to Ahmsord",
-      "Sky Island Ascent",
       "Aerial Descent",
+      "Sky Island Ascent",
       "Central Islands"
     ],
     "Location": {
@@ -603,8 +602,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Scorpion Nest",
       "Infested Sinkhole",
+      "Scorpion Nest",
       "Naga Lake"
     ],
     "Location": {
@@ -651,10 +650,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Relos",
-      "Ruined Houses",
-      "Industrial Clearing",
       "Corkus City Crossroads",
+      "Industrial Clearing",
+      "Ruined Houses",
+      "Relos",
       "Corkus Sea Cove"
     ],
     "Location": {
@@ -677,9 +676,9 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Wizard's Warning",
+      "Inhospitable Mountain",
       "Perilous Passage",
-      "Inhospitable Mountain"
+      "Wizard's Warning"
     ],
     "Location": {
       "start": [263, -4973],
@@ -701,9 +700,9 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Floral Peaks",
       "Stonecave Orc Camp",
       "Collapsed Emerald Mine",
+      "Floral Peaks",
       "Sunspark Orc Camp"
     ],
     "Location": {
@@ -726,8 +725,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Otherworldly Monolith",
-      "Azure Frontier"
+      "Azure Frontier",
+      "Otherworldly Monolith"
     ],
     "Location": {
       "start": [-775, -6164],
@@ -749,11 +748,11 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Retrofitted Manufactory",
-      "Corkus City Crossroads",
       "Corkus Castle",
-      "Corkus Forest",
-      "Picnic Pond"
+      "Corkus City Crossroads",
+      "Picnic Pond",
+      "Retrofitted Manufactory",
+      "Corkus Forest"
     ],
     "Location": {
       "start": [-1557, -2835],
@@ -776,9 +775,9 @@
     },
     "Trading Routes": [
       "Cascading Basins",
+      "Turncoat Turnabout",
       "Perilous Passage",
-      "Harpy's Haunt South",
-      "Turncoat Turnabout"
+      "Harpy's Haunt South"
     ],
     "Location": {
       "start": [200, -4743],
@@ -800,8 +799,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Broken Road",
-      "Mine Base Plains"
+      "Mine Base Plains",
+      "Broken Road"
     ],
     "Guild": {
       "uuid": "",
@@ -823,9 +822,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
+      "Troms Lake",
       "Temple of Legends",
-      "Sulphuric Hollow",
-      "Troms Lake"
+      "Sulphuric Hollow"
     ],
     "Guild": {
       "uuid": "",
@@ -848,8 +847,8 @@
     },
     "Trading Routes": [
       "Fallen Village",
-      "Gylia Lakehouse",
-      "Cosmic Fissures"
+      "Cosmic Fissures",
+      "Gylia Lakehouse"
     ],
     "Guild": {
       "uuid": "",
@@ -893,8 +892,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Perilous Grotto",
-      "Canyon Walkway"
+      "Canyon Walkway",
+      "Perilous Grotto"
     ],
     "Guild": {
       "uuid": "",
@@ -916,9 +915,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
+      "Weird Clearing",
       "Gylia Research Cabin",
-      "Cinfras Outskirts",
-      "Weird Clearing"
+      "Cinfras Outskirts"
     ],
     "Guild": {
       "uuid": "",
@@ -963,10 +962,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Webbed Fracture",
-      "Mount Wynn Inn",
       "Nivla Woods Exit",
-      "Blackstring Den"
+      "Mount Wynn Inn",
+      "Blackstring Den",
+      "Webbed Fracture"
     ],
     "Guild": {
       "uuid": "",
@@ -1010,9 +1009,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
+      "Entrance to Almuj",
       "Lava Springs",
-      "Ternaves",
-      "Entrance to Almuj"
+      "Ternaves"
     ],
     "Guild": {
       "uuid": "",
@@ -1034,10 +1033,10 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Iron Road",
-      "Entrance to Olux",
       "Bloody Trail",
-      "Swamp Mountain Arch"
+      "Entrance to Olux",
+      "Swamp Mountain Arch",
+      "Iron Road"
     ],
     "Location": {
       "start": [-1649, -5134],
@@ -1059,8 +1058,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Lion Lair",
-      "Savannah Plains"
+      "Savannah Plains",
+      "Lion Lair"
     ],
     "Location": {
       "start": [760, -2070],
@@ -1082,9 +1081,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Fleris Trail",
+      "Centerworld Fortress",
       "Wood Sprite Hideaway",
-      "Centerworld Fortress"
+      "Fleris Trail"
     ],
     "Location": {
       "start": [-1387, -4595],
@@ -1107,8 +1106,8 @@
     },
     "Trading Routes": [
       "Floral Peaks",
-      "Forgotten Burrows",
       "Witching Road",
+      "Forgotten Burrows",
       "Shady Shack"
     ],
     "Location": {
@@ -1199,10 +1198,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Durum Malt Islet",
-      "Selchar",
       "Durum Barley Islet",
-      "Durum Oat Islet"
+      "Durum Oat Islet",
+      "Durum Malt Islet",
+      "Selchar"
     ],
     "Guild": {
       "uuid": "",
@@ -1247,9 +1246,9 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Twisted Housing",
       "Gelibord",
       "Castle Dullahan",
+      "Twisted Housing",
       "Fading Forest"
     ],
     "Location": {
@@ -1273,8 +1272,8 @@
     },
     "Trading Routes": [
       "Zhight Island",
-      "Lost Atoll",
       "Bloody Beach",
+      "Lost Atoll",
       "Volcanic Isles"
     ],
     "Location": {
@@ -1297,11 +1296,11 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Decayed Basin",
+      "Talor Cemetery",
       "Old Crossroads",
-      "Cinfras Outskirts",
+      "Decayed Basin",
       "Weird Clearing",
-      "Talor Cemetery"
+      "Cinfras Outskirts"
     ],
     "Location": {
       "start": [-489, -5279],
@@ -1324,8 +1323,8 @@
     },
     "Trading Routes": [
       "Llevigar Stables",
-      "Loamsprout Orc Camp",
       "Orc Lake",
+      "Loamsprout Orc Camp",
       "Llevigar Gate"
     ],
     "Location": {
@@ -1348,10 +1347,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Trunkstump Goblin Camp",
+      "Llevigar Gate",
       "Cliffhearth Orc Camp",
-      "Orc Road",
-      "Llevigar Gate"
+      "Trunkstump Goblin Camp",
+      "Orc Road"
     ],
     "Location": {
       "start": [-2059, -4747],
@@ -1374,9 +1373,9 @@
     },
     "Trading Routes": [
       "Path to Talor",
+      "Talor Cemetery",
       "Lexdale",
-      "Fungal Grove",
-      "Talor Cemetery"
+      "Fungal Grove"
     ],
     "Location": {
       "start": [-648, -5314],
@@ -1443,10 +1442,10 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Central Islands",
       "Swamp Island",
       "Angel Refuge",
-      "Wybel Island"
+      "Wybel Island",
+      "Central Islands"
     ],
     "Location": {
       "start": [1336, -4893],
@@ -1468,9 +1467,9 @@
       "wood": "0"
     },
     "Trading Routes": [
+      "Ruined Villa",
       "Ancient Excavation",
       "Almuj",
-      "Ruined Villa",
       "Owl Tribe"
     ],
     "Guild": {
@@ -1493,8 +1492,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Floral Peaks",
       "Collapsed Emerald Mine",
+      "Floral Peaks",
       "Witching Road"
     ],
     "Location": {
@@ -1517,10 +1516,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Hobgoblin's Hoard",
-      "Wizard Tower",
       "Harpy's Haunt North",
-      "Bantisu Approach"
+      "Wizard Tower",
+      "Bantisu Approach",
+      "Hobgoblin's Hoard"
     ],
     "Location": {
       "start": [341, -4841],
@@ -1565,8 +1564,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Toxic Drip",
-      "Lutho"
+      "Lutho",
+      "Toxic Drip"
     ],
     "Location": {
       "start": [1040, -767],
@@ -1588,10 +1587,10 @@
       "wood": "3600"
     },
     "Trading Routes": [
+      "Frigid Crossroads",
+      "Frosty Spikes",
       "Abandoned Lumberyard",
       "Nesaak",
-      "Frosty Spikes",
-      "Frigid Crossroads",
       "Florist's Hut"
     ],
     "Guild": {
@@ -1614,9 +1613,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Faltach Manor",
+      "Gelibord",
       "Twisted Housing",
-      "Gelibord"
+      "Faltach Manor"
     ],
     "Location": {
       "start": [-942, -5227],
@@ -1639,8 +1638,8 @@
     },
     "Trading Routes": [
       "Blooming Boulders",
-      "Tempo Town",
       "Elkurn",
+      "Tempo Town",
       "Nivla Woods Exit"
     ],
     "Location": {
@@ -1663,10 +1662,10 @@
       "wood": "0"
     },
     "Trading Routes": [
+      "Nemract",
       "Selchar",
-      "Durum Malt Islet",
       "Bear Zoo",
-      "Nemract"
+      "Durum Malt Islet"
     ],
     "Location": {
       "start": [-128, -2448],
@@ -1689,8 +1688,8 @@
     },
     "Trading Routes": [
       "Entamis Village",
-      "Iboju Village",
-      "Delnar Manor"
+      "Delnar Manor",
+      "Iboju Village"
     ],
     "Guild": {
       "uuid": "",
@@ -1737,8 +1736,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Bizarre Passage",
-      "Gateway to Nothing"
+      "Gateway to Nothing",
+      "Bizarre Passage"
     ],
     "Location": {
       "start": [1388, -869],
@@ -1785,8 +1784,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Featherfall Cliffs",
-      "Rocky Bend"
+      "Rocky Bend",
+      "Featherfall Cliffs"
     ],
     "Location": {
       "start": [334, -4518],
@@ -1808,11 +1807,11 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Cathedral Harbour",
-      "Nemract Cathedral",
       "Mount Wynn Inn",
+      "Scorched Trail",
       "Corrupted Tower",
-      "Scorched Trail"
+      "Nemract Cathedral",
+      "Cathedral Harbour"
     ],
     "Location": {
       "start": [152, -1832],
@@ -1857,9 +1856,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Path to Thanos",
       "Celestial Impact",
-      "Cosmic Fissures"
+      "Cosmic Fissures",
+      "Path to Thanos"
     ],
     "Guild": {
       "uuid": "",
@@ -1881,11 +1880,11 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Nomads' Refuge",
       "Maltic Coast",
+      "Maltic",
       "Farmers Settlement",
-      "Jagged Foothills",
-      "Maltic"
+      "Nomads' Refuge",
+      "Jagged Foothills"
     ],
     "Guild": {
       "uuid": "",
@@ -1930,10 +1929,10 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Fungal Grove",
       "Lexdale",
-      "Mushroom Hill",
-      "Heart of Decay"
+      "Fungal Grove",
+      "Heart of Decay",
+      "Mushroom Hill"
     ],
     "Location": {
       "start": [-471, -5405],
@@ -1979,9 +1978,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
+      "Selchar",
       "Durum Isles Barn",
       "Rooster Island",
-      "Selchar",
       "Cathedral Harbour"
     ],
     "Guild": {
@@ -2004,8 +2003,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Mangled Lake",
-      "Centerworld Fortress"
+      "Centerworld Fortress",
+      "Mangled Lake"
     ],
     "Location": {
       "start": [-1460, -5024],
@@ -2027,10 +2026,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Path to Thanos",
-      "Upper Thanos",
       "Kitrios Armory",
-      "Cosmic Fissures"
+      "Cosmic Fissures",
+      "Upper Thanos",
+      "Path to Thanos"
     ],
     "Location": {
       "start": [51, -5189],
@@ -2098,9 +2097,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Cinfras's Small Farm",
       "Paper Trail",
-      "Celestial Impact"
+      "Celestial Impact",
+      "Cinfras's Small Farm"
     ],
     "Guild": {
       "uuid": "",
@@ -2144,9 +2143,9 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Dreary Docks",
       "Selchar",
       "Nodguj Nation",
+      "Dreary Docks",
       "Maro Peaks"
     ],
     "Location": {
@@ -2170,8 +2169,8 @@
     },
     "Trading Routes": [
       "Freezing Heights",
-      "Dragonbone Graveyard",
-      "Lava Lakes"
+      "Lava Lakes",
+      "Dragonbone Graveyard"
     ],
     "Location": {
       "start": [1233, -5553],
@@ -2215,8 +2214,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Hobgoblin's Hoard",
       "Fleris Cranny",
+      "Hobgoblin's Hoard",
       "Protector's Pathway",
       "Featherfall Cliffs"
     ],
@@ -2286,11 +2285,11 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Central Islands",
+      "Ahmsord",
       "Swamp Island",
       "Snail Island",
-      "Ahmsord",
-      "Kandon Ridge"
+      "Kandon Ridge",
+      "Central Islands"
     ],
     "Location": {
       "start": [991, -4643],
@@ -2312,11 +2311,11 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Mage Island",
-      "Santa's Hideout",
-      "Dujgon Nation",
-      "Icy Island",
       "Skien's Island",
+      "Dujgon Nation",
+      "Santa's Hideout",
+      "Icy Island",
+      "Mage Island",
       "Durum Barley Islet"
     ],
     "Location": {
@@ -2339,9 +2338,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Nested Cliffside",
       "Nomads' Refuge",
-      "Arachnid Woods"
+      "Arachnid Woods",
+      "Nested Cliffside"
     ],
     "Guild": {
       "uuid": "",
@@ -2363,8 +2362,8 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Great Bridge",
-      "Frigid Crossroads"
+      "Frigid Crossroads",
+      "Great Bridge"
     ],
     "Guild": {
       "uuid": "",
@@ -2387,9 +2386,9 @@
     },
     "Trading Routes": [
       "Big Mushroom Cave",
+      "Paper Trail",
       "Silverbull Headquarters",
-      "Felroc Fields",
-      "Paper Trail"
+      "Felroc Fields"
     ],
     "Location": {
       "start": [-224, -4793],
@@ -2411,11 +2410,11 @@
       "wood": "3600"
     },
     "Trading Routes": [
+      "Road to Time Valley",
       "Tempo Town",
       "Nivla Woods",
-      "Alekin",
-      "Road to Time Valley",
-      "Road to Elkurn"
+      "Road to Elkurn",
+      "Alekin"
     ],
     "Guild": {
       "uuid": "",
@@ -2437,9 +2436,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Mushroom Hill",
       "Lexdale",
-      "Decayed Basin"
+      "Decayed Basin",
+      "Mushroom Hill"
     ],
     "Location": {
       "start": [-598, -5580],
@@ -2461,9 +2460,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Icy Island",
       "Dujgon Nation",
       "Jofash Docks",
+      "Icy Island",
       "Disturbed Crypt"
     ],
     "Location": {
@@ -2533,9 +2532,9 @@
       "wood": "900"
     },
     "Trading Routes": [
+      "Ogre Den",
       "Maiden Tower",
-      "Infested Sinkhole",
-      "Ogre Den"
+      "Infested Sinkhole"
     ],
     "Location": {
       "start": [-2171, -5190],
@@ -2557,9 +2556,9 @@
       "wood": "900"
     },
     "Trading Routes": [
-      "Owl Tribe",
+      "Sunrise Plateau",
       "Ruined Prospect",
-      "Sunrise Plateau"
+      "Owl Tribe"
     ],
     "Guild": {
       "uuid": "",
@@ -2626,8 +2625,8 @@
     },
     "Trading Routes": [
       "Dogun Ritual Site",
-      "Rodoroc",
-      "Lava Lakes"
+      "Lava Lakes",
+      "Rodoroc"
     ],
     "Location": {
       "start": [1383, -5238],
@@ -2649,9 +2648,9 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Lifeless Forest",
       "Jofash Tunnel",
-      "Regular Island"
+      "Regular Island",
+      "Lifeless Forest"
     ],
     "Location": {
       "start": [1178, -4175],
@@ -2673,8 +2672,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Wayward Split",
-      "Perilous Grotto"
+      "Perilous Grotto",
+      "Wayward Split"
     ],
     "Location": {
       "start": [264, -4877],
@@ -2696,9 +2695,9 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Ragni",
       "Emerald Trail",
-      "Ragni Countryside South"
+      "Ragni Countryside South",
+      "Ragni"
     ],
     "Location": {
       "start": [-747, -1530],
@@ -2744,11 +2743,11 @@
     },
     "Trading Routes": [
       "Loamsprout Orc Camp",
-      "Shineridge Orc Camp",
-      "Bucie Waterfall",
       "Goblin Plains West",
       "Goblin Plains East",
-      "Entrance to Bucie"
+      "Entrance to Bucie",
+      "Shineridge Orc Camp",
+      "Bucie Waterfall"
     ],
     "Location": {
       "start": [-1663, -4849],
@@ -2796,10 +2795,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Relos",
-      "Corkus City Mine",
       "Fallen Factory",
-      "Road to Mine"
+      "Road to Mine",
+      "Corkus City Mine",
+      "Relos"
     ],
     "Location": {
       "start": [-1578, -2662],
@@ -2821,10 +2820,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Lizardman Camp",
-      "Goblin Plains West",
       "Meteor Crater",
-      "Forgotten Path"
+      "Goblin Plains West",
+      "Forgotten Path",
+      "Lizardman Camp"
     ],
     "Location": {
       "start": [-1688, -5099],
@@ -2846,10 +2845,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Thesead",
-      "Ranol's Farm",
       "Displaced Housing",
-      "Entrance to Molten Heights"
+      "Ranol's Farm",
+      "Entrance to Molten Heights",
+      "Thesead"
     ],
     "Location": {
       "start": [703, -5374],
@@ -2871,8 +2870,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Burning Airship",
-      "Evergreen Outbreak"
+      "Evergreen Outbreak",
+      "Burning Airship"
     ],
     "Location": {
       "start": [107, -4755],
@@ -2895,8 +2894,8 @@
     },
     "Trading Routes": [
       "Barren Sands",
-      "Ruined Villa",
       "Cascading Oasis",
+      "Ruined Villa",
       "Almuj"
     ],
     "Guild": {
@@ -2966,11 +2965,11 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Roots of Corruption",
-      "Akias Ruins",
-      "Detlas Suburbs",
-      "Corrupted Orchard",
       "Corrupted Road",
+      "Roots of Corruption",
+      "Corrupted Orchard",
+      "Detlas Suburbs",
+      "Akias Ruins",
       "Plains Lake"
     ],
     "Guild": {
@@ -3015,9 +3014,9 @@
       "wood": "0"
     },
     "Trading Routes": [
+      "Almuj",
       "Ternaves Tunnel",
-      "Savannah Plains",
-      "Almuj"
+      "Savannah Plains"
     ],
     "Guild": {
       "uuid": "",
@@ -3039,11 +3038,11 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Orc Lake",
       "Stonecave Orc Camp",
       "Mudspring Orc Camp",
-      "Swamp Mountain Arch",
-      "Meteor Crater"
+      "Orc Lake",
+      "Meteor Crater",
+      "Swamp Mountain Arch"
     ],
     "Location": {
       "start": [-1930, -5099],
@@ -3065,10 +3064,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Santa's Hideout",
       "Dujgon Nation",
-      "Regular Island",
-      "Nodguj Nation"
+      "Nodguj Nation",
+      "Santa's Hideout",
+      "Regular Island"
     ],
     "Location": {
       "start": [1001, -3274],
@@ -3090,10 +3089,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Llevigar Farm",
-      "Shineridge Orc Camp",
       "Harnort Compound",
-      "Entrance to Bucie"
+      "Shineridge Orc Camp",
+      "Entrance to Bucie",
+      "Llevigar Farm"
     ],
     "Location": {
       "start": [-1391, -4664],
@@ -3115,8 +3114,8 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Jitak's Farm",
-      "Gylia Watchtower"
+      "Gylia Watchtower",
+      "Jitak's Farm"
     ],
     "Location": {
       "start": [30, -5447],
@@ -3184,10 +3183,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Pirate Town",
+      "Volcanic Excavation",
       "Tree Island",
       "Lost Atoll",
-      "Volcanic Excavation",
+      "Pirate Town",
       "Light Peninsula"
     ],
     "Location": {
@@ -3210,11 +3209,11 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Lizardman Lake",
-      "Olux",
       "Bloody Trail",
+      "Lizardman Lake",
       "Lizardman Camp",
-      "Shady Shack"
+      "Shady Shack",
+      "Olux"
     ],
     "Location": {
       "start": [-1649, -5246],
@@ -3236,8 +3235,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Path to Light",
-      "Azure Frontier"
+      "Azure Frontier",
+      "Path to Light"
     ],
     "Guild": {
       "uuid": "",
@@ -3352,10 +3351,10 @@
       "wood": "3600"
     },
     "Trading Routes": [
+      "Dodegar's Forge",
       "Collapsed Bridge",
-      "Mantis Nest",
       "The Shiar",
-      "Dodegar's Forge"
+      "Mantis Nest"
     ],
     "Location": {
       "start": [-926, -4700],
@@ -3400,9 +3399,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Dreary Docks",
       "Dujgon Nation",
       "Lifeless Forest",
+      "Dreary Docks",
       "Regular Island"
     ],
     "Guild": {
@@ -3425,10 +3424,10 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Faltach Manor",
       "Path to Cinfras",
-      "Entrance to Cinfras",
-      "Kander Mines"
+      "Faltach Manor",
+      "Kander Mines",
+      "Entrance to Cinfras"
     ],
     "Location": {
       "start": [-834, -5078],
@@ -3450,10 +3449,10 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Mycelial Expanse",
       "Wood Sprite Hideaway",
       "Luxuriant Pond",
-      "Unicorn Trail"
+      "Unicorn Trail",
+      "Mycelial Expanse"
     ],
     "Guild": {
       "uuid": "",
@@ -3475,8 +3474,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Kitrios Barracks",
-      "Thanos"
+      "Thanos",
+      "Kitrios Barracks"
     ],
     "Guild": {
       "uuid": "",
@@ -3499,9 +3498,9 @@
     },
     "Trading Routes": [
       "Path to the Forgery",
+      "Guardian of the Forest",
       "Dodegar's Forge",
-      "Collapsed Bridge",
-      "Guardian of the Forest"
+      "Collapsed Bridge"
     ],
     "Location": {
       "start": [-1014, -4708],
@@ -3547,8 +3546,8 @@
     "Trading Routes": [
       "Nivla Woods",
       "Blooming Boulders",
-      "Nivla Woods Exit",
-      "Arachnid Woods"
+      "Arachnid Woods",
+      "Nivla Woods Exit"
     ],
     "Location": {
       "start": [-175, -1630],
@@ -3570,8 +3569,8 @@
       "wood": "900"
     },
     "Trading Routes": [
-      "Zhight Island",
-      "Southern Outpost"
+      "Southern Outpost",
+      "Zhight Island"
     ],
     "Location": {
       "start": [-1212, -2576],
@@ -3593,8 +3592,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Mining Base Camp",
-      "Abandoned Mines Entrance"
+      "Abandoned Mines Entrance",
+      "Mining Base Camp"
     ],
     "Location": {
       "start": [881, -1225],
@@ -3616,11 +3615,11 @@
       "wood": "3600"
     },
     "Trading Routes": [
+      "Elkurn",
+      "Florist's Hut",
       "Frozen Homestead",
       "Abandoned Lumberyard",
-      "Sanctuary Bridge",
-      "Elkurn",
-      "Florist's Hut"
+      "Sanctuary Bridge"
     ],
     "Guild": {
       "uuid": "",
@@ -3666,8 +3665,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Cherry Blossom Grove",
       "Path to the Dojo",
+      "Cherry Blossom Grove",
       "Entrance to Thesead",
       "Thesead Suburbs"
     ],
@@ -3691,9 +3690,9 @@
       "wood": "0"
     },
     "Trading Routes": [
+      "Road to Mine",
       "Founder's Statue",
-      "Corkus Sea Cove",
-      "Road to Mine"
+      "Corkus Sea Cove"
     ],
     "Location": {
       "start": [-1394, -2750],
@@ -3738,8 +3737,8 @@
     },
     "Trading Routes": [
       "Viscera Pits",
-      "Decayed Basin",
       "Old Crossroads",
+      "Decayed Basin",
       "Heart of Decay"
     ],
     "Location": {
@@ -3762,9 +3761,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Cinfras Outskirts",
-      "Guild Hall",
       "Entrance to Cinfras",
+      "Guild Hall",
+      "Cinfras Outskirts",
       "Aldorei River"
     ],
     "Location": {
@@ -3789,8 +3788,8 @@
     "Trading Routes": [
       "Fallen Factory",
       "Road to Mine",
-      "Corkus Forest",
       "Industrial Clearing",
+      "Corkus Forest",
       "Corkus City"
     ],
     "Guild": {
@@ -3813,9 +3812,9 @@
       "wood": "0"
     },
     "Trading Routes": [
+      "Bear Zoo",
       "Pirate Town",
-      "Legendary Island",
-      "Bear Zoo"
+      "Legendary Island"
     ],
     "Location": {
       "start": [-727, -2846],
@@ -3859,11 +3858,11 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Nesaak Transition",
-      "Frosty Spikes",
       "Bob's Tomb",
+      "Frosty Spikes",
       "Frozen Homestead",
-      "Nesaak"
+      "Nesaak",
+      "Nesaak Transition"
     ],
     "Guild": {
       "uuid": "",
@@ -3909,8 +3908,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Ragni North Entrance",
       "Ragni Main Entrance",
+      "Ragni North Entrance",
       "Ragni South Entrance"
     ],
     "Location": {
@@ -3933,10 +3932,10 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Heavenly Ingress",
-      "Azure Frontier",
       "Luminous Plateau",
-      "Primal Fen"
+      "Heavenly Ingress",
+      "Primal Fen",
+      "Azure Frontier"
     ],
     "Location": {
       "start": [-894, -6010],
@@ -3958,9 +3957,9 @@
       "wood": "0"
     },
     "Trading Routes": [
+      "Mount Wynn Inn",
       "Nemract Cathedral",
       "Rocky Shore",
-      "Mount Wynn Inn",
       "Rooster Island"
     ],
     "Guild": {
@@ -3983,8 +3982,8 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Entrance to Thesead",
       "Cliffside Passage North",
+      "Entrance to Thesead",
       "Workshop Glade"
     ],
     "Location": {
@@ -4007,11 +4006,11 @@
       "wood": "900"
     },
     "Trading Routes": [
-      "Corrupted Road",
-      "Corrupted Tower",
+      "Corrupted Orchard",
       "Nivla Woods Exit",
       "Corrupted Warfront",
-      "Corrupted Orchard"
+      "Corrupted Tower",
+      "Corrupted Road"
     ],
     "Guild": {
       "uuid": "",
@@ -4034,8 +4033,8 @@
     },
     "Trading Routes": [
       "Relos",
-      "Southern Outpost",
-      "Lighthouse Lookout"
+      "Lighthouse Lookout",
+      "Southern Outpost"
     ],
     "Guild": {
       "uuid": "",
@@ -4057,10 +4056,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Workshop Glade",
-      "Thesead",
       "Displaced Housing",
-      "Thesead Underpass"
+      "Workshop Glade",
+      "Thesead Underpass",
+      "Thesead"
     ],
     "Location": {
       "start": [700, -5030],
@@ -4082,10 +4081,10 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Cinfras Outskirts",
-      "Path to Talor",
       "Kander Mines",
-      "Talor Cemetery"
+      "Path to Talor",
+      "Talor Cemetery",
+      "Cinfras Outskirts"
     ],
     "Location": {
       "start": [-723, -5229],
@@ -4108,8 +4107,8 @@
     },
     "Trading Routes": [
       "Mudspring Orc Camp",
-      "Maiden Tower",
       "Ogre Den",
+      "Maiden Tower",
       "Swamp Mountain Arch"
     ],
     "Location": {
@@ -4176,8 +4175,8 @@
       "wood": "7200"
     },
     "Trading Routes": [
-      "Twisted Ridge",
-      "Path to the Penitentiary"
+      "Path to the Penitentiary",
+      "Twisted Ridge"
     ],
     "Location": {
       "start": [-873, -5518],
@@ -4199,8 +4198,8 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Central Islands",
       "Ahmsord Outskirts",
+      "Central Islands",
       "Sky Falls"
     ],
     "Location": {
@@ -4223,8 +4222,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Bloody Beach",
       "Ava's Workshop",
+      "Bloody Beach",
       "Retrofitted Manufactory"
     ],
     "Location": {
@@ -4247,11 +4246,11 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Fading Forest",
-      "Olux Lumberyard",
-      "Olux",
       "Bloody Trail",
-      "Entrance to Olux"
+      "Olux Lumberyard",
+      "Entrance to Olux",
+      "Olux",
+      "Fading Forest"
     ],
     "Location": {
       "start": [-1519, -5291],
@@ -4273,10 +4272,10 @@
       "wood": "0"
     },
     "Trading Routes": [
+      "Sunset Plateau",
       "Ancient Excavation",
       "Almuj Slums",
-      "Eagle Tribe",
-      "Sunset Plateau"
+      "Eagle Tribe"
     ],
     "Guild": {
       "uuid": "",
@@ -4298,9 +4297,9 @@
       "wood": "0"
     },
     "Trading Routes": [
+      "Goblin Plains West",
       "Llevigar Farm",
       "Forgotten Path",
-      "Goblin Plains West",
       "Entrance to Bucie"
     ],
     "Location": {
@@ -4323,10 +4322,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Path to Light",
       "Field of Life",
-      "Nexus of Light",
-      "Otherworldly Monolith"
+      "Path to Light",
+      "Otherworldly Monolith",
+      "Nexus of Light"
     ],
     "Location": {
       "start": [-894, -6164],
@@ -4372,10 +4371,10 @@
       "wood": "900"
     },
     "Trading Routes": [
-      "Maltic Coast",
       "Ragni Countryside North",
-      "Ancient Waterworks",
       "Coastal Trail",
+      "Maltic Coast",
+      "Ancient Waterworks",
       "Farmers Settlement"
     ],
     "Location": {
@@ -4398,9 +4397,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Mesquis Tower",
       "Enchanted River",
       "Entrance to Kander",
+      "Mesquis Tower",
       "Kander Mines"
     ],
     "Location": {
@@ -4425,8 +4424,8 @@
     "Trading Routes": [
       "Witching Road",
       "Forgotten Burrows",
-      "Naga Lake",
-      "Secluded Workshop"
+      "Secluded Workshop",
+      "Naga Lake"
     ],
     "Location": {
       "start": [-2171, -5312],
@@ -4448,9 +4447,9 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Farmers Settlement",
+      "Ragni Main Entrance",
       "Ragni Countryside North",
-      "Ragni Main Entrance"
+      "Farmers Settlement"
     ],
     "Guild": {
       "uuid": "",
@@ -4473,9 +4472,9 @@
     },
     "Trading Routes": [
       "Roots of Corruption",
-      "Corrupted Warfront",
       "Desolate Valley",
-      "Mine Base Plains"
+      "Mine Base Plains",
+      "Corrupted Warfront"
     ],
     "Location": {
       "start": [395, -1365],
@@ -4498,9 +4497,9 @@
     },
     "Trading Routes": [
       "Lava Springs",
+      "Ternaves",
       "Abandoned Mines Entrance",
-      "Essren's Hut",
-      "Ternaves"
+      "Essren's Hut"
     ],
     "Guild": {
       "uuid": "",
@@ -4523,11 +4522,11 @@
     },
     "Trading Routes": [
       "Lizardman Lake",
-      "Overtaken Outpost",
-      "Forgotten Path",
-      "Mangled Lake",
       "Lizardman Camp",
-      "Entrance to Olux"
+      "Entrance to Olux",
+      "Forgotten Path",
+      "Overtaken Outpost",
+      "Mangled Lake"
     ],
     "Location": {
       "start": [-1519, -5134],
@@ -4549,11 +4548,11 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Gelibord",
-      "Gelibord Watermill",
+      "Efilim",
       "Enchanted River",
+      "Gelibord",
       "Caritat Mansion",
-      "Efilim"
+      "Gelibord Watermill"
     ],
     "Location": {
       "start": [-1133, -5116],
@@ -4575,10 +4574,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Mycelial Expanse",
-      "Light Peninsula",
       "Aldorei Valley Outskirts",
-      "Luxuriant Pond"
+      "Luxuriant Pond",
+      "Mycelial Expanse",
+      "Light Peninsula"
     ],
     "Location": {
       "start": [-926, -4550],
@@ -4601,8 +4600,8 @@
     },
     "Trading Routes": [
       "Cinfras",
-      "Path to Cinfras",
       "Chasm Chokepoint",
+      "Path to Cinfras",
       "Mesquis Tower"
     ],
     "Guild": {
@@ -4625,9 +4624,9 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Corrupted Warfront",
       "Corrupted Orchard",
       "Detlas",
+      "Corrupted Warfront",
       "Scorched Trail"
     ],
     "Guild": {
@@ -4650,9 +4649,9 @@
       "wood": "0"
     },
     "Trading Routes": [
+      "Pirate Town",
       "Volcanic Isles",
-      "Tree Island",
-      "Pirate Town"
+      "Tree Island"
     ],
     "Location": {
       "start": [-472, -3590],
@@ -4698,10 +4697,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Bantisu Approach",
-      "Entrance to Thesead",
       "Bandit's Toll",
-      "Thesead Underpass"
+      "Bantisu Approach",
+      "Thesead Underpass",
+      "Entrance to Thesead"
     ],
     "Location": {
       "start": [563, -5079],
@@ -4724,8 +4723,8 @@
     },
     "Trading Routes": [
       "Akias Ruins",
-      "Razed Inn",
       "Corrupted Orchard",
+      "Razed Inn",
       "Ancient Nemract"
     ],
     "Guild": {
@@ -4771,9 +4770,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Waterfall Cave",
       "Cinfras's Small Farm",
-      "Aldorei Cliffside Waterfalls"
+      "Aldorei Cliffside Waterfalls",
+      "Waterfall Cave"
     ],
     "Guild": {
       "uuid": "",
@@ -4795,9 +4794,9 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Inhospitable Mountain",
-      "Molten Passage",
       "Path to Thanos",
+      "Molten Passage",
+      "Inhospitable Mountain",
       "Secluded Ponds"
     ],
     "Guild": {
@@ -4820,9 +4819,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "The Shiar",
       "Path to Light's Secret",
-      "Dodegar's Forge"
+      "Dodegar's Forge",
+      "The Shiar"
     ],
     "Location": {
       "start": [-1014, -4428],
@@ -4844,8 +4843,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Eagle Tribe",
       "Rymek",
+      "Eagle Tribe",
       "Sunset Plateau"
     ],
     "Guild": {
@@ -4868,8 +4867,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Iron Road",
       "Bloody Trail",
+      "Iron Road",
       "Goblin Plains East"
     ],
     "Location": {
@@ -4914,8 +4913,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Black Road",
       "Ternaves Tunnel",
+      "Black Road",
       "Abandoned Mines Entrance"
     ],
     "Location": {
@@ -4938,9 +4937,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Ahmsord Outskirts",
       "Temple Island",
-      "Astraulus' Tower"
+      "Astraulus' Tower",
+      "Ahmsord Outskirts"
     ],
     "Location": {
       "start": [1178, -4754],
@@ -4962,8 +4961,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Krolton's Cave",
-      "Elefolk Stomping Grounds"
+      "Elefolk Stomping Grounds",
+      "Krolton's Cave"
     ],
     "Guild": {
       "uuid": "",
@@ -4985,9 +4984,9 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Final Step",
       "Toxic Drip",
-      "Void Valley"
+      "Void Valley",
+      "Final Step"
     ],
     "Location": {
       "start": [1120, -882],
@@ -5009,10 +5008,10 @@
       "wood": "0"
     },
     "Trading Routes": [
+      "Sablestone Orc Camp",
       "Iron Road",
-      "Goblin Plains East",
       "Llevigar Farm",
-      "Sablestone Orc Camp"
+      "Goblin Plains East"
     ],
     "Location": {
       "start": [-1688, -4962],
@@ -5056,9 +5055,9 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Crater Descent",
       "Freezing Heights",
       "Lava Lakes",
+      "Crater Descent",
       "Molten Reach"
     ],
     "Guild": {
@@ -5083,8 +5082,8 @@
     "Trading Routes": [
       "Apprentice Huts",
       "Temple of Legends",
-      "Herb Cave",
-      "Troms"
+      "Troms",
+      "Herb Cave"
     ],
     "Guild": {
       "uuid": "",
@@ -5154,10 +5153,10 @@
     },
     "Trading Routes": [
       "Trunkstump Goblin Camp",
+      "Stonecave Orc Camp",
       "Sunspark Orc Camp",
       "Sablestone Orc Camp",
-      "Orc Road",
-      "Stonecave Orc Camp"
+      "Orc Road"
     ],
     "Location": {
       "start": [-1933, -4962],
@@ -5179,9 +5178,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Industrial Clearing",
       "Corkus City",
       "Corkus City Crossroads",
+      "Industrial Clearing",
       "Picnic Pond"
     ],
     "Guild": {
@@ -5204,12 +5203,12 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Icy Vigil",
       "Wolves' Den",
-      "Twain Lake",
       "Frozen Homestead",
-      "Icy Descent",
-      "Nesaak"
+      "Nesaak",
+      "Twain Lake",
+      "Icy Vigil",
+      "Icy Descent"
     ],
     "Guild": {
       "uuid": "",
@@ -5231,9 +5230,9 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Corrupted Warfront",
-      "Corrupted River",
       "Corrupted Road",
+      "Corrupted River",
+      "Corrupted Warfront",
       "Plains Lake"
     ],
     "Guild": {
@@ -5256,8 +5255,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Panda Path",
-      "Pine Pillar Forest"
+      "Pine Pillar Forest",
+      "Panda Path"
     ],
     "Guild": {
       "uuid": "",
@@ -5279,8 +5278,8 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Fading Forest",
-      "Gelibord Watermill"
+      "Gelibord Watermill",
+      "Fading Forest"
     ],
     "Location": {
       "start": [-1027, -5470],
@@ -5302,9 +5301,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Cliffhearth Orc Camp",
       "Llevigar Gate",
-      "Meteor Trail"
+      "Cliffhearth Orc Camp"
     ],
     "Location": {
       "start": [-2060, -4746],
@@ -5327,10 +5325,10 @@
     },
     "Trading Routes": [
       "Savannah Plains",
-      "Durum Malt Islet",
-      "Durum Oat Islet",
       "Ancient Nemract",
       "Nemract Cathedral",
+      "Durum Oat Islet",
+      "Durum Malt Islet",
       "Scorched Trail"
     ],
     "Location": {
@@ -5353,8 +5351,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Jungle Entrance",
-      "Icy Vigil"
+      "Icy Vigil",
+      "Jungle Entrance"
     ],
     "Guild": {
       "uuid": "",
@@ -5422,8 +5420,8 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Chasm Overlook",
       "Myconid Descent",
+      "Chasm Overlook",
       "Entrance to Cinfras"
     ],
     "Location": {
@@ -5446,10 +5444,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Loamsprout Orc Camp",
       "Orc Lake",
-      "Goblin Plains West",
-      "Meteor Crater"
+      "Meteor Crater",
+      "Loamsprout Orc Camp",
+      "Goblin Plains West"
     ],
     "Location": {
       "start": [-1800, -4962],
@@ -5471,9 +5469,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Lexdale",
+      "Path to the Penitentiary",
       "Path to Talor",
-      "Path to the Penitentiary"
+      "Lexdale"
     ],
     "Location": {
       "start": [-659, -5424],
@@ -5542,10 +5540,10 @@
       "wood": "0"
     },
     "Trading Routes": [
+      "Weird Clearing",
       "Gylia Research Cabin",
-      "Jitak's Farm",
       "Gylia Watchtower",
-      "Weird Clearing"
+      "Jitak's Farm"
     ],
     "Guild": {
       "uuid": "",
@@ -5567,8 +5565,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Fountain of Youth",
-      "Monte's Village"
+      "Monte's Village",
+      "Fountain of Youth"
     ],
     "Guild": {
       "uuid": "",
@@ -5590,8 +5588,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Gylia Research Cabin",
       "Gylia Fisherman Camp",
+      "Gylia Research Cabin",
       "Gylia Watchtower",
       "Thanos"
     ],
@@ -5640,8 +5638,8 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Sinister Forest",
-      "Forgotten Town"
+      "Forgotten Town",
+      "Sinister Forest"
     ],
     "Location": {
       "start": [813, -333],
@@ -5707,9 +5705,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Iron Road",
       "Sunspark Orc Camp",
-      "Sablestone Orc Camp"
+      "Sablestone Orc Camp",
+      "Iron Road"
     ],
     "Location": {
       "start": [-1800, -5099],
@@ -5731,8 +5729,8 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Swamp Island",
-      "Dragonling Nests"
+      "Dragonling Nests",
+      "Swamp Island"
     ],
     "Location": {
       "start": [1102, -5016],
@@ -5778,10 +5776,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Minotaur Barbecue",
-      "The Forgery",
       "Efilim Crossroads",
-      "Unicorn Trail"
+      "Minotaur Barbecue",
+      "Unicorn Trail",
+      "The Forgery"
     ],
     "Location": {
       "start": [-949, -4942],
@@ -5803,10 +5801,10 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Lizardman Lake",
-      "Castle Dullahan",
       "Olux Lumberyard",
+      "Lizardman Lake",
       "Gelibord Watermill",
+      "Castle Dullahan",
       "Overtaken Outpost"
     ],
     "Location": {
@@ -5829,9 +5827,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
+      "Cinfras's Small Farm",
       "Silverbull Headquarters",
-      "Waterfall Cave",
-      "Cinfras's Small Farm"
+      "Waterfall Cave"
     ],
     "Guild": {
       "uuid": "",
@@ -5853,8 +5851,8 @@
       "wood": "900"
     },
     "Trading Routes": [
-      "Dreary Docks",
-      "Lifeless Forest"
+      "Lifeless Forest",
+      "Dreary Docks"
     ],
     "Guild": {
       "uuid": "",
@@ -5876,11 +5874,11 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Cinfras",
       "Dark Forest Village",
+      "Talor Cemetery",
       "Fungal Grove",
       "Fallen Village",
-      "Talor Cemetery"
+      "Cinfras"
     ],
     "Location": {
       "start": [-392, -5116],
@@ -5902,9 +5900,9 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Jagged Foothills",
+      "Blackstring Den",
       "Nemract",
-      "Blackstring Den"
+      "Jagged Foothills"
     ],
     "Guild": {
       "uuid": "",
@@ -5926,8 +5924,8 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Barren Sands",
       "Eagle Tribe",
+      "Barren Sands",
       "Ruined Villa"
     ],
     "Guild": {
@@ -5950,11 +5948,11 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Elefolk Stomping Grounds",
+      "Canyon Dropoff",
       "Housing Crisis",
       "Protector's Pathway",
-      "Troll Tower",
-      "Canyon Dropoff"
+      "Elefolk Stomping Grounds",
+      "Troll Tower"
     ],
     "Guild": {
       "uuid": "",
@@ -5977,9 +5975,9 @@
     },
     "Trading Routes": [
       "Trunkstump Goblin Camp",
+      "Brigand Outpost",
       "Mudspring Orc Camp",
       "Orc Lake",
-      "Brigand Outpost",
       "Sunspark Orc Camp"
     ],
     "Location": {
@@ -6024,9 +6022,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Tempo Town",
       "Little Wood",
       "Abandoned Farm",
+      "Tempo Town",
       "Sanctuary Bridge"
     ],
     "Location": {
@@ -6074,8 +6072,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Burning Farm",
-      "Pine Pillar Forest"
+      "Pine Pillar Forest",
+      "Burning Farm"
     ],
     "Guild": {
       "uuid": "",
@@ -6097,9 +6095,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
+      "Alekin",
       "Nivla Woods Exit",
       "Nomads' Refuge",
-      "Alekin",
       "Webbed Fracture"
     ],
     "Guild": {
@@ -6122,10 +6120,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Kitrios Barracks",
-      "Gert Camp",
       "Cosmic Fissures",
-      "Gylia Lakehouse"
+      "Gylia Lakehouse",
+      "Kitrios Barracks",
+      "Gert Camp"
     ],
     "Guild": {
       "uuid": "",
@@ -6170,8 +6168,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Thanos Underpass",
       "Colourful Mountaintop",
+      "Thanos Underpass",
       "Upper Thanos"
     ],
     "Guild": {
@@ -6195,8 +6193,8 @@
     },
     "Trading Routes": [
       "Molten Passage",
-      "Bandit's Toll",
-      "Wizard's Warning"
+      "Wizard's Warning",
+      "Bandit's Toll"
     ],
     "Location": {
       "start": [271, -5165],
@@ -6218,9 +6216,9 @@
       "wood": "0"
     },
     "Trading Routes": [
+      "Abandoned Mines Entrance",
       "Abandoned Mines",
       "Abandoned Pass",
-      "Abandoned Mines Entrance",
       "Mine Base Plains"
     ],
     "Guild": {
@@ -6244,9 +6242,9 @@
     },
     "Trading Routes": [
       "Volcanic Isles",
-      "Light Peninsula",
+      "Bloody Beach",
       "Entrance to Gavel",
-      "Bloody Beach"
+      "Light Peninsula"
     ],
     "Guild": {
       "uuid": "",
@@ -6268,10 +6266,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "The Hive",
-      "Canyon High Path",
       "Illuminant Path",
+      "The Hive",
       "Displaced Housing",
+      "Canyon High Path",
       "Cherry Blossom Grove"
     ],
     "Location": {
@@ -6294,8 +6292,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Mudspring Orc Camp",
       "Brigand Outpost",
+      "Mudspring Orc Camp",
       "Ogre Den"
     ],
     "Location": {
@@ -6318,9 +6316,9 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Corkus Sea Cove",
       "Corkus City Crossroads",
-      "Corkus City Mine"
+      "Corkus City Mine",
+      "Corkus Sea Cove"
     ],
     "Guild": {
       "uuid": "",
@@ -6342,9 +6340,9 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Karoc Quarry",
       "Entrance to Gavel",
-      "Llevigar Gate"
+      "Llevigar Gate",
+      "Karoc Quarry"
     ],
     "Location": {
       "start": [-1800, -4643],
@@ -6390,9 +6388,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Mantis Nest",
+      "Chasm Chokepoint",
       "Collapsed Bridge",
-      "Chasm Chokepoint"
+      "Mantis Nest"
     ],
     "Location": {
       "start": [-738, -4708],
@@ -6505,8 +6503,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Parasitic Slime Mine",
-      "Cyclospordial Hazard"
+      "Cyclospordial Hazard",
+      "Parasitic Slime Mine"
     ],
     "Guild": {
       "uuid": "",
@@ -6528,10 +6526,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Mine Base Plains",
       "Black Road",
-      "Abandoned Pass",
       "Mining Base Camp",
+      "Mine Base Plains",
+      "Abandoned Pass",
       "Ternaves"
     ],
     "Guild": {
@@ -6598,9 +6596,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Avos Territory",
+      "Corkus City",
       "Corkus Forest",
-      "Corkus City"
+      "Avos Territory"
     ],
     "Guild": {
       "uuid": "",
@@ -6622,8 +6620,8 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Lutho",
-      "Forest of Eyes"
+      "Forest of Eyes",
+      "Lutho"
     ],
     "Location": {
       "start": [815, -506],
@@ -6646,10 +6644,10 @@
     },
     "Trading Routes": [
       "Maiden Tower",
-      "Path to the Grootslangs",
       "Infested Sinkhole",
+      "Shady Shack",
       "Naga Lake",
-      "Shady Shack"
+      "Path to the Grootslangs"
     ],
     "Location": {
       "start": [-1955, -5311],
@@ -6672,8 +6670,8 @@
     },
     "Trading Routes": [
       "Pigmen Ravines",
-      "Ragni",
-      "Sulphuric Hollow"
+      "Sulphuric Hollow",
+      "Ragni"
     ],
     "Guild": {
       "uuid": "",
@@ -6695,8 +6693,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Founder's Statue",
       "Retrofitted Manufactory",
+      "Founder's Statue",
       "Bloody Beach"
     ],
     "Location": {
@@ -6719,10 +6717,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Jagged Foothills",
+      "Coastal Trail",
       "Maltic",
-      "Ancient Waterworks",
-      "Coastal Trail"
+      "Jagged Foothills",
+      "Ancient Waterworks"
     ],
     "Location": {
       "start": [-564, -2059],
@@ -6744,10 +6742,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Loamsprout Orc Camp",
       "Karoc Quarry",
-      "Llevigar Farm",
-      "Bucie Waterfall"
+      "Bucie Waterfall",
+      "Loamsprout Orc Camp",
+      "Llevigar Farm"
     ],
     "Location": {
       "start": [-1776, -4664],
@@ -6791,8 +6789,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Corrupted Tower",
-      "Mount Wynn Inn"
+      "Mount Wynn Inn",
+      "Corrupted Tower"
     ],
     "Guild": {
       "uuid": "",
@@ -6814,10 +6812,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Corkus Sea Cove",
       "Fallen Factory",
       "Ruined Houses",
-      "Balloon Airbase"
+      "Balloon Airbase",
+      "Corkus Sea Cove"
     ],
     "Guild": {
       "uuid": "",
@@ -6839,8 +6837,8 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Path to the Forgery",
       "Efilim",
+      "Path to the Forgery",
       "Guardian of the Forest"
     ],
     "Location": {
@@ -6863,12 +6861,12 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Viscera Pits",
-      "Dark Forest Village",
       "Entrance to Kander",
-      "Old Crossroads",
+      "Dark Forest Village",
       "Talor Cemetery",
-      "Kander Mines"
+      "Old Crossroads",
+      "Kander Mines",
+      "Viscera Pits"
     ],
     "Location": {
       "start": [-653, -5231],
@@ -6890,9 +6888,9 @@
       "wood": "900"
     },
     "Trading Routes": [
+      "Overtaken Outpost",
       "Mangled Lake",
-      "Twisted Housing",
-      "Overtaken Outpost"
+      "Twisted Housing"
     ],
     "Location": {
       "start": [-1237, -5116],
@@ -6914,11 +6912,11 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Cathedral Harbour",
-      "Detlas Suburbs",
       "Corrupted Orchard",
+      "Detlas Suburbs",
       "Detlas",
-      "Ancient Nemract"
+      "Ancient Nemract",
+      "Cathedral Harbour"
     ],
     "Guild": {
       "uuid": "",
@@ -6963,10 +6961,10 @@
       "wood": "3600"
     },
     "Trading Routes": [
+      "Guardian of the Forest",
       "Path to Light's Secret",
-      "Road to Light Forest",
       "Dodegar's Forge",
-      "Guardian of the Forest"
+      "Road to Light Forest"
     ],
     "Location": {
       "start": [-1040, -4706],
@@ -6988,8 +6986,8 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Path to Cinfras",
-      "Path to the Forgery"
+      "Path to the Forgery",
+      "Path to Cinfras"
     ],
     "Location": {
       "start": [-926, -4842],
@@ -7081,11 +7079,11 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Aldorei Springs",
       "Aldorei Valley Outskirts",
-      "Chasm Overlook",
       "Myconid Descent",
-      "Mycelial Expanse"
+      "Mycelial Expanse",
+      "Chasm Overlook",
+      "Aldorei Springs"
     ],
     "Location": {
       "start": [-736, -4559],
@@ -7176,9 +7174,9 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Retrofitted Manufactory",
+      "Picnic Pond",
       "Overrun Docks",
-      "Picnic Pond"
+      "Retrofitted Manufactory"
     ],
     "Guild": {
       "uuid": "",
@@ -7223,9 +7221,9 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Bandit Cave",
       "Burning Farm",
-      "Secluded Ponds"
+      "Secluded Ponds",
+      "Bandit Cave"
     ],
     "Location": {
       "start": [35, -4859],
@@ -7247,10 +7245,10 @@
       "wood": "900"
     },
     "Trading Routes": [
+      "Volcanic Excavation",
       "Avos Temple",
-      "Pirate Town",
       "Corkus Outskirts",
-      "Volcanic Excavation"
+      "Pirate Town"
     ],
     "Location": {
       "start": [-1376, -3225],
@@ -7272,10 +7270,10 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Akias Ruins",
       "Alekin",
-      "Road to Elkurn",
       "Arachnid Woods",
+      "Road to Elkurn",
+      "Akias Ruins",
       "Nested Cliffside"
     ],
     "Guild": {
@@ -7298,10 +7296,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Corrupted River",
+      "Florist's Hut",
       "Desolate Valley",
       "Elkurn",
-      "Florist's Hut"
+      "Corrupted River"
     ],
     "Location": {
       "start": [330, -1040],
@@ -7347,10 +7345,10 @@
       "wood": "3600"
     },
     "Trading Routes": [
+      "The Shiar",
       "Volcanic Isles",
-      "Tree Island",
       "Volcanic Excavation",
-      "The Shiar"
+      "Tree Island"
     ],
     "Location": {
       "start": [-951, -4421],
@@ -7397,10 +7395,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Llevigar Farm",
-      "Shineridge Orc Camp",
       "Orc Road",
-      "Sablestone Orc Camp"
+      "Sablestone Orc Camp",
+      "Llevigar Farm",
+      "Shineridge Orc Camp"
     ],
     "Location": {
       "start": [-1800, -4852],
@@ -7423,8 +7421,8 @@
     },
     "Trading Routes": [
       "Blooming Boulders",
-      "Time Valley",
       "Elkurn",
+      "Time Valley",
       "Road to Elkurn"
     ],
     "Guild": {
@@ -7492,8 +7490,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Gylia Lakehouse",
       "Mushroom Hill",
+      "Gylia Lakehouse",
       "Gert Camp"
     ],
     "Location": {
@@ -7586,9 +7584,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Centerworld Fortress",
-      "Goblin Plains East",
       "Llevigar Farm",
+      "Goblin Plains East",
+      "Centerworld Fortress",
       "Bucie Waterfall"
     ],
     "Location": {
@@ -7657,8 +7655,8 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Troms",
-      "Troms Lake"
+      "Troms Lake",
+      "Troms"
     ],
     "Location": {
       "start": [-631, -973],
@@ -7703,10 +7701,10 @@
     },
     "Trading Routes": [
       "Wolves' Den",
-      "Bob's Tomb",
-      "Florist's Hut",
       "Frigid Crossroads",
-      "Frozen Homestead"
+      "Florist's Hut",
+      "Frozen Homestead",
+      "Bob's Tomb"
     ],
     "Guild": {
       "uuid": "",
@@ -7752,9 +7750,9 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Orc Battlegrounds",
+      "Entrance to Bucie",
       "Road to Light Forest",
-      "Entrance to Bucie"
+      "Orc Battlegrounds"
     ],
     "Location": {
       "start": [-1403, -4869],
@@ -7825,9 +7823,9 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Relos",
       "Fallen Factory",
-      "Industrial Clearing"
+      "Industrial Clearing",
+      "Relos"
     ],
     "Location": {
       "start": [-1684, -2569],
@@ -7849,8 +7847,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Entrance to Nivla Woods",
       "Ragni Main Entrance",
+      "Entrance to Nivla Woods",
       "Farmers Settlement"
     ],
     "Location": {
@@ -7896,9 +7894,9 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Raiders' Stronghold",
       "Central Islands",
       "Sky Falls",
+      "Raiders' Stronghold",
       "Jofash Tunnel",
       "Ahmsord"
     ],
@@ -7949,7 +7947,7 @@
     ],
     "Location": {
       "start": [719, -4778],
-      "end": [885, -4900]
+      "end": [885, -4915]
     },
     "Guild": {
       "uuid": "",
@@ -7968,9 +7966,9 @@
     },
     "Trading Routes": [
       "Dujgon Nation",
-      "Skien's Island",
+      "Disturbed Crypt",
       "Derelict Mansion",
-      "Disturbed Crypt"
+      "Skien's Island"
     ],
     "Guild": {
       "uuid": "",
@@ -8040,9 +8038,9 @@
       "wood": "900"
     },
     "Trading Routes": [
-      "Heavenly Ingress",
       "Wood Sprite Hideaway",
-      "Luxuriant Pond"
+      "Luxuriant Pond",
+      "Heavenly Ingress"
     ],
     "Guild": {
       "uuid": "",
@@ -8111,10 +8109,10 @@
       "wood": "0"
     },
     "Trading Routes": [
+      "Corkus City Crossroads",
       "Fallen Factory",
       "Corkus Forest",
-      "Ruined Houses",
-      "Corkus City Crossroads"
+      "Ruined Houses"
     ],
     "Guild": {
       "uuid": "",
@@ -8136,8 +8134,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Zhight Island",
-      "Rooster Island"
+      "Rooster Island",
+      "Zhight Island"
     ],
     "Guild": {
       "uuid": "",
@@ -8159,9 +8157,9 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Jofash Docks",
+      "Disturbed Crypt",
       "Derelict Mansion",
-      "Disturbed Crypt"
+      "Jofash Docks"
     ],
     "Guild": {
       "uuid": "",
@@ -8184,8 +8182,8 @@
     },
     "Trading Routes": [
       "Path to the Dojo",
-      "Ranol's Farm",
-      "Displaced Housing"
+      "Displaced Housing",
+      "Ranol's Farm"
     ],
     "Location": {
       "start": [699, -5378],
@@ -8207,8 +8205,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Krolton's Cave",
-      "Bandit's Toll"
+      "Bandit's Toll",
+      "Krolton's Cave"
     ],
     "Location": {
       "start": [438, -5037],
@@ -8232,8 +8230,8 @@
     "Trading Routes": [
       "Featherfall Cliffs",
       "Elefolk Stomping Grounds",
-      "Kandon-Beda",
-      "Elephelk Trail"
+      "Elephelk Trail",
+      "Kandon-Beda"
     ],
     "Guild": {
       "uuid": "",
@@ -8278,11 +8276,11 @@
       "wood": "3600"
     },
     "Trading Routes": [
+      "Ahmsord",
       "Temple Island",
-      "Wybel Island",
-      "Sky Island Ascent",
       "Ahmsord Outskirts",
-      "Ahmsord"
+      "Wybel Island",
+      "Sky Island Ascent"
     ],
     "Location": {
       "start": [1250, -4718],
@@ -8328,9 +8326,9 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Fleris Cranny",
+      "Wayward Split",
       "Harpy's Haunt North",
-      "Wayward Split"
+      "Fleris Cranny"
     ],
     "Guild": {
       "uuid": "",
@@ -8352,8 +8350,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Colourful Mountaintop",
       "Kitrios Armory",
+      "Colourful Mountaintop",
       "Gylia Watchtower"
     ],
     "Guild": {
@@ -8376,8 +8374,8 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Lusuco",
       "Tower of Ascension",
+      "Lusuco",
       "Frigid Crossroads"
     ],
     "Location": {
@@ -8400,8 +8398,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Parasitic Slime Mine",
       "Cyclospordial Hazard",
+      "Parasitic Slime Mine",
       "Wayward Split"
     ],
     "Guild": {
@@ -8473,8 +8471,8 @@
     },
     "Trading Routes": [
       "Owl Tribe",
-      "Almuj Slums",
-      "Ruined Villa"
+      "Ruined Villa",
+      "Almuj Slums"
     ],
     "Guild": {
       "uuid": "",
@@ -8519,10 +8517,10 @@
       "wood": "0"
     },
     "Trading Routes": [
+      "Elkurn",
       "Roots of Corruption",
-      "Desolate Valley",
       "Nesaak Transition",
-      "Elkurn"
+      "Desolate Valley"
     ],
     "Guild": {
       "uuid": "",
@@ -8544,9 +8542,9 @@
       "wood": "0"
     },
     "Trading Routes": [
+      "Lizardman Lake",
       "Olux Lumberyard",
       "Entrance to Olux",
-      "Lizardman Lake",
       "Path to the Grootslangs"
     ],
     "Location": {
@@ -8569,9 +8567,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
+      "Enchanted River",
       "Gelibord Watermill",
       "Twisted Housing",
-      "Enchanted River",
       "Entrance to Kander"
     ],
     "Location": {
@@ -8617,9 +8615,9 @@
       "wood": "0"
     },
     "Trading Routes": [
+      "Katoa Ranch",
       "Riverbank Knoll",
-      "Ragni",
-      "Katoa Ranch"
+      "Ragni"
     ],
     "Location": {
       "start": [-944, -1761],
@@ -8641,9 +8639,9 @@
       "wood": "0"
     },
     "Trading Routes": [
+      "Cherry Blossom Grove",
       "Thesead Suburbs",
-      "Eltom",
-      "Cherry Blossom Grove"
+      "Eltom"
     ],
     "Location": {
       "start": [810, -5551],
@@ -8737,9 +8735,9 @@
     },
     "Trading Routes": [
       "Entrance to Nivla Woods",
-      "Blooming Boulders",
+      "Road to Time Valley",
       "Alekin",
-      "Road to Time Valley"
+      "Blooming Boulders"
     ],
     "Location": {
       "start": [-325, -1624],
@@ -8783,8 +8781,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Ruined Prospect",
-      "Sunrise Plateau"
+      "Sunrise Plateau",
+      "Ruined Prospect"
     ],
     "Guild": {
       "uuid": "",
@@ -8806,9 +8804,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Collapsed Emerald Mine",
       "Meteor Trail",
-      "Stonecave Orc Camp"
+      "Stonecave Orc Camp",
+      "Collapsed Emerald Mine"
     ],
     "Location": {
       "start": [-2060, -4912],
@@ -8830,10 +8828,10 @@
       "wood": "0"
     },
     "Trading Routes": [
+      "Gloopy Cave",
       "Ancient Excavation",
       "Almuj",
       "Almuj Slums",
-      "Gloopy Cave",
       "Accursed Dunes"
     ],
     "Guild": {
@@ -8856,8 +8854,8 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Maltic Coast",
       "Ragni Countryside North",
+      "Maltic Coast",
       "Maltic"
     ],
     "Location": {
@@ -8880,11 +8878,11 @@
       "wood": "0"
     },
     "Trading Routes": [
+      "Thanos Exit",
       "Bandit's Toll",
-      "The Hive",
       "Canyon High Path",
-      "Path to the Dojo",
-      "Thanos Exit"
+      "The Hive",
+      "Path to the Dojo"
     ],
     "Location": {
       "start": [347, -5313],
@@ -8906,10 +8904,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Tempo Town",
-      "Frosty Spikes",
-      "Corrupted Road",
       "Road to Elkurn",
+      "Corrupted Road",
+      "Frosty Spikes",
+      "Tempo Town",
       "Nesaak Transition",
       "Corrupted River"
     ],
@@ -8955,9 +8953,9 @@
       "wood": "0"
     },
     "Trading Routes": [
+      "Unicorn Trail",
       "Mycelial Expanse",
-      "Chasm Overlook",
-      "Unicorn Trail"
+      "Chasm Overlook"
     ],
     "Location": {
       "start": [-834, -4839],
@@ -8980,9 +8978,9 @@
     },
     "Trading Routes": [
       "Corkus City",
-      "Avos Temple",
       "Avos Territory",
-      "Corkus Outskirts"
+      "Corkus Outskirts",
+      "Avos Temple"
     ],
     "Guild": {
       "uuid": "",
@@ -9029,9 +9027,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
+      "Jungle Entrance",
       "Apprentice Huts",
-      "Entamis Village",
-      "Jungle Entrance"
+      "Entamis Village"
     ],
     "Guild": {
       "uuid": "",
@@ -9053,8 +9051,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Cliffside Passage North",
-      "Elephelk Trail"
+      "Elephelk Trail",
+      "Cliffside Passage North"
     ],
     "Guild": {
       "uuid": "",
@@ -9076,8 +9074,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Corkus Outskirts",
-      "Corkus City Mine"
+      "Corkus City Mine",
+      "Corkus Outskirts"
     ],
     "Guild": {
       "uuid": "",
@@ -9099,8 +9097,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Illuminant Path",
-      "Path to the Dojo"
+      "Path to the Dojo",
+      "Illuminant Path"
     ],
     "Location": {
       "start": [381, -5413],
@@ -9122,11 +9120,11 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Dreary Docks",
-      "Icy Island",
+      "Nodguj Nation",
       "Disturbed Crypt",
-      "Regular Island",
-      "Nodguj Nation"
+      "Icy Island",
+      "Dreary Docks",
+      "Regular Island"
     ],
     "Location": {
       "start": [1000, -3550],
@@ -9148,10 +9146,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Winding Waters",
+      "Troll Tower",
       "Panda Kingdom",
       "Turncoat Turnabout",
-      "Troll Tower"
+      "Winding Waters"
     ],
     "Guild": {
       "uuid": "",
@@ -9173,9 +9171,9 @@
       "wood": "0"
     },
     "Trading Routes": [
+      "Frozen Fort",
       "Wybel Island",
-      "Sky Island Ascent",
-      "Frozen Fort"
+      "Sky Island Ascent"
     ],
     "Location": {
       "start": [1380, -4458],
@@ -9220,11 +9218,11 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Almuj Slums",
       "Gloopy Cave",
+      "Ruined Villa",
+      "Almuj Slums",
       "Entrance to Almuj",
-      "Dusty Pit",
-      "Ruined Villa"
+      "Dusty Pit"
     ],
     "Guild": {
       "uuid": "",
@@ -9271,8 +9269,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Toxic Caves",
       "Paths of Sludge",
+      "Toxic Caves",
       "Gateway to Nothing"
     ],
     "Location": {
@@ -9295,9 +9293,9 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Wanderer's Way",
       "Illuminant Path",
-      "Path to the Dojo"
+      "Path to the Dojo",
+      "Wanderer's Way"
     ],
     "Location": {
       "start": [562, -5313],
@@ -9319,9 +9317,9 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Accursed Dunes",
       "Sunrise Plateau",
-      "Owl Tribe"
+      "Owl Tribe",
+      "Accursed Dunes"
     ],
     "Guild": {
       "uuid": "",
@@ -9440,10 +9438,10 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Nivla Woods",
-      "Road to Time Valley",
       "Emerald Trail",
-      "Nomads' Refuge"
+      "Nomads' Refuge",
+      "Road to Time Valley",
+      "Nivla Woods"
     ],
     "Guild": {
       "uuid": "",
@@ -9465,8 +9463,8 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Aerial Descent",
       "Sky Castle",
+      "Aerial Descent",
       "Ahmsord"
     ],
     "Guild": {
@@ -9537,8 +9535,8 @@
     },
     "Trading Routes": [
       "Krolton's Cave",
-      "Bantisu Air Temple",
-      "Workshop Glade"
+      "Workshop Glade",
+      "Bantisu Air Temple"
     ],
     "Location": {
       "start": [445, -4972],
@@ -9560,10 +9558,10 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Fallen Village",
-      "Gylia Lakehouse",
+      "Fungal Grove",
       "Mushroom Hill",
-      "Fungal Grove"
+      "Fallen Village",
+      "Gylia Lakehouse"
     ],
     "Location": {
       "start": [-288, -5409],
@@ -9585,10 +9583,10 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Faltach Manor",
       "Gelibord",
-      "Path to Talor",
       "Path to the Penitentiary",
+      "Faltach Manor",
+      "Path to Talor",
       "Twisted Ridge"
     ],
     "Location": {
@@ -9633,11 +9631,11 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Nested Cliffside",
       "Nemract",
-      "Blackstring Den",
+      "Nested Cliffside",
       "Razed Inn",
       "Ancient Nemract",
+      "Blackstring Den",
       "Nemract Cathedral"
     ],
     "Guild": {
@@ -9683,9 +9681,9 @@
       "wood": "0"
     },
     "Trading Routes": [
+      "Efilim Crossroads",
       "Minotaur Barbecue",
-      "Twisted Housing",
-      "Efilim Crossroads"
+      "Twisted Housing"
     ],
     "Location": {
       "start": [-1134, -5078],
@@ -9707,8 +9705,8 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Frosty Spikes",
-      "Frozen Homestead"
+      "Frozen Homestead",
+      "Frosty Spikes"
     ],
     "Guild": {
       "uuid": "",
@@ -9731,9 +9729,9 @@
     },
     "Trading Routes": [
       "Nemract",
-      "Cathedral Harbour",
       "Mount Wynn Inn",
-      "Ancient Nemract"
+      "Ancient Nemract",
+      "Cathedral Harbour"
     ],
     "Location": {
       "start": [385, -2180],
@@ -9756,9 +9754,9 @@
     },
     "Trading Routes": [
       "Riverbank Knoll",
-      "Maltic",
+      "Ragni Countryside South",
       "Coastal Trail",
-      "Ragni Countryside South"
+      "Maltic"
     ],
     "Guild": {
       "uuid": "",
@@ -9780,11 +9778,11 @@
       "wood": "3600"
     },
     "Trading Routes": [
+      "Path to Talor",
       "Dark Forest Village",
-      "Fungal Grove",
       "Old Crossroads",
-      "Cinfras Outskirts",
-      "Path to Talor"
+      "Fungal Grove",
+      "Cinfras Outskirts"
     ],
     "Location": {
       "start": [-648, -5311],
@@ -9806,8 +9804,8 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Time Valley",
-      "Sulphuric Hollow"
+      "Sulphuric Hollow",
+      "Time Valley"
     ],
     "Location": {
       "start": [-812, -1177],
@@ -9924,8 +9922,8 @@
     },
     "Trading Routes": [
       "Fort Torann",
-      "The Frog Bog",
       "Royal Dam",
+      "The Frog Bog",
       "Espren",
       "The Lumbermill"
     ],
@@ -9996,9 +9994,9 @@
     },
     "Trading Routes": [
       "Forts in Fall",
-      "The Lumbermill",
       "Festival Grounds",
-      "Agricultural Sector"
+      "Agricultural Sector",
+      "The Lumbermill"
     ],
     "Location": {
       "start": [-2154, -1134],
@@ -10044,9 +10042,9 @@
       "wood": "0"
     },
     "Trading Routes": [
+      "University Campus",
       "Residence Sector",
       "Industrial Sector",
-      "University Campus",
       "Deforested Ecotone"
     ],
     "Location": {
@@ -10069,8 +10067,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Agricultural Sector",
-      "Timasca"
+      "Timasca",
+      "Agricultural Sector"
     ],
     "Location": {
       "start": [-1976, -917],
@@ -10094,8 +10092,8 @@
     "Trading Routes": [
       "Espren",
       "Residence Sector",
-      "Industrial Sector",
-      "Water Processing Sector"
+      "Water Processing Sector",
+      "Industrial Sector"
     ],
     "Location": {
       "start": [-2291, -934],
@@ -10117,8 +10115,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Agricultural Sector",
-      "Industrial Sector"
+      "Industrial Sector",
+      "Agricultural Sector"
     ],
     "Location": {
       "start": [-2291, -768],
@@ -10140,8 +10138,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Agricultural Sector",
       "Timasca",
+      "Agricultural Sector",
       "Water Processing Sector"
     ],
     "Location": {
@@ -10164,8 +10162,8 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Alder Understory",
-      "Verdant Grove"
+      "Verdant Grove",
+      "Alder Understory"
     ],
     "Location": {
       "start": [-1471, -948],
@@ -10187,9 +10185,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Highlands Gate",
       "Fort Tericen",
       "Aldwell",
+      "Highlands Gate",
       "Fort Hegea"
     ],
     "Location": {
@@ -10212,10 +10210,10 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Highlands Gate",
-      "Aldwell",
       "Contested District",
-      "Deforested Ecotone"
+      "Aldwell",
+      "Deforested Ecotone",
+      "Highlands Gate"
     ],
     "Location": {
       "start": [-1471, -803],
@@ -10237,10 +10235,10 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Alder Understory",
-      "Verdant Grove",
+      "Deforested Ecotone",
       "Fort Hegea",
-      "Deforested Ecotone"
+      "Alder Understory",
+      "Verdant Grove"
     ],
     "Location": {
       "start": [-1356, -791],
@@ -10310,8 +10308,8 @@
     },
     "Trading Routes": [
       "Lake Gitephe",
-      "Fort Tericen",
-      "Gates to Aelumia"
+      "Gates to Aelumia",
+      "Fort Tericen"
     ],
     "Location": {
       "start": [-1612, -1109],
@@ -10334,8 +10332,8 @@
     },
     "Trading Routes": [
       "Royal Dam",
-      "Hyloch",
-      "Citadel's Shadow"
+      "Citadel's Shadow",
+      "Hyloch"
     ],
     "Location": {
       "start": [-1612, -1437],
@@ -10358,8 +10356,8 @@
     },
     "Trading Routes": [
       "Lake Gitephe",
-      "Lake Rieke",
-      "Fort Tericen"
+      "Fort Tericen",
+      "Lake Rieke"
     ],
     "Location": {
       "start": [-1456, -1334],
@@ -10381,9 +10379,9 @@
       "wood": "3600"
     },
     "Trading Routes": [
-      "Hyloch",
       "Alder Understory",
       "Citadel's Shadow",
+      "Hyloch",
       "Lake Rieke",
       "Feuding Houses"
     ],
@@ -10407,9 +10405,9 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Fort Tericen",
       "Hyloch",
-      "Frosty Outpost"
+      "Frosty Outpost",
+      "Fort Tericen"
     ],
     "Location": {
       "start": [-1281, -1460],
@@ -10501,8 +10499,8 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Citadel's Shadow",
       "Royal Barracks",
+      "Citadel's Shadow",
       "Contested District"
     ],
     "Location": {
@@ -10525,9 +10523,9 @@
       "wood": "0"
     },
     "Trading Routes": [
-      "Gates to Aelumia",
+      "Verdant Grove",
       "University Campus",
-      "Verdant Grove"
+      "Gates to Aelumia"
     ],
     "Location": {
       "start": [-1624, -834],
@@ -10550,8 +10548,8 @@
     },
     "Trading Routes": [
       "Timasca",
-      "Royal Barracks",
-      "Contested District"
+      "Contested District",
+      "Royal Barracks"
     ],
     "Location": {
       "start": [-1780, -834],

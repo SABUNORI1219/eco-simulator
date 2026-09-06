@@ -11,8 +11,12 @@ eco-simulator/
 ├── script.js           # UIと状態管理（eco-logic.jsをimportして使う）
 ├── eco-logic.js        # DOM非依存の純粋ロジック（定数・Treasury/生産/守備ステータス計算・BFSグラフ探索）
 ├── phase-worker.js     # Liveモードのグローバル転送位相f探索をメインスレッドから切り離すWeb Worker
-├── territories.json    # 全437領地のデータ（Location, Trading Routes, resources）
+├── territories.json    # 全437領地のデータ（Location, Trading Routes, resources）。APIから再生成した
+│                       # ものであり手で編集しないこと（詳細は「Trading Route探索アルゴリズム」参照）
 ├── territory-ids.json  # 共有リンク用の固定領地ID配列（末尾追記のみ・詳細は下記警告参照）
+├── scripts/            # territories.json保守用のNodeスクリプト（regen-territories.mjs/verify-territories.mjs）
+├── eco-logic.test.js               # eco-logic.jsの単体テスト（node --testで実行）
+├── eco-logic.trade-route.test.js   # Trading Route探索アルゴリズムの単体・回帰テスト（node --testで実行）
 ├── dev-server.py       # ローカル開発用サーバー（キャッシュ無効化ヘッダー付与。詳細は「起動方法」参照）
 ├── main-map.webp       # マップ画像（4608×6644px）※手動配置が必要
 ├── assets/icons/others/disconnected.png  # 非接続❌アイコン（16px四方）※手動配置が必要
@@ -98,7 +102,8 @@ python dev-server.py 8080
 | `listSelectedTerritories` | `Set` | Managerリストで選択された登録済み領地（一括編集用） |
 | `tributeValues` | `{}` | 外部資源流入/流出量 `{ emeralds, ore, crops, fish, wood }` |
 | `treasuryLevel` | `string` | Guild Treasuryレベル（Very Low〜Very High） |
-| `_hqPathCache` | `{}|null` | HQからの距離と経路のキャッシュ（refreshUI時に無効化） |
+| `_hqPathCache` | `{}|null` | HQからの距離と経路のキャッシュ（refreshUI時に無効化）。`tradeRouteStyle`も間接的にキャッシュキーに含まれる（`setTradeRouteStyle()`が変更時に必ず`refreshUI()`を呼ぶため） |
+| `tradeRouteStyle` | `string` | Trading Route探索のスタイル（`'cheapest'\|'fastest'`）。全領地一括の1つの値（領地ごとの個別設定は未実装）。Share Linkに含まれる（`#p=`v6で追加） |
 | `_fullDistCache` | `{}|null` | HQからの距離を全437領地対象でBFSした結果のキャッシュ（refreshUI時に無効化） |
 | `currentModalMode` | `string` | `'single'` または `'bulk'` |
 | `currentBulkTerritories` | `[]` | 一括編集対象の領地名配列 |
@@ -141,7 +146,8 @@ python dev-server.py 8080
 | `calcTerritoryConsumption(name)` | Defense + ボーナスコストの合計 |
 | `calcOverallBalance()` | 全領地の生産/消費合計（Tribute含まず） |
 | `calcTerritoryDefenseStats(name)` | HP・DPS・Rating等の防衛スタッツ計算 |
-| `getHQPaths()` | HQからの距離＋最短経路を返す（登録済み領地のみ経由・キャッシュ付き） |
+| `getHQPaths()` | HQからの距離＋各領地ごとに独立して計算した経路を返す（登録済み領地のみ経由・キャッシュ付き）。`EcoLogic.getHQPaths(hqName, added, territories, customConnections, () => tradeRouteStyle)`の薄いラッパー。キャッシュ（`_hqPathCache`）は`refreshUI()`で無効化されるため、`hq`/`addedTerritories`/`customConnections`/`tradeRouteStyle`のいずれかが変わる操作は必ず`refreshUI()`（または`setTradeRouteStyle()`）を経由すること。詳細は「Trading Route探索アルゴリズム」参照 |
+| `setTradeRouteStyle(style)` | `tradeRouteStyle`（`'cheapest'\|'fastest'`、全領地一括設定）を切り替えて`refreshUI()`する。領地モーダルのSettingsタブから呼ばれる |
 | `isConnectedToHQ(name)` | 領地がHQから到達可能かを判定（HQ未設定時は登録済み全領地でtrue） |
 | `getAllNeighbors(name)` | 全接続を返す（基本ルート＋`customConnections`の全要素、無効なカスタム接続線も含む）。HQのConnections/Externalsのカウント、Treasuryバフの距離計算にのみ使用する |
 | `getFullGraphDistances()` | HQからの距離を全437領地対象でBFS（`getAllNeighbors()`経由）。HQ未設定時は`{}`を返す。`_fullDistCache`にキャッシュ |
@@ -158,8 +164,9 @@ python dev-server.py 8080
 | `updateOverview()` | Overviewパネル更新（Tribute込みのNet表示） |
 | `updateTerritoryList()` | Managerリスト更新（list-selected状態を反映） |
 | `refreshUI()` | `_hqDistanceCache`無効化 → Overview/リスト/描画を更新 → `updateUndoRedoButtons()` |
-| `pushUndoSnapshot()` | Undo/Redo機能（2026-08導入）。`addedTerritories`の`structuredClone`を`_undoStack`にpush（50件超過分は最古を`shift()`）、`_redoStack`を空にする。対象7関数（`addSelectedTerritory`/`addGuildTerritories`/`addSelectedTerritories`/`removeTerritory`/`clearAllTerritories`/`resetSelected`/`saveModal`）が、確認ダイアログ・早期returnの**後**（実際に`addedTerritories`を書き換える直前）に1回呼ぶ。Custom Settings配下の操作（`importLiveGuild`/接続線・資源オーバーライド編集/`saveTributes`）は対象外で呼ばない |
-| `undoAction()` / `redoAction()` | `_undoStack`/`_redoStack`が空なら何もしない。現在の`addedTerritories`を`structuredClone`して逆側のスタックにpush → 自スタックから`pop()`した内容で`addedTerritories`を置き換え → `listSelectedTerritories`から存在しない名前を除去 → `refreshUI()` |
+| `captureSelectionSnapshot()` / `applySelectionSnapshot(snapshot)` | Undo/Redo機能（2026-08導入、2026-09にスナップショット形式を拡張）。`{added: structuredClone(addedTerritories), listSelected: [...listSelectedTerritories], mapSelected: [...selectedTerritories]}`の生成・復元を共通化するヘルパー。復元時は`listSelectedTerritories`から存在しない名前を除去する処理を含む |
+| `pushUndoSnapshot()` | `captureSelectionSnapshot()`の結果を`_undoStack`にpush（50件超過分は最古を`shift()`）、`_redoStack`を空にする。対象7関数（`addSelectedTerritory`/`addGuildTerritories`/`addSelectedTerritories`/`removeTerritory`/`clearAllTerritories`/`resetSelected`/`saveModal`）が、確認ダイアログ・早期returnの**後**（実際に`addedTerritories`を書き換える直前）に1回呼ぶ。Custom Settings配下の操作（`importLiveGuild`/接続線・資源オーバーライド編集/`saveTributes`）は対象外で呼ばない |
+| `undoAction()` / `redoAction()` | `_undoStack`/`_redoStack`が空なら何もしない。現在の状態を`captureSelectionSnapshot()`で逆側のスタックにpush → 自スタックから`pop()`した内容を`applySelectionSnapshot()`で復元（`addedTerritories`・`listSelectedTerritories`・`selectedTerritories`の3つとも）→ `updateSelectedCount()` → `refreshUI()`。**2026-09変更**: 以前は`addedTerritories`のみ復元しており選択状態（マップの青ハイライト・Managerリストの選択）は戻らなかったが、スナップショットにリスト選択・マップ選択も含めるよう拡張した |
 | `updateUndoRedoButtons()` | `_undoStack`/`_redoStack`の長さに応じて`#undo-btn`/`#redo-btn`の`disabled`を切り替える。`refreshUI()`末尾・`init()`から呼ぶ |
 | `openModal(name, bulkNames?)` | 領地設定モーダルを開く（bulkNames指定で一括編集モード）。単体モードでは`addedTerritories[name].importEstimated`を見て、Import This Guild由来の推定値のまま（tri-stateが`true`）のDefense/Bonus項目にマゼンタの縁取り・ドット（`.import-estimated`）を付け、ホバー時の名前ツールチップにも注記を追加する（2026-08導入、一括モードでは値と同様に表示しない） |
 | `saveModal()` | single/bulkモードを判定して保存。保存前後で値が実際に変わったフィールドのみ`importEstimated`を`false`に落とす（変えていないフィールドはマークを維持し、以後のImport This Guildでの自動更新対象のままにする） |
@@ -467,23 +474,60 @@ confirmedExtra/defences/treasuryが完全に一致したまま、**わずか68�
 
 ### Traversing Resources
 - 各領地を通過する資源量。HQと自領地分を除いた、経路上の中間ノードとしての通過量（生産分＋消費分）。HQは常に0。
-- Trade Timeは1ホップ＝1分。**最短経路が複数ある場合は、経路全体の辞書順が最大のもの（アルファベット降順・Z→A）を採用する。比較は素のコードユニット比較で行い、`localeCompare`は使わない。** それ以外の表示順（リスト・datalist・自動HQの同値判定）は従来どおり`localeCompare('en')`の昇順を使う。この同着処理の妥当性・限界については後述の「経路計算の既知の限界」を参照。
+- Trade Timeは1ホップ＝1分。経路の算出方法は次項「Trading Route探索アルゴリズム」を参照（`calcTraversingResources()`は`getHQPaths().paths[x]`の`slice(1,-1)`で中間ノードを取り出すだけで、探索アルゴリズム自体には関与しない）。
 
-### 経路計算の既知の限界
+### Trading Route探索アルゴリズム（2026-09刷新）
 
-本シミュレーターは「HQからの最短経路木」で経路を表現している。同着時はアルファベット降順で1本に決めるため、ある分岐点で選ばれた側に、その先の全領地の資源が流れる。
+**旧実装（「HQからの最短経路木＋同着時アルファベット降順」）は廃止した。** 実測との一致率が約60%（複数の最短経路がある分岐のみを母数とした場合）にとどまっていたのに対し、ゲーム内挙動の解析により決定則がほぼ特定できたため、以下のモデルに置き換えた。
 
-一方、ゲーム内の実挙動を検証した結果、以下が確認されている。
+**経路は領地ごとに独立して計算される。HQ起点の単一の木構造ではない。** 各領地Sについて、S起点・HQ終点の探索を行った結果がSのTrading Routeになる（`computeTradeRoute(source, hq, added, style, territories, customConnections)`、`eco-logic.js`）。`getHQPaths(hq, added, territories, customConnections, styleResolver)`が登録済み全領地についてこれを1回ずつ呼び、`{dist, paths}`（`paths[name] = [name, ..., hq]`、source起点でHQ終点の順）に集約する。
 
-- **同じ分岐点でも、行き先によって経由する側が異なる**（例: HQ = Nodguj Nation で、Regular Island は Icy Island 経由、Ahmsord は Dujgon Nation 経由）。これは木構造では原理的に再現できない。
-- 単一のアルファベット順ルールでは一致しないケースが複数あり、法則は特定できていない。名前の昇順・降順、`territories.json` の並び順、接続数、座標、面積、産出資源、名前の長さ、単語数、およびそれらを第1キーとする二段階ルールを総当たりで検証したが、観測された分岐の一部としか一致しなかった。
-- 行き先ごとの割り当ては均等ではなく、**偏りの度合いはケースによって大きく異なる**（ほぼ半々の例もあれば、20:1 程度の例もある）。このため「全ての最短経路に均等配分する」モデルも採用できない。
-- 生産物をHQへ送る経路と、HQから供給を受ける経路が異なる場合も確認されている（例外的で、常にそうなるわけではない）。
-- **traversingの誤差は、都市領地がどちらの分岐を経由するかでほぼ決まる。** 都市の返送分（分単位で概算6,000 Emerald相当）が、他の生産ブースト消費（数百〜1,300 Emerald相当）を大きく上回るため。都市以外の領地による誤差は相対的に軽微。
+**同じ分岐点でも出発地によって選ぶ方向が変わる非木構造の挙動が実際に確認されている**（実測例、Kander/HQ=Cinfras Outskirts: Mantis Nest自身の経路は`Mantis Nest→Myconid Descent→Chasm Chokepoint→...`だが、Aldorei Springsの経路は`Aldorei Springs→Mantis Nest→Chasm Overlook→Chasm Chokepoint→...`と、同じMantis Nestを経由しつつその先の分岐が異なる。木構造では原理的に再現できない）。
 
-法則を特定するには各分岐について後続の全領地の経路を個別に観測する必要があり、検証コストが見合わないため、**現状は未解明のまま木モデルで近似している。**
+- **Cheapest** = source→HQのDijkstra（`JavaBinaryHeap`、自前の二分ヒープ）
+- **Fastest** = source→HQのBFS（FIFOキュー、配列＋インデックス前進で実装）
+- **両者の差はキューの種類のみ。** 隣接の走査順（`getNeighborsOrdered()`）・探索方向はすべて共通。**訪問済み判定はCheapest/Fastestで意味が異なる（後述）。**
+- 辺コストは常に1（自ギルド領地のみを扱うため、ゲーム内部のtax概念は実装しない。後述）。**この結果、Cheapestの経路も常に最短ホップになる**（`dist[name] === paths[name].length - 1`が常に成立する）。
 
-対応案として、都市領地のみ経由先を手動指定できる機能（誤差の主要因が都市に集中しているため、都市だけ直せば十分に精度が上がる）を検討したが、指定すべき正解を観測できる状況が現状では無いため、**実装は見送っている。** 将来ゲーム内で都市領地のtraversingを再度観測できた場合に着手する。
+**隣接の走査順（`getNeighborsOrdered(name, territories, customConnections)`）が最重要。** `territories.json`の`Trading Routes`配列の順序をそのまま使い、**絶対にソートしない**（アルファベット順・座標順・接続数順等に並び替えると実測との一致率が60%程度まで落ちることを確認済み）。この並び順は公式API（`v3/guild/list/territory`が返す`links`）の静的な順序と一致するよう`territories.json`側を再生成してある（後述）。有効な`customConnections`は、その配列の登録順で基本ルートの後ろに追加する（重複除去あり）。**`customConnections`自体の順序についてはゲーム内の正解データが存在せず、決定的な挙動のための取り決めにすぎない。** 表示順（リスト・datalist・自動HQの同値判定）は従来どおり`localeCompare('en')`の昇順を使う（経路計算用の順序と混同しないこと）。既存の`getNeighbors(name)`（`addedTerritories`で両端登録済みかを判定する版、HQのConnections/Externalsカウント等に使用）はこの刷新の対象外で変更していない。
+
+**優先度キューは`java.util.PriorityQueue`と同一挙動の自前二分ヒープ（`JavaBinaryHeap`、`eco-logic.js`）でなければならない。** 汎用ヒープライブラリやArray.sortベースの疑似優先度キューに置き換えると、同値要素（距離が同じ複数の候補）の取り出し順が変わり、実測との一致率が下がる（検証時、`poll()`の比較演算子を`>`/`<=`から`>=`/`<`に変えただけで一致数が24/29→21/29に低下することを確認済み）。比較は距離のみで行い、名前等の第2キーを加えてはならない（加えると精度が下がることを検証済み）。
+
+**Cheapestの探索は登録領地に限定せず、全437領地グラフを走査する（2026-09追加）。** ゲーム側の探索は登録領地だけのグラフではなく全領地グラフに対して行われており、未登録領地（他ギルド所有／無所属）を優先度キューに投入すること自体がヒープ配列の内部状態を変え、実測との一致に影響することが判明した。`computeTradeRoute()`のCheapest分岐では、`territories`に存在する領地であれば登録の有無を問わず探索対象にし、コストを`added.has(v) ? 1 : UNOWNED_COST`（`UNOWNED_COST = 1e6`、1ホップより十分大きければ値そのものに意味は無い）で分ける。**復元した経路に未登録領地が1つでも含まれていた場合はnullを返す**（登録領地だけではHQに到達できない＝従来通りの「非接続」として扱う。巨大コスト経由でHQに「到達」してしまうケースを弾くための後処理）。`dist[name]`は経路長と一致し続ける（未登録領地はコストが巨大なため、登録領地だけで完結する経路がHQより先にpollされる）。**Fastest（FIFOキュー）は変更していない。** コストの概念が無いFIFOに未登録領地を投入すると、そのまま経路として採用されてしまうため、従来通り登録領地のみを走査する（実測ではFastestはどちらの実装でも81/81=100%だったため、安全側に倒した）。
+
+**実測データ（`docs/Trading Routes.txt`、Kander/Corkus/Canyon/Swamp/Ragniの計148ルート）との一致率**: Fastest 81/81=100%（Kander/Efilim→Twisted Housingの1ルートは非所有の同盟領地を経由するため本シミュレータでは再現不可能・除外。Kander/Corkusのみ検証、他3地域は未検証）、Cheapest 145/148=98.0%（既知の不一致3件、すべてKander。下表）。回帰テストは`eco-logic.trade-route.test.js`（`node --test eco-logic.trade-route.test.js`で実行。期待値はテスト実行時に`docs/Trading Routes.txt`から直接パースする。手で転記した固定値は使わない）。CanyonセクションのSourceに`*`が付いた9件・Ragniセクションの1件（Maltic）は、ファイル自身の注記で「間違ってる可能性がある（うろ覚え）」とされているためアサーション対象から除外している（ただしグラフの連結性を保つため登録領地の集合には含める）。**CanyonセクションのBantisu Air Temple行にある`Bantisu Approarch`は、同ファイル内に実在する`Bantisu Approach`の誤字と判断し補正して扱っている**（1文字の誤挿入、他に該当する領地が存在しないため）。
+
+**既知の不一致3件（Cheapestのみ、すべてKander。実装バグではなく許容する）:**
+
+| 領地 | 分岐点 | 実測 | モデル |
+|---|---|---|---|
+| Jitak's Farm | Jitak's Farm | Mushroom Hill | Gylia Lakehouse |
+| Kitrios Barracks | Gylia Lakehouse | Weird Clearing | Gylia Research Cabin |
+| Colourful Mountaintop | Gylia Watchtower | Cosmic Fissures | Gylia Lakehouse |
+
+**2026-09の未登録領地対応（UNOWNED_COST導入）により、旧5件のうち2件（Entrance to Kander・Corkus/Bloody Beach）は解消した。** 導入前は登録領地限定のグラフで探索していたため、実際のゲーム内探索（全領地グラフ）と齟齬が生じていた。誤りは「余計に逸脱」1件・「逸脱し損ね」2件と両方向にばらけており、定数や比較子の調整では解消しない（原因は特定できていない）。**モデルだけ差し替えられる構造にしてある**（Step1のキュー実装をcomputeTradeRoute内で差し替えるだけで済む設計）。
+
+**修正依頼時の予測との相違点（2026-09、正直な記録として残す）**: UNOWNED_COST導入の修正依頼では「Entrance to Kanderは一致するようになるが、同じ分岐点でGelibordが新たに不一致になり、Kanderの一致数は53/58になるはず」という予測が示されていたが、実装して実測データと突き合わせたところGelibordも一致し、Kanderは55/58だった（不一致はJitak's Farm/Kitrios Barracks/Colourful Mountaintopの3件のみ）。他の4地域（Corkus 24/24・Canyon 51/51・Swamp 7/7・Ragni 8/8、登録数61/8/16、Nemractの個別経路）は予測と完全に一致しており、疑似コード通りに実装できていることの傍証としている。Gelibordの食い違いのみ依頼元に報告し、実測データ・実装のどちらにも手を加えず、実際の計算結果をテストの期待値として採用した。
+
+**ゲーム内部の実際の挙動（本シミュレータでは実装しない部分）**: Cheapestは実際にはtax（通過時の税率）を最優先し、ホップ数は下位の判断基準になる。同盟領地を1ホップ多く迂回してでも税負担の小さい経路を選ぶ実例が観測されている（Kander/Efilim→Twisted Housing、5%税を払ってでも同盟領地を通過する）。Fastestはtaxを完全に無視する。**本シミュレータは自ギルド領地のみを扱うためtaxは常に0であり、tax自体を実装する必要が無い**（辺コストは常に1として扱う。UNOWNED_COSTは税負担を模したものではなく、ヒープの内部状態を実機に近づけるための踏み台コストである点に注意）。
+
+**性能（2026-09、UNOWNED_COST導入後に再計測）**: Cheapestの探索が全437領地グラフに拡大したため、登録領地数が少なくても探索ノード数は変わらなくなった。実測: 8領地で約8ms・50領地で約15ms・100領地で約22ms・150領地で約30ms・437領地（現実には起こらない極端ケース）で約87ms。導入前（登録領地のみのグラフ）は50〜150領地で1〜3ms程度だったため、体感できる範囲で遅くなっているが、現実的なギルド規模（〜150領地）でも100msの目安は下回っている。`_hqPathCache`により`refreshUI()`を挟まない限り再計算されないため、実用上は問題にならないと判断した。
+
+**`territories.json`はAPIから再生成したものであり、手で編集してはいけない。** 更新する場合は`scripts/regen-territories.mjs <api-response.json>`経由で行うこと（`--dry-run`で差分確認のみ可能）。整合性検証は`scripts/verify-territories.mjs <api-response.json>`（領地数・キー順・`Trading Routes`/`Location`の一致・隣接の対称性の5項目を検証。**キー順の検証のみ、`v3/guild/list/territory`エンドポイントの応答順がギルドの所有状況に依存し実行のたびに変わるため、原理的に常にNGになる**。これはAPIの仕様であり`territories.json`側の不備ではない。他の4項目がOKであれば整合性は保たれている）。
+
+### 経路計算の既知の限界（現行モデル）
+
+- 上表のCheapest既知の不一致3件は、現行モデルでも解消されていない。ヒープの内部順が実機の内部実装と部分的にしか一致しておらず、原因は特定できていない。
+- `customConnections`の走査順は、ゲーム内の正解データが存在しないため決定的な挙動のための取り決め（登録順）にとどまる。
+- 領地ごとのTrading Style個別設定は本刷新では実装していない。全体一括の1つの値（`tradeRouteStyle`）のみで、`getHQPaths()`の`styleResolver`引数だけ将来の拡張用に用意してある。
+- Fastestの回帰テストはKander/Corkusのみで検証済み（81/81）。Canyon/Swamp/Ragniのfastestは未検証（cheapestのみ回帰テストに追加した）。
+
+### 既知の制約・不採用の記録（Trading Route探索アルゴリズム関連・再検証防止）
+
+- 座標ベースのヒューリスティックを用いたA*は、座標表現7種×任意の異方性・回転について線形計画で同時充足不可能であることを証明済み。**再検証不要。**
+- `state=(previous, current)`のedge-stateモデルは理論上限93.3%であり完全再現は原理的に不可能。**再検証不要。**
+- 経路コスト・辺コスト・ハッシュ・ID・資源量・名前長・探索順序など約1500通りの規則を総当たり済み。いずれもチャンス水準。**再検証不要。**
+- 挙動が相異なる探索実装39種のうち、実測最高スコア（24/29）を出すものは1種のみ（現行の`JavaBinaryHeap`実装）。追加の観測データによる候補の絞り込みは不可能と算定済み。
 
 ### 守備ステータス推定
 
@@ -532,7 +576,7 @@ stored[r] = consumption[r] × f + generation[r] × (1/60 − f)       f = (1 −
 - Map Filter（`getFilterCategoriesLive(name)`）: 判定対象は全437領地。`defense`は実データの`defences`、`treasury`は実データの`treasury`、`resource`は`resources[].generation`（0より大きいものを産出していると判定）と`EMERALD`の`baseGeneration`（18,000以上をCityと判定）を使う。配色・斜め分割塗り・非該当領地の不透明度0.35は既存仕様のまま。判定対象外（無所属）の領地は暗くしない。
 - ツールチップ（`showLiveTooltip()`）: 実データ（所有ギルド・生産量・貯蔵量・Treasury・Defence）を表示する。`(Conn)`/`(Ext)`の判定は、そのギルドの`guild.hq`領地を起点に全437領地グラフをBFSした距離を使う（`EcoLogic.bfsDistancesFrom(guildHqName, territories, [])`。**customConnectionsは含めない**——ユーザーが追加した接続線はシミュレーション専用の設定であり、実データの表示には反映しないため）。無所属の領地は`Unclaimed`とだけ表示する。ホバー/長押しでのツールチップ表示対象も、Liveモード中は「`liveData`を持つ領地すべて」に切り替わる（`isTooltipTarget(name)`）。表示内容の詳細は「ツールチップ」節を参照。
 - **操作の無効化**: Liveモード ON のとき、領地のクリック／タップによる選択・モーダル表示（`handleClick()`）はすべて無効化する。`selectedTerritories`はLiveモードに入った時点でクリアし、`Add Selected Territories`ボタンも無効化する（`disabled`）。OFFに戻すとすべて従来どおりに復帰する。`addedTerritories`自体はLiveモード中も保持する。
-- **スマホでのツールチップ表示**: Liveモード ON のときのみ、領地を**タップ（短押し）**しただけでツールチップを表示する（`handleLiveTap()`、`liveTooltipPinnedName`で固定表示中の領地を管理）。Liveモードでは領地をタップして設定を編集する機能が無いため、タップをツールチップ表示に割り当てても問題ない。**表示されたツールチップは、次にマップの別の場所をタップするか、同じ領地を再度タップするまで表示し続ける**（指を離しても消えない。パン中も維持する）。表示位置は既存の長押しツールチップと同じロジック。Liveモード OFF のときは従来どおり（500ms長押しで表示、指を離すと消える）。
+- **スマホでのツールチップ表示**: Liveモード ON のときのみ、領地を**タップ（短押し）**しただけでツールチップを表示する（`handleLiveTap()`、`liveTooltipPinnedName`で固定表示中の領地を管理）。Liveモードでは領地をタップして設定を編集する機能が無いため、タップをツールチップ表示に割り当てても問題ない。**表示されたツールチップは、次にマップの別の場所をタップするか、同じ領地を再度タップするまで表示し続ける**（指を離しても消えない）。表示位置は既存の長押しツールチップと同じロジック。Liveモード OFF のときは従来どおり（500ms長押しで表示、指を離すと消える）。**「パン中も維持する」は2026-09に廃止した**（下記「ツールチップの自動消去」参照。パン/ズーム開始で他の表示経路と同様に閉じる）。
 
 **確定できるアップグレード（一意に確定するもの。個別レベルの範囲推定は別節「守備ステータスの推定」を参照）**
 
@@ -574,14 +618,14 @@ stored[r] = consumption[r] × f + generation[r] × (1/60 − f)       f = (1 −
   - 並び順は`HQ`→`到達可能な領地`→`到達不能な領地`の3グループ。各グループ内では**Defense と Bonus のレベル値の総和（重み付けなしの単純な合計）の降順**、同値の場合は領地名の`localeCompare('en')`昇順。到達不能な領地は❌アイコンのみを表示し、生産資源のアイコンは表示しない。
   - `Select All`: 登録済み領地をすべてリスト選択する（Map Filter中は**表示中の領地のみ**）
   - **`Select None`: リスト選択とマップ上の青ハイライトの両方を解除する**
-  - **`Reset Selected`: リスト選択中の領地のアップグレードをリセットする（確認ダイアログあり）。選択状態には干渉しない**
+  - **`Reset Selected`: リスト選択中の領地のアップグレードをリセットする（確認ダイアログあり）。実行後、Managerリスト・マップ両方の選択ハイライトを解除する（`listSelectedTerritories.clear()`、2026-09追加。以前は選択状態が残ったままになるバグがあった）。Undoすると選択状態も復元される（`pushUndoSnapshot()`がリセット前の選択状態を含めてスナップショットするため）**
   - `Clear All`: 登録済み領地をすべて削除する（確認ダイアログあり）。**Map Filter中は表示中の領地のみを削除する（HQは対象外）。確認ダイアログの文言も`Remove N filtered territories?`に変わる**
   - Edit Selected: 1つなら通常モーダル、複数なら一括編集モーダル（HQなし）
   - **Map Filter中はリストが該当領地のみになる（HQは常に表示）。カウント表示は`表示中 / 総数`の形式（例: `Added Territories (12 / 47)`）**
 
 ### モーダル
 - 右上にSettings/Dataのタブ切り替えボタンを持つ（表示条件: `currentModalMode === 'single'` かつ HQ設定済みの場合のみ。それ以外はボタン自体を非表示にしSettingsタブ固定）。開くときは常にSettingsタブから開始する。
-- **Settingsタブ（単体モード）**: Defense(4種×Lv0〜11) + HQ設定 + Bonus(17種) + リアルタイムプレビュー。Import This Guild由来で未編集の推定値は`.import-estimated`（マゼンタの縁取り・ドット）で示す（2026-08導入、詳細はCUSTOM SETTINGSモーダルの「ギルド取り込み」参照）
+- **Settingsタブ（単体モード）**: Defense(4種×Lv0〜11) + HQ設定 + Bonus(17種) + Trading Route Style（Cheapest/Fastestの切替、2026-09追加。`tradeRouteStyle`は全領地一括の設定で、`hq-section`と同じ表示条件（`!isBulk`）を持つ。`setTradeRouteStyle(style)`を呼び`refreshUI()`する） + リアルタイムプレビュー。Import This Guild由来で未編集の推定値は`.import-estimated`（マゼンタの縁取り・ドット）で示す（2026-08導入、詳細はCUSTOM SETTINGSモーダルの「ギルド取り込み」参照）
 - **Settingsタブ（一括モード）**: 選択領地数を表示、Defense + Bonus のみ編集、保存で全選択領地に適用
 - **Dataタブ**: Trading Routes（HQからの経路・Trade Time）とResources（生産量・stored・traversing）を表示する読み取り専用タブ。Settingsタブと同系統の見た目に揃えている。**Minecraftiaは使わない**（body既定のSegoe UI）。**マップ上の領地名描画のMinecraftiaは維持している。** セクション見出しは箱の外に置き、`.data-section-label`（`.modal-section label`と同スタイル。`text-transform: uppercase`により大文字表示になる）。Trading Routesの箱は`#modal-stats`と同じ（`#0f172a`／枠線なし）、Resourcesの箱はツールチップと同じ（`#000000`／`2px solid #2C075F`）。**2つの箱でスタイルが異なるのは意図的。**
 - `.upgrade-container` には `user-select: none` / `-webkit-touch-callout: none` を指定している。指定しないとiOS Safariで長押し時にネイティブのテキスト選択UIが割り込み、自前のツールチップが表示されなくなるため。**モーダル全体には指定しないこと**（他の箇所のテキストがコピーできなくなるため）。
@@ -641,6 +685,21 @@ stored[r] = consumption[r] × f + generation[r] × (1/60 − f)       f = (1 −
 - 守備ステータスの推定値は`Estimated Defense:` / `Estimated Stats:`の見出しの下に表示する。Damage/Attack Speed/HP/Defence%の4行は`defenseStatLine()`が組み立てる共通形式（アイコン画像 + テキスト + 括弧内Lv数字のみ、`Lv.`は付けない）。**Damage・HPは`mult`（Connections/Externals由来の倍率）を反映し、Attack Speed・Defence%には反映しない。** HPは`k`単位。EHP/DPSの表示（`fmt()`によるM/K表記）は従来どおり変更していない。**候補数・サンプル数などの内部指標は一切表示しない。** 推定できない場合（`levels`が`null`）はセクションごと表示しない。
 - ツールチップの最下部に、灰色（`#555555`）で転送までの残り秒数を表示する（`Resources move in {n}s`）。他の項目とは1行空ける。推定できない場合は表示しない。
 
+**ツールチップの自動消去（2026-09導入）**
+
+表示中のツールチップの対象領地と無関係な操作が起きたら閉じる。**通常モード・Liveモードの両方に適用する**（表示・非表示の仕組み自体が`showTooltip()`/`hideTooltip()`で共通であり、片方だけに限定する理由が無いと判断した）。3種類のトリガーをすべて実装している。
+
+| トリガー | 実装箇所 |
+|---|---|
+| マップのパン・ズーム開始 | `mousemove`のドラッグ確定時・`wheel`イベント時・`touchmove`のパン/ピンチ確定時に`hideTooltip()`を呼ぶ |
+| 表示中ツールチップの対象領地の外での押下 | `mousedown`/`touchstart`の座標を`maybeDismissTooltipForOutsidePress(cx, cy)`でチェックし、対象領地の矩形の外なら閉じる |
+| ページ自体のスクロール | `window`の`scroll`イベント（`{ passive: true }`でリスナー登録、スクロール性能を落とさない） |
+
+- 対象領地の矩形判定は`isPointOverTerritory(name, cx, cy)`（`hitTest()`/`hitTestAll()`と共通のヘルパーに切り出し済み）を再利用する。ズーム時の座標変換ズレを避けるため。
+- `_tooltipTargetName`（現在表示中のツールチップの対象領地名）を`showTooltip()`内で設定し、`hideTooltip()`でnullに戻す。`hideTooltip()`は`liveTooltipPinnedName`も同時にnullへ戻す（表示が閉じた状態と固定表示状態を必ず一致させるため）。
+- **Liveモードのモバイル向けタップ固定表示（`liveTooltipPinnedName`）も、この3トリガーで閉じる。** 以前の「パン中も維持する」という仕様（ユーザーが意図的にパンしながら読めるようにする設計）は、この機能追加により廃止した。`touchcancel`（`resetTouchState()`）はOSによるジェスチャー中断であり上記3トリガーの対象外のため、従来どおり固定表示を維持する。
+- 本機能はまだ確定していない要望であり、依頼元が実際に触って過剰に消えると感じた場合は該当トリガーを外す可能性がある。
+
 ### マップ操作
 - **配色**: 登録済み＝シアン`#22d3ee`、HQ＝黄`#fbbf24`（線幅2倍）、非接続＝赤`#ef4444`の破線、未登録＝半透明の白。**地図に存在しない色を使うことと、色以外の手がかり（破線・線幅・縁取り）を併用することを原則とする**（赤緑色覚でも区別できるようにするため）。
 - 未登録領地クリック → 選択トグル（青アウトライン）
@@ -655,15 +714,16 @@ stored[r] = consumption[r] × f + generation[r] × (1/60 − f)       f = (1 −
 
 ## Share Link仕様
 
-- **生成は常に新形式 `#p=<base64url>`（ビットパック＋deflate-raw圧縮、現在version 5）で行う。** `CompressionStream`が使えない環境、または`territory-ids.json`が読み込めていない場合のみ、旧形式`#s=`（非圧縮base64 JSON、`getShareState()`のv3形式）にフォールバックする。
-- 旧形式 `#s=`（v1/v2/v3）と `#c=`（v3, deflate圧縮JSON）の**読み込みは読み込み専用として維持**する（`loadFromHash()`内に分岐が残る）。
-- **`#p=`のv4は読み込み専用として互換を維持する**（資源オーバーライドが空の状態として読む）。生成は常にv5。
+- **生成は常に新形式 `#p=<base64url>`（ビットパック＋deflate-raw圧縮、現在version 6）で行う。** `CompressionStream`が使えない環境、または`territory-ids.json`が読み込めていない場合のみ、旧形式`#s=`（非圧縮base64 JSON、`getShareState()`のv3形式）にフォールバックする。
+- 旧形式 `#s=`（v1/v2/v3）と `#c=`（v3, deflate圧縮JSON）の**読み込みは読み込み専用として維持**する（`loadFromHash()`内に分岐が残る）。v3形式の`state.rs`（1ならfastest、省略時cheapest）で`tradeRouteStyle`を復元する（2026-09追加）。
+- **`#p=`のv4は読み込み専用として互換を維持する**（資源オーバーライドが空の状態として読む）。v5も読み込み専用として維持する（`tradeRouteStyle`が既定値'cheapest'として読まれる）。生成は常にv6。
 - `#p=`形式のビットレイアウト（MSBファースト、8bit境界まで0パディング後にdeflate-raw圧縮）:
-  - ヘッダ: version(4bit, 現在5固定) + territoryCount(12bit)
+  - ヘッダ: version(4bit, 現在6固定) + territoryCount(12bit)
   - 領地ブロック×territoryCount: id(9bit, `TERRITORY_ID_MAP`参照) + hq(1bit) + treasury(3bit) + defenseFlag(1bit)[+damage/attack/health/defense各4bit] + bonusFlag(1bit)[+bonusBitmap 17bit + 該当ビット数分のbonusLevel各4bit]
   - 追加接続線ブロック: connCount(10bit) + (a: 9bit, b: 9bit) × connCount（有効・無効を問わず`customConnections`全件、IDが存在しないものはスキップ）
   - Tributeブロック: tributeBitmap(5bit, emeralds/ore/crops/fish/wood順) + (sign 1bit, magnitude 24bit) × 立っているビット数
   - 資源オーバーライドブロック（v5で追加）: overrideCount(10bit) + [id(9bit) + tier(2bit, 0=通常/1=City/2=Rainbow) + resourceMap(4bit, ore/wood/fish/cropsの順) + doubleFlag(1bit)] × overrideCount。1件16bit固定。**無効なオーバーライド（対象領地が未登録）も保存する。** `tier===2`（Rainbow）の場合`resourceMap`と`doubleFlag`は0を書き込み、復元時も無視する。生成時に`TERRITORY_ID_MAP`に存在しない領地はスキップし`console.warn`、復元時に`id`が範囲外またはterritoriesに存在しない場合はその要素をスキップする。
+  - Trading Route Styleブロック（v6で追加）: tradeRouteStyle(1bit, 0=cheapest/1=fastest)。末尾に1bit固定で追加。v5以前のリンクを読む場合はこのビット自体が存在しないため、`version>=6`のときのみ読む（既定値'cheapest'にフォールバック）。
 - 読み込みは `init()` 内の `loadFromHash()` で実行。`#p=`のデコードは `parseShareBits()`、エンコードは `buildShareBits()`（`BitWriter`/`BitReader`使用）。復元後は`_hqPathCache`・`_traversingCache`・`_fullDistCache`を無効化し`refreshUI()`を呼ぶ（`autoAssignHQ()`は呼ばない）。
 
 ### 警告（変更時は必ず確認すること）

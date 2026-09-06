@@ -220,54 +220,201 @@ export function getFullGraphDistances(territories, addedTerritories, customConne
   return bfsDistancesFrom(hqName, territories, customConnections);
 }
 
-// 比較は素のコードユニット比較（`>` / `<`）で行う。localeCompareはロケールによって
-// アポストロフィ等の記号の扱いが変わるため、決定的な挙動にするために使わない。
-export function comparePaths(a, b) {
-  const len = Math.min(a.length, b.length);
-  for (let i = 0; i < len; i++) {
-    if (a[i] > b[i]) return 1;
-    if (a[i] < b[i]) return -1;
+/**
+ * java.util.PriorityQueue と同一挙動の二分ヒープ。
+ * 同値要素の取り出し順はヒープ配列の内部状態に依存する（これが仕様であり、バグではない）。
+ * 汎用ヒープライブラリやsortベースの実装に置き換えてはいけない（同値時の順序が変わり、
+ * Trading Routesのcheapest経路の実測一致率が下がることを確認済み。詳細はCLAUDE.md参照）。
+ */
+export class JavaBinaryHeap {
+  constructor() {
+    this._a = [];
   }
-  return a.length - b.length;
+
+  get size() {
+    return this._a.length;
+  }
+
+  /** @param {[number, string]} item */
+  offer(item) {
+    const a = this._a;
+    a.push(item);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (!(item[0] < a[p][0])) break;
+      a[i] = a[p];
+      i = p;
+    }
+    a[i] = item;
+  }
+
+  /** @returns {[number, string] | undefined} */
+  poll() {
+    const a = this._a;
+    if (a.length === 0) return undefined;
+    const result = a[0];
+    const last = a.pop();
+    if (a.length > 0) {
+      let i = 0;
+      const n = a.length;
+      const half = n >> 1;
+      while (i < half) {
+        let c = 2 * i + 1;
+        const r = c + 1;
+        if (r < n && a[c][0] > a[r][0]) c = r; // 同値なら左の子を選ぶ
+        if (last[0] <= a[c][0]) break;
+        a[i] = a[c];
+        i = c;
+      }
+      a[i] = last;
+    }
+    return result;
+  }
 }
 
-// HQからの距離＋最短経路を返す（登録済み領地のみ経由）。
-export function getHQPaths(territories, addedTerritories, customConnections) {
-  const hqName = Object.keys(addedTerritories).find(n => addedTerritories[n].hq);
-  if (!hqName) return { dist: {}, path: {} };
+/**
+ * 隣接領地をlinks順（＝territories.jsonのTrading Routesの配列順）で返す。ソートしないこと。
+ * この並び順は公式APIのlinks配列と一致する静的な順序であり、Cheapest/Fastestの経路計算が
+ * 依存する（アルファベット順・座標順等に並び替えると実測との一致率が大きく下がる）。
+ * customConnectionsの順序についてはゲーム内の正解データが存在しない。ここでは決定的な
+ * 挙動を保証するための取り決めとして、その配列の登録順で基本ルートの後ろに追加する。
+ * 有効性（両端が登録済みか）はここでは判定しない。呼び出し側（computeTradeRoute）が
+ * `added`集合でのフィルタを行うことで、両端登録済みの接続のみが実際に経路に使われる。
+ * @param {string} name
+ * @param {Object} territories
+ * @param {Array} customConnections
+ * @returns {string[]}
+ */
+export function getNeighborsOrdered(name, territories, customConnections) {
+  const base = (territories[name] && territories[name]['Trading Routes']) || [];
+  const seen = new Set(base);
+  const result = [...base];
+  for (const conn of customConnections) {
+    let other = null;
+    if (conn.a === name) other = conn.b;
+    else if (conn.b === name) other = conn.a;
+    if (other === null || seen.has(other)) continue;
+    seen.add(other);
+    result.push(other);
+  }
+  return result;
+}
 
-  // 1. BFS（登録済み領地のみ経由）で距離を確定
-  const dist = { [hqName]: 0 };
-  const queue = [hqName];
-  let qi = 0;
-  while (qi < queue.length) {
-    const curr = queue[qi++];
-    for (const nb of getNeighbors(curr, territories, addedTerritories, customConnections)) {
-      if (!addedTerritories[nb]) continue;
-      if (dist[nb] === undefined) { dist[nb] = dist[curr] + 1; queue.push(nb); }
+// Cheapestの探索で、未登録（他ギルド/無所属）領地を経由する際の疑似コスト。1ホップ（=1）より
+// 十分大きければ値そのものに意味は無い（実際のtaxコストを表すものではなく、優先度キューへの
+// 投入自体がヒープの内部状態に影響することを再現するための踏み石）。
+const UNOWNED_COST = 1e6;
+
+/**
+ * 単一領地のTrading Routeを計算する（source起点・hq終点の探索）。経路は領地ごとに
+ * 独立して計算され、木構造ではない（同じ分岐点でも出発地によって選ぶ方向が変わりうる）。
+ * Cheapestは二分ヒープ（JavaBinaryHeap）によるDijkstra、Fastestは配列によるBFS。
+ * 辺コストは常に1（自ギルド領地のみを扱うためtaxの概念は実装しない）。
+ *
+ * **Cheapestのみ、探索自体は登録領地に限定せず全437領地グラフを走査する**（2026-09追加）。
+ * ゲーム側の探索は登録領地だけのグラフではなく全領地グラフに対して行われており、未登録領地の
+ * 優先度キューへの投入自体がヒープ配列の内部状態を変え、実測との一致に影響することが判明した。
+ * 未登録領地は`UNOWNED_COST`（1ホップより十分大きい値）のコストで踏み台にできるが、実際に
+ * 選ばれた経路に未登録領地が1つでも含まれていた場合は、登録領地だけではHQに到達できない
+ * （＝従来通りの「非接続」）とみなしnullを返す。Fastest（FIFOキュー）はコストの概念が無いため
+ * 未登録領地を投入すると経路として使われてしまう。安全側に倒し、従来通り登録領地のみを走査する。
+ * @param {string} source
+ * @param {string} hq
+ * @param {Set<string>} added 登録済み領地名の集合
+ * @param {'cheapest'|'fastest'} style
+ * @param {Object} territories
+ * @param {Array} customConnections
+ * @returns {string[] | null} [source, ..., hq] の経路。到達不能ならnull。source===hqなら[hq]
+ */
+export function computeTradeRoute(source, hq, added, style, territories, customConnections) {
+  if (source === hq) return [hq];
+  if (!added.has(source) || !added.has(hq)) return null;
+
+  if (style !== 'cheapest' && style !== 'fastest') {
+    console.warn(`computeTradeRoute: 未知のstyle "${style}"。'cheapest'として扱います。`);
+    style = 'cheapest';
+  }
+
+  const parent = new Map();
+  const visited = new Set([source]);
+  parent.set(source, null);
+
+  if (style === 'fastest') {
+    const queue = [source];
+    let qi = 0;
+    while (qi < queue.length) {
+      const u = queue[qi++];
+      if (u === hq) break;
+      for (const v of getNeighborsOrdered(u, territories, customConnections)) {
+        if (!added.has(v) || visited.has(v)) continue;
+        visited.add(v);
+        parent.set(v, u);
+        queue.push(v);
+      }
+    }
+  } else {
+    const heap = new JavaBinaryHeap();
+    heap.offer([0, source]);
+    while (heap.size > 0) {
+      const [du, u] = heap.poll();
+      if (u === hq) break;
+      for (const v of getNeighborsOrdered(u, territories, customConnections)) {
+        if (!territories[v] || visited.has(v)) continue;
+        const cost = added.has(v) ? 1 : UNOWNED_COST;
+        visited.add(v);
+        parent.set(v, u);
+        heap.offer([du + cost, v]);
+      }
     }
   }
 
-  // 2. 距離昇順で経路を決定（同距離の親候補は path が辞書順最大＝アルファベット降順のものを採用）
-  // この規則はゲーム内挙動からの推定であり、公式仕様ではない（13分岐中12分岐で一致）。
-  // 「後続の領地によって経由ルートが分岐する」「送る側と送られる側で経由ルートが異なる」といった、
-  // 単一の最短経路ルールでは原理的に説明できない挙動もゲーム内には存在する。
-  // 本シミュレーターは1本の経路で近似する。将来反例が見つかった場合は変更する可能性がある。
-  const path = { [hqName]: [hqName] };
-  const byDist = Object.keys(dist).sort((a, b) => dist[a] - dist[b]);
-  for (const v of byDist) {
-    if (v === hqName) continue;
-    const d = dist[v];
-    const neighbors = getNeighbors(v, territories, addedTerritories, customConnections);
-    let bestParent = null;
-    for (const u of neighbors) {
-      if (dist[u] !== d - 1) continue;
-      if (bestParent === null || comparePaths(path[u], path[bestParent]) > 0) bestParent = u;
-    }
-    path[v] = [...path[bestParent], v];
+  if (!parent.has(hq)) return null;
+  const path = [];
+  let cur = hq;
+  while (cur !== null) { path.push(cur); cur = parent.get(cur); }
+  path.reverse();
+
+  // Cheapestで未登録領地を踏み台に「到達」してしまった場合は非接続として扱う
+  // （登録領地だけのグラフではHQに繋がっていない、という従来の意味を保つ）。
+  if (style === 'cheapest' && path.some(n => !added.has(n))) return null;
+
+  return path;
+}
+
+/**
+ * HQからの距離＋最短経路を返す。addedの全領地についてcomputeTradeRoute()を1回ずつ呼び、
+ * 結果を集約する（経路は領地ごとに独立、木構造ではない）。
+ * @param {string|null} hq
+ * @param {Set<string>} added
+ * @param {Object} territories
+ * @param {Array} customConnections
+ * @param {(name: string) => 'cheapest'|'fastest'} [styleResolver] 省略時は全領地'cheapest'
+ * @returns {{ dist: Record<string, number>, paths: Record<string, string[]> }}
+ */
+export function getHQPaths(hq, added, territories, customConnections, styleResolver) {
+  if (!hq || !added || added.size === 0) return { dist: {}, paths: {} };
+  if (!added.has(hq)) {
+    console.warn(`getHQPaths: HQ "${hq}" is not in added territories`);
+    return { dist: {}, paths: {} };
   }
 
-  return { dist, path };
+  const resolveStyle = styleResolver || (() => 'cheapest');
+  const dist = {};
+  const paths = {};
+
+  for (const name of added) {
+    if (!territories[name]) {
+      console.warn(`getHQPaths: "${name}" は territories に存在しません。スキップします。`);
+      continue;
+    }
+    const path = computeTradeRoute(name, hq, added, resolveStyle(name), territories, customConnections);
+    if (!path) continue;
+    paths[name] = path;
+    dist[name] = path.length - 1;
+  }
+
+  return { dist, paths };
 }
 
 export function isConnectedToHQ(name, addedTerritories, hqPaths) {

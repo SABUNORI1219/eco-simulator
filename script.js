@@ -80,6 +80,7 @@ let listSelectedTerritories = new Set(); // manager list selection (registered)
 let _hqPathCache = null;
 let _traversingCache = null;
 let _fullDistCache = null;
+let tradeRouteStyle = 'cheapest'; // 'cheapest' | 'fastest'。全領地一括の設定（領地ごとの個別設定は未実装）
 let tributeValues = { emeralds: 0, ore: 0, crops: 0, fish: 0, wood: 0 };
 let currentModalMode = 'single'; // 'single' | 'bulk'
 let currentBulkTerritories = [];
@@ -180,6 +181,7 @@ function resizeCanvas() {
 // ─── Mouse Events ───
 canvas.addEventListener('mousedown', e => {
   if (e.target !== canvas) return;
+  maybeDismissTooltipForOutsidePress(e.clientX, e.clientY);
   isDragging = true;
   dragStart = { x: e.clientX - panX, y: e.clientY - panY };
   canvas.classList.add('dragging');
@@ -188,6 +190,7 @@ canvas.addEventListener('mousedown', e => {
 canvas.addEventListener('mousemove', e => {
   lastMousePos = { x: e.clientX, y: e.clientY };
   if (isDragging) {
+    hideTooltip();
     panX = e.clientX - dragStart.x;
     panY = e.clientY - dragStart.y;
     clampPan();
@@ -227,6 +230,7 @@ canvas.addEventListener('mouseleave', () => {
 
 canvas.addEventListener('wheel', e => {
   e.preventDefault();
+  hideTooltip();
   const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
   const newScale = Math.max(0.03, Math.min(8, scale * factor));
   const ratio = newScale / scale;
@@ -257,6 +261,9 @@ canvas.addEventListener('touchstart', e => {
   e.preventDefault();
   clearLongPressTimer();
   longPressTriggered = false;
+  if (e.touches.length >= 1) {
+    maybeDismissTooltipForOutsidePress(e.touches[0].clientX, e.touches[0].clientY);
+  }
 
   if (e.touches.length === 1) {
     const t = e.touches[0];
@@ -295,7 +302,9 @@ canvas.addEventListener('touchmove', e => {
     if (!touchMoved && Math.hypot(dx, dy) > 10) {
       touchMoved = true;
       clearLongPressTimer();
-      if (!(liveMode && liveTooltipPinnedName)) hideTooltip();
+      // パン確定時点でツールチップを閉じる（2026-09、Liveモードのタップ固定表示を含め
+      // 「パン中も維持する」旧仕様を廃止。詳細はCLAUDE.md「Liveモード」参照）。
+      hideTooltip();
     }
     panX = t.clientX - touchDragStart.x;
     panY = t.clientY - touchDragStart.y;
@@ -304,7 +313,7 @@ canvas.addEventListener('touchmove', e => {
   } else if (e.touches.length === 2) {
     touchMoved = true;
     clearLongPressTimer();
-    if (!(liveMode && liveTooltipPinnedName)) hideTooltip();
+    hideTooltip();
     const [t1, t2] = e.touches;
     const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
     const newScale = Math.max(0.03, Math.min(8, pinchStartScale * (dist / (pinchStartDist || dist))));
@@ -357,18 +366,27 @@ canvas.addEventListener('touchcancel', () => {
   canvas.addEventListener(evt, e => e.preventDefault());
 });
 
+// ページ自体のスクロールでツールチップを閉じる。スクロール性能を落とさないためpassive:trueを付ける。
+window.addEventListener('scroll', () => hideTooltip(), { passive: true });
+
 // ═══════════════════════════════════════════════════════════
 //  HIT DETECTION
 // ═══════════════════════════════════════════════════════════
+// 領地nameの矩形（ゲーム座標→キャンバス座標変換込み）に(cx,cy)が入っているかを判定する共通ヘルパー。
+// hitTest()/hitTestAll()と、ツールチップの対象領地外押下判定（maybeDismissTooltipForOutsidePress）で共有する。
+function isPointOverTerritory(name, cx, cy) {
+  const t = territories[name];
+  if (!t || !t.Location) return false;
+  const loc = t.Location;
+  const p1 = gameToCanvas(loc.start[0], loc.start[1]);
+  const p2 = gameToCanvas(loc.end[0], loc.end[1]);
+  return cx >= Math.min(p1.x, p2.x) && cx <= Math.max(p1.x, p2.x) &&
+         cy >= Math.min(p1.y, p2.y) && cy <= Math.max(p1.y, p2.y);
+}
+
 function hitTest(cx, cy) {
   for (const name of Object.keys(addedTerritories)) {
-    const t = territories[name];
-    if (!t || !t.Location) continue;
-    const loc = t.Location;
-    const p1 = gameToCanvas(loc.start[0], loc.start[1]);
-    const p2 = gameToCanvas(loc.end[0], loc.end[1]);
-    if (cx >= Math.min(p1.x, p2.x) && cx <= Math.max(p1.x, p2.x) &&
-        cy >= Math.min(p1.y, p2.y) && cy <= Math.max(p1.y, p2.y)) return name;
+    if (isPointOverTerritory(name, cx, cy)) return name;
   }
   return null;
 }
@@ -379,19 +397,17 @@ function hitTestAll(cx, cy) {
   if (scale < 0.05) return null;
   for (const name of Object.keys(territories)) {
     if (addedTerritories[name]) continue;
-    const t = territories[name];
-    if (!t || !t.Location) continue;
-    const loc = t.Location;
-    const p1 = gameToCanvas(loc.start[0], loc.start[1]);
-    const p2 = gameToCanvas(loc.end[0], loc.end[1]);
-    if (cx >= Math.min(p1.x, p2.x) && cx <= Math.max(p1.x, p2.x) &&
-        cy >= Math.min(p1.y, p2.y) && cy <= Math.max(p1.y, p2.y)) return name;
+    if (isPointOverTerritory(name, cx, cy)) return name;
   }
   return null;
 }
 
 // Liveモード・スマホでタップにより固定表示中の領地名。次のタップ（別の場所 or 同じ領地）まで表示し続ける。
 let liveTooltipPinnedName = null;
+
+// 現在表示中のツールチップの対象領地名（通常モード・Liveモード共通）。hideTooltip()でnullに戻す。
+// showTooltip()内で毎回設定し、パン/ズーム開始・対象領地外での押下時のツールチップ消去判定に使う。
+let _tooltipTargetName = null;
 
 // Liveモードで現在表示中のツールチップの引数（{mx, my, name, above}|null）。ポーリングごとに
 // refreshLiveTooltipIfOpen()がこれを使って同じ領地・同じ位置でshowLiveTooltip()を再実行し、
@@ -1156,6 +1172,7 @@ function isTooltipTarget(name) {
 }
 
 function showTooltip(mx, my, name, above = false) {
+  _tooltipTargetName = name;
   if (liveMode) {
     showLiveTooltip(mx, my, name, above);
     return;
@@ -2179,6 +2196,18 @@ function showUpgradeTooltip(mx, my, displayName, above, isEstimated) {
 function hideTooltip() {
   tooltip.style.display = 'none';
   _lastLiveTooltipArgs = null;
+  _tooltipTargetName = null;
+  liveTooltipPinnedName = null;
+}
+
+// 表示中のツールチップの対象領地と無関係な操作（パン/ズーム開始・対象領地外での押下・
+// ページスクロール）が起きたら閉じる。通常モード・Liveモードの両方に適用する
+// （表示・非表示の仕組み自体がshowTooltip()/hideTooltip()で共通なため、片方だけに
+// 限定する理由が無いと判断した）。対象領地の当たり判定はisPointOverTerritory()を
+// hitTest()/hitTestAll()と共有し、ズーム時の座標変換ズレを避ける。
+function maybeDismissTooltipForOutsidePress(cx, cy) {
+  if (tooltip.style.display !== 'block' || !_tooltipTargetName) return;
+  if (!isPointOverTerritory(_tooltipTargetName, cx, cy)) hideTooltip();
 }
 
 // ポーリングごと（fetchLiveTerritoryData内）に呼ぶ。表示中のLiveツールチップがあれば、
@@ -2271,9 +2300,18 @@ function calculateTreasuryFromAcquired(acquiredStr) {
   return 'Very Low';
 }
 
+function setTradeRouteStyle(style) {
+  if (style !== 'cheapest' && style !== 'fastest') return;
+  if (tradeRouteStyle === style) return;
+  tradeRouteStyle = style;
+  refreshUI();
+}
+
 function getHQPaths() {
   if (_hqPathCache !== null) return _hqPathCache;
-  return (_hqPathCache = EcoLogic.getHQPaths(territories, addedTerritories, customConnections));
+  const hqName = Object.keys(addedTerritories).find(n => addedTerritories[n].hq) || null;
+  const added = new Set(Object.keys(addedTerritories));
+  return (_hqPathCache = EcoLogic.getHQPaths(hqName, added, territories, customConnections, () => tradeRouteStyle));
 }
 
 function isConnectedToHQ(name) {
@@ -2767,6 +2805,7 @@ function resetSelected() {
     addedTerritories[n].defense = { damage: 0, attack: 0, health: 0, defense: 0 };
     addedTerritories[n].bonuses = {};
   }
+  listSelectedTerritories.clear();
   refreshUI();
 }
 
@@ -2875,29 +2914,42 @@ function refreshUI() {
 // ═══════════════════════════════════════════════════════════
 //  UNDO / REDO（addedTerritoriesのみ対象）
 // ═══════════════════════════════════════════════════════════
+function captureSelectionSnapshot() {
+  return {
+    added: structuredClone(addedTerritories),
+    listSelected: [...listSelectedTerritories],
+    mapSelected: [...selectedTerritories]
+  };
+}
+
+function applySelectionSnapshot(snapshot) {
+  addedTerritories = snapshot.added;
+  listSelectedTerritories = new Set(snapshot.listSelected);
+  selectedTerritories = new Set(snapshot.mapSelected);
+  for (const name of [...listSelectedTerritories]) {
+    if (!addedTerritories[name]) listSelectedTerritories.delete(name);
+  }
+}
+
 function pushUndoSnapshot() {
-  _undoStack.push(structuredClone(addedTerritories));
+  _undoStack.push(captureSelectionSnapshot());
   if (_undoStack.length > 50) _undoStack.shift();
   _redoStack = [];
 }
 
 function undoAction() {
   if (_undoStack.length === 0) return;
-  _redoStack.push(structuredClone(addedTerritories));
-  addedTerritories = _undoStack.pop();
-  for (const name of [...listSelectedTerritories]) {
-    if (!addedTerritories[name]) listSelectedTerritories.delete(name);
-  }
+  _redoStack.push(captureSelectionSnapshot());
+  applySelectionSnapshot(_undoStack.pop());
+  updateSelectedCount();
   refreshUI();
 }
 
 function redoAction() {
   if (_redoStack.length === 0) return;
-  _undoStack.push(structuredClone(addedTerritories));
-  addedTerritories = _redoStack.pop();
-  for (const name of [...listSelectedTerritories]) {
-    if (!addedTerritories[name]) listSelectedTerritories.delete(name);
-  }
+  _undoStack.push(captureSelectionSnapshot());
+  applySelectionSnapshot(_redoStack.pop());
+  updateSelectedCount();
   refreshUI();
 }
 
@@ -2961,6 +3013,8 @@ function openModal(name, bulkNames = null) {
   document.getElementById('upgrade-header').textContent = `Upgrades and Bonuses for selected territory (${count})`;
   document.getElementById('modal-hq').checked = isBulk ? false : !!st.hq;
   document.getElementById('hq-section').style.display = isBulk ? 'none' : '';
+  document.getElementById('trade-route-style-section').style.display = isBulk ? 'none' : '';
+  document.getElementById('modal-trade-route-style').value = tradeRouteStyle;
 
   const hasHQNow = Object.keys(addedTerritories).some(n => addedTerritories[n].hq);
   document.getElementById('modal-tabs').style.display = (!isBulk && hasHQNow) ? '' : 'none';
@@ -3292,7 +3346,8 @@ function renderTradingRoutesHTML(name) {
       `<div style="color:#AA0000; margin-top:4px;">This territory has no pipeline to the HQ.</div>`;
   }
 
-  const path = paths.path[name];
+  // paths.paths[name]は[name, ..., hqName]（source起点）の順。表示はHQ起点で降りていくため反転する。
+  const path = [...paths.paths[name]].reverse();
   let inner = `<div style="color:#ffffff;">${escapeHtml(hqName)}(HQ)</div>`;
   for (let i = 1; i < path.length; i++) {
     inner += `<div style="color:#ffffff;">→${escapeHtml(path[i])}</div>`;
@@ -3355,7 +3410,7 @@ function calcTraversingResources() {
   const paths = getHQPaths();
   for (const x of Object.keys(addedTerritories)) {
     if (x === hqName) continue;
-    const path = paths.path[x];
+    const path = paths.paths[x];
     if (!path) continue;
     const midNodes = path.slice(1, -1);
     if (midNodes.length === 0) continue;
@@ -3767,7 +3822,7 @@ const TIER_INT_TO_STR_MAP = ['normal', 'city', 'rainbow'];
 
 function buildShareBits() {
   const w = new BitWriter();
-  w.writeBits(5, 4); // version
+  w.writeBits(6, 4); // version
 
   const entries = Object.entries(addedTerritories).filter(([name]) => TERRITORY_ID_MAP[name] !== undefined);
   const skipped = Object.keys(addedTerritories).length - entries.length;
@@ -3833,6 +3888,9 @@ function buildShareBits() {
       w.writeBits(ov.double ? 1 : 0, 1);
     }
   }
+
+  // Trading Route Style（v6で追加）
+  w.writeBits(tradeRouteStyle === 'fastest' ? 1 : 0, 1);
 
   return w.toUint8Array();
 }
@@ -3915,7 +3973,16 @@ function parseShareBits(bytes) {
     }
   }
 
-  return { addedTerritories: newAdded, customConnections: newConns, tributeValues: newTribute, resourceOverrides: newOverrides };
+  // Trading Route Style（v6以降のみ。v5以前のリンクは既定値'cheapest'として扱う）
+  let newTradeRouteStyle = 'cheapest';
+  if (version >= 6) {
+    newTradeRouteStyle = r.readBits(1) === 1 ? 'fastest' : 'cheapest';
+  }
+
+  return {
+    addedTerritories: newAdded, customConnections: newConns, tributeValues: newTribute,
+    resourceOverrides: newOverrides, tradeRouteStyle: newTradeRouteStyle
+  };
 }
 
 function getShareState() {
@@ -3957,6 +4024,7 @@ function getShareState() {
   
   const state = { v: 3, t: tData };
   if (Object.keys(tr).length > 0) state.tr = tr;
+  if (tradeRouteStyle === 'fastest') state.rs = 1;
   return state;
 }
 
@@ -4015,6 +4083,7 @@ async function loadFromHash() {
       customConnections = parsed.customConnections;
       tributeValues = parsed.tributeValues;
       resourceOverrides = parsed.resourceOverrides;
+      tradeRouteStyle = parsed.tradeRouteStyle;
       _hqPathCache = null;
       _traversingCache = null;
       _fullDistCache = null;
@@ -4051,6 +4120,7 @@ async function loadFromHash() {
     addedTerritories = {};
     customConnections = [];
     resourceOverrides = {};
+    tradeRouteStyle = state.rs === 1 ? 'fastest' : 'cheapest';
 
     if (state.tr) {
       for (const r of RESOURCES) tributeValues[r] = state.tr[r] || 0;
@@ -4722,7 +4792,7 @@ Object.assign(window, {
   clearFilter, closeFilterModal, closeCustomSettings, toggleListSelection, removeTerritory,
   removeCustomConnection, removeResourceOverride, toggleFilterValue,
   onLiveModeToggle, importLiveGuild, enableDiagLogging, disableDiagLogging, exportWatchLog,
-  undoAction, redoAction
+  undoAction, redoAction, setTradeRouteStyle
 });
 
 // ═══════════════════════════════════════════════════════════
