@@ -113,6 +113,20 @@
         </select>
       </div>
 
+      <div class="modal-section" id="bulk-trade-route-style-section" style="display:none;">
+        <label>Trading Route Style</label>
+        <select id="modal-bulk-trade-route-style">
+          <option value="">- No Change -</option>
+          <option value="cheapest">Cheapest</option>
+          <option value="fastest">Fastest</option>
+        </select>
+      </div>
+
+    </div>
+
+    <div id="modal-tab-data" style="display:none;">
+      <label class="data-section-label">Trading Routes</label>
+      <div id="data-trading-routes"></div>
       <div class="modal-section" id="trade-route-style-section">
         <label>Trading Route Style</label>
         <select id="modal-trade-route-style" onchange="setTradeRouteStyle(this.value)">
@@ -120,11 +134,6 @@
           <option value="fastest">Fastest</option>
         </select>
       </div>
-    </div>
-
-    <div id="modal-tab-data" style="display:none;">
-      <label class="data-section-label">Trading Routes</label>
-      <div id="data-trading-routes"></div>
       <label class="data-section-label">Resources</label>
       <div id="data-resources"></div>
     </div>

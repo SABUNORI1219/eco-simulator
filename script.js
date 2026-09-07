@@ -80,7 +80,6 @@ let listSelectedTerritories = new Set(); // manager list selection (registered)
 let _hqPathCache = null;
 let _traversingCache = null;
 let _fullDistCache = null;
-let tradeRouteStyle = 'cheapest'; // 'cheapest' | 'fastest'。全領地一括の設定（領地ごとの個別設定は未実装）
 let tributeValues = { emeralds: 0, ore: 0, crops: 0, fish: 0, wood: 0 };
 let currentModalMode = 'single'; // 'single' | 'bulk'
 let currentBulkTerritories = [];
@@ -2300,18 +2299,29 @@ function calculateTreasuryFromAcquired(acquiredStr) {
   return 'Very Low';
 }
 
+// Data タブのTrading Route Styleセレクトから呼ばれる。現在開いている単体領地（currentModalTerritory）
+// 1件だけに効く設定で、Saveを待たずaddedTerritoriesへ即座に書き込む（一括編集モードでは
+// bulk-trade-route-style-sectionの別セレクトを使うため、この関数は呼ばれない）。
 function setTradeRouteStyle(style) {
   if (style !== 'cheapest' && style !== 'fastest') return;
-  if (tradeRouteStyle === style) return;
-  tradeRouteStyle = style;
+  const name = currentModalTerritory;
+  if (!name || !addedTerritories[name]) return;
+  if (addedTerritories[name].tradeRouteStyle === style) return;
+  addedTerritories[name].tradeRouteStyle = style;
   refreshUI();
+  // Data タブを開いたまま切り替えた場合、Saveを待たずTrading Routes表示をその場で更新する。
+  const dataTab = document.getElementById('modal-tab-data');
+  if (dataTab && dataTab.style.display !== 'none') renderDataTab(currentModalTerritory);
 }
 
 function getHQPaths() {
   if (_hqPathCache !== null) return _hqPathCache;
   const hqName = Object.keys(addedTerritories).find(n => addedTerritories[n].hq) || null;
   const added = new Set(Object.keys(addedTerritories));
-  return (_hqPathCache = EcoLogic.getHQPaths(hqName, added, territories, customConnections, () => tradeRouteStyle));
+  return (_hqPathCache = EcoLogic.getHQPaths(
+    hqName, added, territories, customConnections,
+    (name) => addedTerritories[name]?.tradeRouteStyle || 'cheapest'
+  ));
 }
 
 function isConnectedToHQ(name) {
@@ -2738,7 +2748,7 @@ function addTerritory(name) {
     if (territories[name].Guild && territories[name].Guild.acquired) {
       initialTreasury = calculateTreasuryFromAcquired(territories[name].Guild.acquired);
     }
-    addedTerritories[name] = { defense: { damage: 0, attack: 0, health: 0, defense: 0 }, bonuses: {}, hq: false, treasury: initialTreasury };
+    addedTerritories[name] = { defense: { damage: 0, attack: 0, health: 0, defense: 0 }, bonuses: {}, hq: false, treasury: initialTreasury, tradeRouteStyle: 'cheapest' };
   }
   selectedTerritories.delete(name);
   if (wasEmpty && Object.keys(addedTerritories).length > 0) autoAssignHQ();
@@ -2755,7 +2765,7 @@ function addSelectedTerritories() {
       if (territories[name].Guild && territories[name].Guild.acquired) {
         initialTreasury = calculateTreasuryFromAcquired(territories[name].Guild.acquired);
       }
-      addedTerritories[name] = { defense: { damage: 0, attack: 0, health: 0, defense: 0 }, bonuses: {}, hq: false, treasury: initialTreasury };
+      addedTerritories[name] = { defense: { damage: 0, attack: 0, health: 0, defense: 0 }, bonuses: {}, hq: false, treasury: initialTreasury, tradeRouteStyle: 'cheapest' };
     }
   }
   selectedTerritories.clear();
@@ -2877,7 +2887,7 @@ function addGuildTerritories() {
     if (territories[name].Guild && territories[name].Guild.acquired) {
       initialTreasury = calculateTreasuryFromAcquired(territories[name].Guild.acquired);
     }
-    addedTerritories[name] = { defense: { damage: 0, attack: 0, health: 0, defense: 0 }, bonuses: {}, hq: false, treasury: initialTreasury };
+    addedTerritories[name] = { defense: { damage: 0, attack: 0, health: 0, defense: 0 }, bonuses: {}, hq: false, treasury: initialTreasury, tradeRouteStyle: 'cheapest' };
     selectedTerritories.delete(name);
   }
 
@@ -3014,7 +3024,12 @@ function openModal(name, bulkNames = null) {
   document.getElementById('modal-hq').checked = isBulk ? false : !!st.hq;
   document.getElementById('hq-section').style.display = isBulk ? 'none' : '';
   document.getElementById('trade-route-style-section').style.display = isBulk ? 'none' : '';
-  document.getElementById('modal-trade-route-style').value = tradeRouteStyle;
+  document.getElementById('bulk-trade-route-style-section').style.display = isBulk ? '' : 'none';
+  if (isBulk) {
+    document.getElementById('modal-bulk-trade-route-style').value = '';
+  } else {
+    document.getElementById('modal-trade-route-style').value = st.tradeRouteStyle || 'cheapest';
+  }
 
   const hasHQNow = Object.keys(addedTerritories).some(n => addedTerritories[n].hq);
   document.getElementById('modal-tabs').style.display = (!isBulk && hasHQNow) ? '' : 'none';
@@ -3242,6 +3257,7 @@ function saveModal() {
       if (sel.value !== "") bonusesToApply[sel.dataset.bonus] = parseInt(sel.value);
     });
     const treasury = document.getElementById('modal-treasury').value;
+    const bulkTradeRouteStyle = document.getElementById('modal-bulk-trade-route-style').value;
 
     pushUndoSnapshot();
     for (const n of currentBulkTerritories) {
@@ -3260,6 +3276,9 @@ function saveModal() {
       }
       if (treasury !== "") {
         st.treasury = treasury;
+      }
+      if (bulkTradeRouteStyle !== "") {
+        st.tradeRouteStyle = bulkTradeRouteStyle;
       }
     }
     listSelectedTerritories.clear();
@@ -3299,7 +3318,9 @@ function saveModal() {
     }
   }
 
-  addedTerritories[name] = { defense, bonuses, hq: isHQ, treasury, importEstimated };
+  // tradeRouteStyleはData タブのセレクトからsetTradeRouteStyle()経由で既にaddedTerritories[name]へ
+  // 即時反映済み（この関数の対象外）。ここでオブジェクトを丸ごと差し替える際に消さないようprevから引き継ぐ。
+  addedTerritories[name] = { defense, bonuses, hq: isHQ, treasury, importEstimated, tradeRouteStyle: (prev && prev.tradeRouteStyle) || 'cheapest' };
   closeModal();
   refreshUI();
 }
@@ -3822,7 +3843,7 @@ const TIER_INT_TO_STR_MAP = ['normal', 'city', 'rainbow'];
 
 function buildShareBits() {
   const w = new BitWriter();
-  w.writeBits(6, 4); // version
+  w.writeBits(7, 4); // version
 
   const entries = Object.entries(addedTerritories).filter(([name]) => TERRITORY_ID_MAP[name] !== undefined);
   const skipped = Object.keys(addedTerritories).length - entries.length;
@@ -3834,6 +3855,7 @@ function buildShareBits() {
     w.writeBits(TERRITORY_ID_MAP[name], 9);
     w.writeBits(st.hq ? 1 : 0, 1);
     w.writeBits(TREASURY_STR_TO_INT_MAP[st.treasury || 'Very Low'] || 0, 3);
+    w.writeBits(st.tradeRouteStyle === 'fastest' ? 1 : 0, 1); // v7で追加：領地ごとのTrading Route Style
 
     const d = st.defense || {};
     const dVals = [d.damage || 0, d.attack || 0, d.health || 0, d.defense || 0];
@@ -3889,8 +3911,8 @@ function buildShareBits() {
     }
   }
 
-  // Trading Route Style（v6で追加）
-  w.writeBits(tradeRouteStyle === 'fastest' ? 1 : 0, 1);
+  // Trading Route Style（v6で領地一括の1bitとして末尾に追加していたが、v7で領地ごとの
+  // ビット（上記の各領地ブロック内）に置き換えたため、この末尾ブロックは廃止した）。
 
   return w.toUint8Array();
 }
@@ -3905,6 +3927,14 @@ function parseShareBits(bytes) {
     const id = r.readBits(9);
     const hq = r.readBits(1) === 1;
     const treasuryInt = r.readBits(3);
+
+    // v7で領地ごとのTrading Route Styleビットを追加。v6以前のリンクにはこのビット自体が
+    // 存在しない（v6のみ末尾に全領地共通のグローバル1bitがあり、後述の処理で読み込み後に
+    // 全領地へ適用する。v5以前はビットが無くcheapest扱いのまま）。
+    let tradeRouteStyle = 'cheapest';
+    if (version >= 7) {
+      tradeRouteStyle = r.readBits(1) === 1 ? 'fastest' : 'cheapest';
+    }
 
     const hasDef = r.readBits(1) === 1;
     let defense = { damage: 0, attack: 0, health: 0, defense: 0 };
@@ -3924,7 +3954,7 @@ function parseShareBits(bytes) {
 
     const name = TERRITORY_IDS[id];
     if (name === undefined || !territories[name]) continue;
-    newAdded[name] = { defense, bonuses, hq, treasury: TREASURY_INT_TO_STR_MAP[treasuryInt] || 'Very Low' };
+    newAdded[name] = { defense, bonuses, hq, treasury: TREASURY_INT_TO_STR_MAP[treasuryInt] || 'Very Low', tradeRouteStyle };
   }
 
   const connCount = r.readBits(10);
@@ -3973,15 +4003,17 @@ function parseShareBits(bytes) {
     }
   }
 
-  // Trading Route Style（v6以降のみ。v5以前のリンクは既定値'cheapest'として扱う）
-  let newTradeRouteStyle = 'cheapest';
-  if (version >= 6) {
-    newTradeRouteStyle = r.readBits(1) === 1 ? 'fastest' : 'cheapest';
+  // v6のみ、末尾に全領地共通のグローバル1bitが存在する（v7で領地ごとのビットに置き換えたため
+  // 廃止したブロック）。後方互換として、読み込んだ全領地の初期tradeRouteStyleに適用する
+  // （今までの見た目を保つため）。v7以降はこのブロック自体が存在しないため読まない。
+  if (version === 6) {
+    const globalStyle = r.readBits(1) === 1 ? 'fastest' : 'cheapest';
+    for (const name of Object.keys(newAdded)) newAdded[name].tradeRouteStyle = globalStyle;
   }
 
   return {
     addedTerritories: newAdded, customConnections: newConns, tributeValues: newTribute,
-    resourceOverrides: newOverrides, tradeRouteStyle: newTradeRouteStyle
+    resourceOverrides: newOverrides
   };
 }
 
@@ -4016,15 +4048,18 @@ function getShareState() {
     const tl = TREASURY_STR_TO_INT[st.treasury || 'Very Low'] || 0;
     if (tl > 0) item.t = tl;
 
+    // 領地ごとのTrading Route Style（旧仕様はstate.rsで全領地共通の1フラグだったが、
+    // 領地ごとの個別設定に伴いitem単位へ移した。cheapest（既定値）は書き込まない）。
+    if (st.tradeRouteStyle === 'fastest') item.rs = 1;
+
     return item;
   });
 
   const tr = {};
   for (const [k, v] of Object.entries(tributeValues)) { if (v) tr[k] = v; }
-  
+
   const state = { v: 3, t: tData };
   if (Object.keys(tr).length > 0) state.tr = tr;
-  if (tradeRouteStyle === 'fastest') state.rs = 1;
   return state;
 }
 
@@ -4083,7 +4118,6 @@ async function loadFromHash() {
       customConnections = parsed.customConnections;
       tributeValues = parsed.tributeValues;
       resourceOverrides = parsed.resourceOverrides;
-      tradeRouteStyle = parsed.tradeRouteStyle;
       _hqPathCache = null;
       _traversingCache = null;
       _fullDistCache = null;
@@ -4120,7 +4154,9 @@ async function loadFromHash() {
     addedTerritories = {};
     customConnections = [];
     resourceOverrides = {};
-    tradeRouteStyle = state.rs === 1 ? 'fastest' : 'cheapest';
+    // 旧v3形式（領地ごとの個別設定に対応する前）はstate.rsが全領地共通の1フラグだった。
+    // item.rsが無い（=領地ごとの個別値を持たない古いリンク）場合の後方互換フォールバックとして使う。
+    const globalStyleFallback = state.rs === 1 ? 'fastest' : 'cheapest';
 
     if (state.tr) {
       for (const r of RESOURCES) tributeValues[r] = state.tr[r] || 0;
@@ -4151,14 +4187,16 @@ async function loadFromHash() {
             defense,
             bonuses,
             hq: item.h === 1,
-            treasury: TREASURY_INT_TO_STR[item.t || 0] || 'Very Low'
+            treasury: TREASURY_INT_TO_STR[item.t || 0] || 'Very Low',
+            tradeRouteStyle: item.rs === 1 ? 'fastest' : globalStyleFallback
           };
         } else if (state.v === 1 || state.v === 2) {
           addedTerritories[item.n] = {
             defense: { damage: 0, attack: 0, health: 0, defense: 0, ...item.d },
             bonuses: item.b || {},
             hq: item.hq || false,
-            treasury: item.tl || 'Very Low'
+            treasury: item.tl || 'Very Low',
+            tradeRouteStyle: 'cheapest'
           };
         }
       }
@@ -4577,6 +4615,15 @@ async function onLiveModeToggle(reason = 'user-checkbox') {
     liveTooltipPinnedName = null;
     updateSelectedCount();
     document.getElementById('add-selected-btn').disabled = true;
+    // addedTerritories操作用パネル（Guild Output/Territory Manager）はLive中は意味を持たないため隠す。
+    document.getElementById('overview').classList.add('live-hidden');
+    document.getElementById('controls').classList.add('live-hidden');
+    document.getElementById('overview').classList.remove('sheet-open');
+    document.getElementById('controls').classList.remove('sheet-open');
+    document.querySelectorAll('.mobile-tab-btn[data-panel="overview"], .mobile-tab-btn[data-panel="controls"]').forEach(b => {
+      b.classList.add('live-hidden');
+      b.classList.remove('active');
+    });
     updateLiveBadge();
     renderLiveDataScreen();
     await fetchGuildColors();
@@ -4603,6 +4650,11 @@ async function onLiveModeToggle(reason = 'user-checkbox') {
     allLiveGuildDisplays = [];
     liveGuildDisplayToUuid = {};
     document.getElementById('add-selected-btn').disabled = false;
+    document.getElementById('overview').classList.remove('live-hidden');
+    document.getElementById('controls').classList.remove('live-hidden');
+    document.querySelectorAll('.mobile-tab-btn[data-panel="overview"], .mobile-tab-btn[data-panel="controls"]').forEach(b => {
+      b.classList.remove('live-hidden');
+    });
     updateLiveBadge();
     renderLiveDataScreen();
     refreshUI();
@@ -4709,6 +4761,7 @@ function importLiveGuild() {
       bonuses: prev ? { ...prev.bonuses } : {},
       hq: info.hq === true,
       treasury: LIVE_RATING_MAP[info.treasury] || 'Very Low',
+      tradeRouteStyle: (prev && prev.tradeRouteStyle) || 'cheapest',
       importEstimated: {
         defense: { ...(prevEstimated.defense || {}) },
         bonuses: { ...(prevEstimated.bonuses || {}) }

@@ -6,6 +6,21 @@
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { background: #0f172a; color: #e2e8f0; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
+
+/* クリック操作が主目的のパネル・モーダル全体で、誤ドラッグによるテキスト選択（青ハイライト）を防止する。
+   input/textarea/select/datalistのみ明示的に元の挙動へ戻し、検索欄等の通常のテキスト選択・カーソル移動を妨げない。 */
+.panel, #modal, #tribute-modal, #custom-settings-modal, #filter-modal, #mobile-tabbar {
+  user-select: none;
+  -webkit-user-select: none;
+}
+.panel input, .panel textarea, .panel select,
+#modal input, #modal textarea, #modal select,
+#tribute-modal input, #tribute-modal textarea, #tribute-modal select,
+#custom-settings-modal input, #custom-settings-modal textarea, #custom-settings-modal select,
+#filter-modal input, #filter-modal textarea, #filter-modal select {
+  user-select: auto;
+  -webkit-user-select: auto;
+}
 #map-img {
   position: fixed; top: 0; left: 0; transform-origin: 0 0;
   pointer-events: none; will-change: transform; z-index: 0;
@@ -405,6 +420,9 @@ button.danger:hover { background: #b91c1c; }
   background: transparent; color: #94a3b8; font-size: 13px;
 }
 .mobile-tab-btn.active { background: #1e293b; color: #e2e8f0; }
+
+/* Live Mode中はaddedTerritories操作用パネル（Guild Output/Territory Manager）を隠す */
+.live-hidden { display: none !important; }
 
 /* Responsive (<=640px): bottom sheet panels + modal sizing */
 @media (max-width: 640px) {

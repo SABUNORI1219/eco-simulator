@@ -14,9 +14,10 @@ eco-simulator/
 ├── territories.json    # 全437領地のデータ（Location, Trading Routes, resources）。APIから再生成した
 │                       # ものであり手で編集しないこと（詳細は「Trading Route探索アルゴリズム」参照）
 ├── territory-ids.json  # 共有リンク用の固定領地ID配列（末尾追記のみ・詳細は下記警告参照）
-├── scripts/            # territories.json保守用のNodeスクリプト（regen-territories.mjs/verify-territories.mjs）
 ├── eco-logic.test.js               # eco-logic.jsの単体テスト（node --testで実行）
-├── eco-logic.trade-route.test.js   # Trading Route探索アルゴリズムの単体・回帰テスト（node --testで実行）
+│                                    # ※Trading Route関連の回帰テスト・territories.json保守用スクリプト・
+│                                    #   実測ログはscratchpad/trade-route/へ移動済み（git管理外、詳細は
+│                                    #   「Trading Route探索アルゴリズム」参照）
 ├── dev-server.py       # ローカル開発用サーバー（キャッシュ無効化ヘッダー付与。詳細は「起動方法」参照）
 ├── main-map.webp       # マップ画像（4608×6644px）※手動配置が必要
 ├── assets/icons/others/disconnected.png  # 非接続❌アイコン（16px四方）※手動配置が必要
@@ -97,13 +98,12 @@ python dev-server.py 8080
 | 変数 | 型 | 内容 |
 |---|---|---|
 | `territories` | `{}` | territories.jsonの全437領地データ |
-| `addedTerritories` | `{}` | 登録済み領地 `name → { defense, bonuses, hq, treasury, importEstimated? }`。`importEstimated`（2026-08導入、Import This Guildパート2）は`{ defense: {damage,attack,health,defense}, bonuses: {'Stronger Minions',...} }`形式で、フィールドごとに`true`=Import This Guild由来の推定値のまま・`false`=手動編集済み・未設定=未確定のtri-state。Share Linkには含まれない表示専用メタ情報 |
+| `addedTerritories` | `{}` | 登録済み領地 `name → { defense, bonuses, hq, treasury, tradeRouteStyle, importEstimated? }`。`tradeRouteStyle`（`'cheapest'\|'fastest'`、既定値`'cheapest'`、2026-09に全領地一括設定から領地ごとの個別設定へ変更）はTrading Route探索のスタイル。`importEstimated`（2026-08導入、Import This Guildパート2）は`{ defense: {damage,attack,health,defense}, bonuses: {'Stronger Minions',...} }`形式で、フィールドごとに`true`=Import This Guild由来の推定値のまま・`false`=手動編集済み・未設定=未確定のtri-state。Share Linkには含まれない表示専用メタ情報 |
 | `selectedTerritories` | `Set` | マップ上でクリック選択された未登録領地 |
 | `listSelectedTerritories` | `Set` | Managerリストで選択された登録済み領地（一括編集用） |
 | `tributeValues` | `{}` | 外部資源流入/流出量 `{ emeralds, ore, crops, fish, wood }` |
 | `treasuryLevel` | `string` | Guild Treasuryレベル（Very Low〜Very High） |
-| `_hqPathCache` | `{}|null` | HQからの距離と経路のキャッシュ（refreshUI時に無効化）。`tradeRouteStyle`も間接的にキャッシュキーに含まれる（`setTradeRouteStyle()`が変更時に必ず`refreshUI()`を呼ぶため） |
-| `tradeRouteStyle` | `string` | Trading Route探索のスタイル（`'cheapest'\|'fastest'`）。全領地一括の1つの値（領地ごとの個別設定は未実装）。Share Linkに含まれる（`#p=`v6で追加） |
+| `_hqPathCache` | `{}|null` | HQからの距離と経路のキャッシュ（refreshUI時に無効化）。各領地の`tradeRouteStyle`も間接的にキャッシュキーに含まれる（`setTradeRouteStyle()`が変更時に必ず`refreshUI()`を呼ぶため） |
 | `_fullDistCache` | `{}|null` | HQからの距離を全437領地対象でBFSした結果のキャッシュ（refreshUI時に無効化） |
 | `currentModalMode` | `string` | `'single'` または `'bulk'` |
 | `currentBulkTerritories` | `[]` | 一括編集対象の領地名配列 |
@@ -146,8 +146,8 @@ python dev-server.py 8080
 | `calcTerritoryConsumption(name)` | Defense + ボーナスコストの合計 |
 | `calcOverallBalance()` | 全領地の生産/消費合計（Tribute含まず） |
 | `calcTerritoryDefenseStats(name)` | HP・DPS・Rating等の防衛スタッツ計算 |
-| `getHQPaths()` | HQからの距離＋各領地ごとに独立して計算した経路を返す（登録済み領地のみ経由・キャッシュ付き）。`EcoLogic.getHQPaths(hqName, added, territories, customConnections, () => tradeRouteStyle)`の薄いラッパー。キャッシュ（`_hqPathCache`）は`refreshUI()`で無効化されるため、`hq`/`addedTerritories`/`customConnections`/`tradeRouteStyle`のいずれかが変わる操作は必ず`refreshUI()`（または`setTradeRouteStyle()`）を経由すること。詳細は「Trading Route探索アルゴリズム」参照 |
-| `setTradeRouteStyle(style)` | `tradeRouteStyle`（`'cheapest'\|'fastest'`、全領地一括設定）を切り替えて`refreshUI()`する。領地モーダルのSettingsタブから呼ばれる |
+| `getHQPaths()` | HQからの距離＋各領地ごとに独立して計算した経路を返す（登録済み領地のみ経由・キャッシュ付き）。`EcoLogic.getHQPaths(hqName, added, territories, customConnections, (name) => addedTerritories[name]?.tradeRouteStyle \|\| 'cheapest')`の薄いラッパー（2026-09、全領地一括の固定値渡しから領地ごとの解決に変更。`styleResolver`は元々`(name)=>style`という領地名を受け取るインターフェースで設計されていたため、`eco-logic.js`側は無変更）。キャッシュ（`_hqPathCache`）は`refreshUI()`で無効化されるため、`hq`/`addedTerritories`/`customConnections`のいずれかが変わる操作（各領地の`tradeRouteStyle`変更を含む）は必ず`refreshUI()`（または`setTradeRouteStyle()`）を経由すること。詳細は「Trading Route探索アルゴリズム」参照 |
+| `setTradeRouteStyle(style)` | 単体編集モーダルのDataタブから呼ばれ、**現在開いている領地1件（`currentModalTerritory`）だけ**の`tradeRouteStyle`を`addedTerritories[currentModalTerritory].tradeRouteStyle = style`で即座に書き換えて`refreshUI()`する（2026-09、全領地一括設定から変更。Saveボタンを待たない）。Data タブが開いていれば`renderDataTab()`も呼び直しその場で表示を更新する。一括編集モード（bulk）では呼ばれない（`#bulk-trade-route-style-section`の別セレクトを`saveModal()`が読む方式のため） |
 | `isConnectedToHQ(name)` | 領地がHQから到達可能かを判定（HQ未設定時は登録済み全領地でtrue） |
 | `getAllNeighbors(name)` | 全接続を返す（基本ルート＋`customConnections`の全要素、無効なカスタム接続線も含む）。HQのConnections/Externalsのカウント、Treasuryバフの距離計算にのみ使用する |
 | `getFullGraphDistances()` | HQからの距離を全437領地対象でBFS（`getAllNeighbors()`経由）。HQ未設定時は`{}`を返す。`_fullDistCache`にキャッシュ |
@@ -169,7 +169,7 @@ python dev-server.py 8080
 | `undoAction()` / `redoAction()` | `_undoStack`/`_redoStack`が空なら何もしない。現在の状態を`captureSelectionSnapshot()`で逆側のスタックにpush → 自スタックから`pop()`した内容を`applySelectionSnapshot()`で復元（`addedTerritories`・`listSelectedTerritories`・`selectedTerritories`の3つとも）→ `updateSelectedCount()` → `refreshUI()`。**2026-09変更**: 以前は`addedTerritories`のみ復元しており選択状態（マップの青ハイライト・Managerリストの選択）は戻らなかったが、スナップショットにリスト選択・マップ選択も含めるよう拡張した |
 | `updateUndoRedoButtons()` | `_undoStack`/`_redoStack`の長さに応じて`#undo-btn`/`#redo-btn`の`disabled`を切り替える。`refreshUI()`末尾・`init()`から呼ぶ |
 | `openModal(name, bulkNames?)` | 領地設定モーダルを開く（bulkNames指定で一括編集モード）。単体モードでは`addedTerritories[name].importEstimated`を見て、Import This Guild由来の推定値のまま（tri-stateが`true`）のDefense/Bonus項目にマゼンタの縁取り・ドット（`.import-estimated`）を付け、ホバー時の名前ツールチップにも注記を追加する（2026-08導入、一括モードでは値と同様に表示しない） |
-| `saveModal()` | single/bulkモードを判定して保存。保存前後で値が実際に変わったフィールドのみ`importEstimated`を`false`に落とす（変えていないフィールドはマークを維持し、以後のImport This Guildでの自動更新対象のままにする） |
+| `saveModal()` | single/bulkモードを判定して保存。保存前後で値が実際に変わったフィールドのみ`importEstimated`を`false`に落とす（変えていないフィールドはマークを維持し、以後のImport This Guildでの自動更新対象のままにする）。単体モードでは`addedTerritories[name]`オブジェクトを丸ごと差し替えるため、`tradeRouteStyle`は`prev.tradeRouteStyle`（Data タブの`setTradeRouteStyle()`が既に即時反映済みの値）から引き継ぐ（2026-09、引き継がないと消えるため必須）。一括モードでは`#modal-bulk-trade-route-style`が`""`（No Change）でなければ選択領地全件の`tradeRouteStyle`を上書きする |
 | `closeModal()` | モーダルを閉じてモードをsingleにリセット |
 | `updateModalStats()` | モーダルのプレビュー統計を更新（bulkは簡易表示） |
 | `openTributeModal()` | Tributeモーダルを開いて入力フォームを生成 |
@@ -495,32 +495,31 @@ confirmedExtra/defences/treasuryが完全に一致したまま、**わずか68�
 
 **Cheapestの探索は登録領地に限定せず、全437領地グラフを走査する（2026-09追加）。** ゲーム側の探索は登録領地だけのグラフではなく全領地グラフに対して行われており、未登録領地（他ギルド所有／無所属）を優先度キューに投入すること自体がヒープ配列の内部状態を変え、実測との一致に影響することが判明した。`computeTradeRoute()`のCheapest分岐では、`territories`に存在する領地であれば登録の有無を問わず探索対象にし、コストを`added.has(v) ? 1 : UNOWNED_COST`（`UNOWNED_COST = 1e6`、1ホップより十分大きければ値そのものに意味は無い）で分ける。**復元した経路に未登録領地が1つでも含まれていた場合はnullを返す**（登録領地だけではHQに到達できない＝従来通りの「非接続」として扱う。巨大コスト経由でHQに「到達」してしまうケースを弾くための後処理）。`dist[name]`は経路長と一致し続ける（未登録領地はコストが巨大なため、登録領地だけで完結する経路がHQより先にpollされる）。**Fastest（FIFOキュー）は変更していない。** コストの概念が無いFIFOに未登録領地を投入すると、そのまま経路として採用されてしまうため、従来通り登録領地のみを走査する（実測ではFastestはどちらの実装でも81/81=100%だったため、安全側に倒した）。
 
-**実測データ（`docs/Trading Routes.txt`、Kander/Corkus/Canyon/Swamp/Ragniの計148ルート）との一致率**: Fastest 81/81=100%（Kander/Efilim→Twisted Housingの1ルートは非所有の同盟領地を経由するため本シミュレータでは再現不可能・除外。Kander/Corkusのみ検証、他3地域は未検証）、Cheapest 145/148=98.0%（既知の不一致3件、すべてKander。下表）。回帰テストは`eco-logic.trade-route.test.js`（`node --test eco-logic.trade-route.test.js`で実行。期待値はテスト実行時に`docs/Trading Routes.txt`から直接パースする。手で転記した固定値は使わない）。CanyonセクションのSourceに`*`が付いた9件・Ragniセクションの1件（Maltic）は、ファイル自身の注記で「間違ってる可能性がある（うろ覚え）」とされているためアサーション対象から除外している（ただしグラフの連結性を保つため登録領地の集合には含める）。**CanyonセクションのBantisu Air Temple行にある`Bantisu Approarch`は、同ファイル内に実在する`Bantisu Approach`の誤字と判断し補正して扱っている**（1文字の誤挿入、他に該当する領地が存在しないため）。
+**実測データ（`scratchpad/trade-route/Trading Routes.txt`、Kander/Corkus/Canyon/Swamp/Ragniの計148ルート、2026-09にgit管理外へ移動済み）との一致率**: Fastest 81/81=100%（Kander/Efilim→Twisted Housingの1ルートは非所有の同盟領地を経由するため本シミュレータでは再現不可能・除外）、**Cheapest 144/144=100%（既知の不一致は無い）。** **UNOWNED_COST導入（未登録領地もヒープに踏み台として投入する変更）が、Kanderを除く全地域（Canyon・Corkus・Ragni・Swamp）の完全一致に必要だった。** 導入前は登録領地限定のグラフで探索しており、実際のゲーム内探索（全領地グラフ）と齟齬が生じていたが、未登録領地がヒープ配列に混ざることで同値要素の取り出し順（ヒープの内部状態）自体が変わり、これによりCanyon・Corkus・Ragni・Swampの不一致がすべて解消した。**モデルだけ差し替えられる構造にしてある**（Step1のキュー実装をcomputeTradeRoute内で差し替えるだけで済む設計）。回帰テストは`scratchpad/trade-route/eco-logic.trade-route.test.js`（`node --test scratchpad/trade-route/eco-logic.trade-route.test.js`で実行。期待値はテスト実行時に同ディレクトリの`Trading Routes.txt`から直接パースする。手で転記した固定値は使わない）。CanyonセクションのSourceに`*`が付いた9件・Ragniセクションの1件（Maltic）は、ファイル自身の注記で「間違ってる可能性がある（うろ覚え）」とされているためアサーション対象から除外している（ただしグラフの連結性を保つため登録領地の集合には含める）。**CanyonセクションのBantisu Air Temple行にある`Bantisu Approarch`は、同ファイル内に実在する`Bantisu Approach`の誤字と判断し補正して扱っている**（1文字の誤挿入、他に該当する領地が存在しないため）。
 
-**既知の不一致3件（Cheapestのみ、すべてKander。実装バグではなく許容する）:**
+**Kanderの残り不一致3件（Jitak's Farm/Kitrios Barracks/Colourful Mountaintop）は、記録時点での一時的な敵占領（Gert Camp・Upper Thanos）を考慮すると全て説明がつき、解消した（2026-09、実際にコードで再現し確認済み）。** Kander Claimは実測データ上59領地だが、そのうちGert Camp（GC）・Upper Thanos（UT）の2領地は記録期間中、一時的に敵ギルドに占領されており、記録者のギルドは所有していなかった。この2領地を除いた57領地を登録し、GC/UTを（自ギルド所有ではない）未登録領地としてUNOWNED_COSTの踏み台に回した状態で経路を計算すると、Jitak's Farmの分岐（GCがある場合はGylia Lakehouse経由、無い場合はMushroom Hill経由）を含む3件すべてが実測と完全一致した。ただしGC/UT自身の経路（実測データには一時的に奪還できていた別の期間の観測と思われる記録が残っている）と、その経路がGC/UT経由になっているTroll's Challenge・Thanos Underpassの記録は、「GC/UT不在」の状態の正解データとしては使えない（判定不能であり、モデルの不備ではない）ため、この4件はアサーション対象から除外している。結果、Kanderは58件中54件を評価対象とし、54件全て完全一致した（54+24+51+7+8=144件で100%）。回帰テストの`KANDER_ENEMY_OCCUPIED_AT_RECORDING`（`scratchpad/trade-route/eco-logic.trade-route.test.js`）がこの2領地を保持する。
 
-| 領地 | 分岐点 | 実測 | モデル |
-|---|---|---|---|
-| Jitak's Farm | Jitak's Farm | Mushroom Hill | Gylia Lakehouse |
-| Kitrios Barracks | Gylia Lakehouse | Weird Clearing | Gylia Research Cabin |
-| Colourful Mountaintop | Gylia Watchtower | Cosmic Fissures | Gylia Lakehouse |
-
-**2026-09の未登録領地対応（UNOWNED_COST導入）により、旧5件のうち2件（Entrance to Kander・Corkus/Bloody Beach）は解消した。** 導入前は登録領地限定のグラフで探索していたため、実際のゲーム内探索（全領地グラフ）と齟齬が生じていた。誤りは「余計に逸脱」1件・「逸脱し損ね」2件と両方向にばらけており、定数や比較子の調整では解消しない（原因は特定できていない）。**モデルだけ差し替えられる構造にしてある**（Step1のキュー実装をcomputeTradeRoute内で差し替えるだけで済む設計）。
-
-**修正依頼時の予測との相違点（2026-09、正直な記録として残す）**: UNOWNED_COST導入の修正依頼では「Entrance to Kanderは一致するようになるが、同じ分岐点でGelibordが新たに不一致になり、Kanderの一致数は53/58になるはず」という予測が示されていたが、実装して実測データと突き合わせたところGelibordも一致し、Kanderは55/58だった（不一致はJitak's Farm/Kitrios Barracks/Colourful Mountaintopの3件のみ）。他の4地域（Corkus 24/24・Canyon 51/51・Swamp 7/7・Ragni 8/8、登録数61/8/16、Nemractの個別経路）は予測と完全に一致しており、疑似コード通りに実装できていることの傍証としている。Gelibordの食い違いのみ依頼元に報告し、実測データ・実装のどちらにも手を加えず、実際の計算結果をテストの期待値として採用した。
+**修正依頼時の予測との相違点（2026-09、正直な記録として残す）**: UNOWNED_COST導入の修正依頼では「Entrance to Kanderは一致するようになるが、同じ分岐点でGelibordが新たに不一致になり、Kanderの一致数は53/58になるはず」という予測が示されていたが、実装して実測データと突き合わせたところGelibordも一致した。他の4地域（Corkus 24/24・Canyon 51/51・Swamp 7/7・Ragni 8/8、登録数61/8/16、Nemractの個別経路）は予測と完全に一致しており、疑似コード通りに実装できていることの傍証としている。Gelibordの食い違いのみ依頼元に報告し、実測データ・実装のどちらにも手を加えず、実際の計算結果をテストの期待値として採用した（その後GC/UT除外に気づき、Kanderの残り3件も解消済み）。
 
 **ゲーム内部の実際の挙動（本シミュレータでは実装しない部分）**: Cheapestは実際にはtax（通過時の税率）を最優先し、ホップ数は下位の判断基準になる。同盟領地を1ホップ多く迂回してでも税負担の小さい経路を選ぶ実例が観測されている（Kander/Efilim→Twisted Housing、5%税を払ってでも同盟領地を通過する）。Fastestはtaxを完全に無視する。**本シミュレータは自ギルド領地のみを扱うためtaxは常に0であり、tax自体を実装する必要が無い**（辺コストは常に1として扱う。UNOWNED_COSTは税負担を模したものではなく、ヒープの内部状態を実機に近づけるための踏み台コストである点に注意）。
 
 **性能（2026-09、UNOWNED_COST導入後に再計測）**: Cheapestの探索が全437領地グラフに拡大したため、登録領地数が少なくても探索ノード数は変わらなくなった。実測: 8領地で約8ms・50領地で約15ms・100領地で約22ms・150領地で約30ms・437領地（現実には起こらない極端ケース）で約87ms。導入前（登録領地のみのグラフ）は50〜150領地で1〜3ms程度だったため、体感できる範囲で遅くなっているが、現実的なギルド規模（〜150領地）でも100msの目安は下回っている。`_hqPathCache`により`refreshUI()`を挟まない限り再計算されないため、実用上は問題にならないと判断した。
 
-**`territories.json`はAPIから再生成したものであり、手で編集してはいけない。** 更新する場合は`scripts/regen-territories.mjs <api-response.json>`経由で行うこと（`--dry-run`で差分確認のみ可能）。整合性検証は`scripts/verify-territories.mjs <api-response.json>`（領地数・キー順・`Trading Routes`/`Location`の一致・隣接の対称性の5項目を検証。**キー順の検証のみ、`v3/guild/list/territory`エンドポイントの応答順がギルドの所有状況に依存し実行のたびに変わるため、原理的に常にNGになる**。これはAPIの仕様であり`territories.json`側の不備ではない。他の4項目がOKであれば整合性は保たれている）。
+**`territories.json`はAPIから再生成したものであり、手で編集してはいけない。** 更新する場合は`scratchpad/trade-route/regen-territories.mjs <api-response.json>`経由で行うこと（`--dry-run`で差分確認のみ可能）。整合性検証は`scratchpad/trade-route/verify-territories.mjs <api-response.json>`（領地数・キー順・`Trading Routes`/`Location`の一致・隣接の対称性の5項目を検証。**キー順の検証のみ、`v3/guild/list/territory`エンドポイントの応答順がギルドの所有状況に依存し実行のたびに変わるため、原理的に常にNGになる**。これはAPIの仕様であり`territories.json`側の不備ではない。他の4項目がOKであれば整合性は保たれている）。**これらのスクリプトはgit管理外（`scratchpad/`）のため、リポジトリをクローンし直した環境には存在しない。**
 
 ### 経路計算の既知の限界（現行モデル）
 
-- 上表のCheapest既知の不一致3件は、現行モデルでも解消されていない。ヒープの内部順が実機の内部実装と部分的にしか一致しておらず、原因は特定できていない。
 - `customConnections`の走査順は、ゲーム内の正解データが存在しないため決定的な挙動のための取り決め（登録順）にとどまる。
-- 領地ごとのTrading Style個別設定は本刷新では実装していない。全体一括の1つの値（`tradeRouteStyle`）のみで、`getHQPaths()`の`styleResolver`引数だけ将来の拡張用に用意してある。
 - Fastestの回帰テストはKander/Corkusのみで検証済み（81/81）。Canyon/Swamp/Ragniのfastestは未検証（cheapestのみ回帰テストに追加した）。
+
+**領地ごとのTrading Route Style個別設定（2026-09導入）**。当初「本刷新では実装していない」としていたが、`getHQPaths(hq, added, territories, customConnections, styleResolver)`の`styleResolver`は元々`(name: string) => 'cheapest'|'fastest'`という領地名を受け取るインターフェースとして設計されていたため、`eco-logic.js`側（`computeTradeRoute`・`getHQPaths`）は無変更のまま、値の保存場所とUIだけを変更して対応した。
+
+- グローバル変数`tradeRouteStyle`は廃止し、各領地のデータに`addedTerritories[name].tradeRouteStyle`（`'cheapest'\|'fastest'`、既定値`'cheapest'`）を持たせた。Treasury等、他の領地固有設定と同じ扱い。
+- `script.js`側の`getHQPaths()`ラッパーは`(name) => addedTerritories[name]?.tradeRouteStyle || 'cheapest'`を`styleResolver`として渡すだけで、per-territory解決が成立する。
+- UI: Data タブのTrading Route Styleセレクト（`#modal-trade-route-style`）は**現在開いている単体領地1件だけ**に効く。`setTradeRouteStyle(style)`が`addedTerritories[currentModalTerritory].tradeRouteStyle = style`を即座に書き込み`refreshUI()`→`renderDataTab()`で反映する（Saveを待たない。この挙動自体は全体一括だった頃から変えていない）。Edit Selected（一括編集）には別セレクト`#modal-bulk-trade-route-style`（`bulk-trade-route-style-section`、Settingsタブ、Treasuryと同じ「- No Change -」パターン）を追加し、`saveModal()`のbulk分岐で選択領地全件に適用する。
+- 検証（2026-09、`eco-logic.js`を直接呼ぶNode検証・Playwright実機検証の両方で確認済み）: Kander Claimの実データにある既知の分岐（Old Crossroads: cheapest経由=Fungal Grove／fastest経由=Talor Cemetery）で、Old Crossroadsだけ`fastest`に設定すると、Old Crossroads自身の経路だけが変わり、Old Crossroadsを経由して計算されるLexdaleの経路（`cheapest`のまま）は一切変わらないことを確認した（各領地が「自分の設定で自分からHQまでを独立に探索する」という設計どおり、経路上のノードの設定は影響しない）。
+
+**Trading Route関連の回帰テスト・移行スクリプト・実測ログ（`Trading Routes.txt`含む）は`scratchpad/trade-route/`へ移動しgit管理外にした（2026-09）。** territories.jsonの保守・実測データとの突き合わせは日常的な開発作業ではなく、必要になったときだけ参照するツール類のため、リポジトリのルートから外した。将来アルゴリズムを再検証・変更する必要が生じた場合は`scratchpad/trade-route/`の内容をローカルで参照すること。ただしgit管理外のため、リポジトリをクローンし直した環境には存在しない（移動後も`node --test scratchpad/trade-route/eco-logic.trade-route.test.js`が単体で実行できることは確認済み。実行には`scratchpad/trade-route/package.json`の`{"type":"module"}`が必要——親ディレクトリの`scratchpad/package.json`が`"type":"commonjs"`を宣言しているため、これが無いとESMの`import`文がSyntaxErrorになる）。
 
 ### 既知の制約・不採用の記録（Trading Route探索アルゴリズム関連・再検証防止）
 
@@ -625,9 +624,9 @@ stored[r] = consumption[r] × f + generation[r] × (1/60 − f)       f = (1 −
 
 ### モーダル
 - 右上にSettings/Dataのタブ切り替えボタンを持つ（表示条件: `currentModalMode === 'single'` かつ HQ設定済みの場合のみ。それ以外はボタン自体を非表示にしSettingsタブ固定）。開くときは常にSettingsタブから開始する。
-- **Settingsタブ（単体モード）**: Defense(4種×Lv0〜11) + HQ設定 + Bonus(17種) + Trading Route Style（Cheapest/Fastestの切替、2026-09追加。`tradeRouteStyle`は全領地一括の設定で、`hq-section`と同じ表示条件（`!isBulk`）を持つ。`setTradeRouteStyle(style)`を呼び`refreshUI()`する） + リアルタイムプレビュー。Import This Guild由来で未編集の推定値は`.import-estimated`（マゼンタの縁取り・ドット）で示す（2026-08導入、詳細はCUSTOM SETTINGSモーダルの「ギルド取り込み」参照）
-- **Settingsタブ（一括モード）**: 選択領地数を表示、Defense + Bonus のみ編集、保存で全選択領地に適用
-- **Dataタブ**: Trading Routes（HQからの経路・Trade Time）とResources（生産量・stored・traversing）を表示する読み取り専用タブ。Settingsタブと同系統の見た目に揃えている。**Minecraftiaは使わない**（body既定のSegoe UI）。**マップ上の領地名描画のMinecraftiaは維持している。** セクション見出しは箱の外に置き、`.data-section-label`（`.modal-section label`と同スタイル。`text-transform: uppercase`により大文字表示になる）。Trading Routesの箱は`#modal-stats`と同じ（`#0f172a`／枠線なし）、Resourcesの箱はツールチップと同じ（`#000000`／`2px solid #2C075F`）。**2つの箱でスタイルが異なるのは意図的。**
+- **Settingsタブ（単体モード）**: Defense(4種×Lv0〜11) + HQ設定 + Bonus(17種) + リアルタイムプレビュー。Import This Guild由来で未編集の推定値は`.import-estimated`（マゼンタの縁取り・ドット）で示す（2026-08導入、詳細はCUSTOM SETTINGSモーダルの「ギルド取り込み」参照）
+- **Settingsタブ（一括モード）**: 選択領地数を表示、Defense + Bonus + Trading Route Style（`#bulk-trade-route-style-section`、2026-09追加。Treasuryと同じ「- No Change -」パターン、`#modal-bulk-trade-route-style`）を編集、保存で全選択領地に適用
+- **Dataタブ（単体モードのみ、`modal-tabs`自体がbulkでは非表示のため到達不可）**: Trading Routes（HQからの経路・Trade Time）とTrading Route Style（Cheapest/Fastestの切替、`#trade-route-style-section`、2026-09に`#data-trading-routes`の直後へ移動）と、Resources（生産量・stored・traversing）を表示する読み取り専用タブ。Trading Route Styleのみ**現在開いている領地1件だけ**に効く設定で、`setTradeRouteStyle(style)`が`addedTerritories[currentModalTerritory].tradeRouteStyle`へ即座に反映し、Data タブを開いたままなら`renderDataTab()`でその場に再描画する（Saveを待たない）。Settingsタブと同系統の見た目に揃えている。**Minecraftiaは使わない**（body既定のSegoe UI）。**マップ上の領地名描画のMinecraftiaは維持している。** セクション見出しは箱の外に置き、`.data-section-label`（`.modal-section label`と同スタイル。`text-transform: uppercase`により大文字表示になる）。Trading Routesの箱は`#modal-stats`と同じ（`#0f172a`／枠線なし）、Resourcesの箱はツールチップと同じ（`#000000`／`2px solid #2C075F`）。**2つの箱でスタイルが異なるのは意図的。**
 - `.upgrade-container` には `user-select: none` / `-webkit-touch-callout: none` を指定している。指定しないとiOS Safariで長押し時にネイティブのテキスト選択UIが割り込み、自前のツールチップが表示されなくなるため。**モーダル全体には指定しないこと**（他の箇所のテキストがコピーできなくなるため）。
 
 ### CUSTOM SETTINGSモーダル（左下ボタン）
@@ -714,17 +713,18 @@ stored[r] = consumption[r] × f + generation[r] × (1/60 − f)       f = (1 −
 
 ## Share Link仕様
 
-- **生成は常に新形式 `#p=<base64url>`（ビットパック＋deflate-raw圧縮、現在version 6）で行う。** `CompressionStream`が使えない環境、または`territory-ids.json`が読み込めていない場合のみ、旧形式`#s=`（非圧縮base64 JSON、`getShareState()`のv3形式）にフォールバックする。
-- 旧形式 `#s=`（v1/v2/v3）と `#c=`（v3, deflate圧縮JSON）の**読み込みは読み込み専用として維持**する（`loadFromHash()`内に分岐が残る）。v3形式の`state.rs`（1ならfastest、省略時cheapest）で`tradeRouteStyle`を復元する（2026-09追加）。
-- **`#p=`のv4は読み込み専用として互換を維持する**（資源オーバーライドが空の状態として読む）。v5も読み込み専用として維持する（`tradeRouteStyle`が既定値'cheapest'として読まれる）。生成は常にv6。
+- **生成は常に新形式 `#p=<base64url>`（ビットパック＋deflate-raw圧縮、現在version 7）で行う。** `CompressionStream`が使えない環境、または`territory-ids.json`が読み込めていない場合のみ、旧形式`#s=`（非圧縮base64 JSON、`getShareState()`のv3形式）にフォールバックする。
+- 旧形式 `#s=`（v1/v2/v3）と `#c=`（v3, deflate圧縮JSON）の**読み込みは読み込み専用として維持**する（`loadFromHash()`内に分岐が残る）。v3形式は2026-09に領地ごとの個別`tradeRouteStyle`対応した: 各`t`配列の要素に`item.rs`（1ならその領地はfastest、省略時は下記フォールバック）を持たせ、トップレベルの`state.rs`（1ならfastest、省略時cheapest）は**新規書き込みはしなくなったが、読み込み時のフォールバックとしてのみ**残している（`item.rs`が無い＝領地ごとの個別値を持たない旧リンクの場合に`state.rs`を全領地の初期値として適用する。`getShareState()`が新たに書き出すv3 JSONはトップレベル`rs`を持たず`item.rs`のみを使う）。v1/v2は`tradeRouteStyle`の概念自体が存在しないため常に`'cheapest'`として読む。
+- **`#p=`のv4は読み込み専用として互換を維持する**（資源オーバーライドが空の状態として読む）。v5・v6も読み込み専用として維持する。生成は常にv7。
 - `#p=`形式のビットレイアウト（MSBファースト、8bit境界まで0パディング後にdeflate-raw圧縮）:
-  - ヘッダ: version(4bit, 現在6固定) + territoryCount(12bit)
-  - 領地ブロック×territoryCount: id(9bit, `TERRITORY_ID_MAP`参照) + hq(1bit) + treasury(3bit) + defenseFlag(1bit)[+damage/attack/health/defense各4bit] + bonusFlag(1bit)[+bonusBitmap 17bit + 該当ビット数分のbonusLevel各4bit]
+  - ヘッダ: version(4bit, 現在7固定) + territoryCount(12bit)
+  - 領地ブロック×territoryCount: id(9bit, `TERRITORY_ID_MAP`参照) + hq(1bit) + treasury(3bit) + **tradeRouteStyle(1bit, 0=cheapest/1=fastest。v7で追加)** + defenseFlag(1bit)[+damage/attack/health/defense各4bit] + bonusFlag(1bit)[+bonusBitmap 17bit + 該当ビット数分のbonusLevel各4bit]
   - 追加接続線ブロック: connCount(10bit) + (a: 9bit, b: 9bit) × connCount（有効・無効を問わず`customConnections`全件、IDが存在しないものはスキップ）
   - Tributeブロック: tributeBitmap(5bit, emeralds/ore/crops/fish/wood順) + (sign 1bit, magnitude 24bit) × 立っているビット数
   - 資源オーバーライドブロック（v5で追加）: overrideCount(10bit) + [id(9bit) + tier(2bit, 0=通常/1=City/2=Rainbow) + resourceMap(4bit, ore/wood/fish/cropsの順) + doubleFlag(1bit)] × overrideCount。1件16bit固定。**無効なオーバーライド（対象領地が未登録）も保存する。** `tier===2`（Rainbow）の場合`resourceMap`と`doubleFlag`は0を書き込み、復元時も無視する。生成時に`TERRITORY_ID_MAP`に存在しない領地はスキップし`console.warn`、復元時に`id`が範囲外またはterritoriesに存在しない場合はその要素をスキップする。
-  - Trading Route Styleブロック（v6で追加）: tradeRouteStyle(1bit, 0=cheapest/1=fastest)。末尾に1bit固定で追加。v5以前のリンクを読む場合はこのビット自体が存在しないため、`version>=6`のときのみ読む（既定値'cheapest'にフォールバック）。
+  - **v7では末尾のTrading Route Styleブロックは廃止した**（領地ごとのビットに置き換えたため）。**v6のみ**、末尾に全領地共通のグローバル1bit（`tradeRouteStyle`、0=cheapest/1=fastest）が存在する。`version===6`のリンクを読む場合のみこのビットを読み、読み込んだ全領地の初期`tradeRouteStyle`として一括適用する（今までの見た目を保つための後方互換）。v5以前のリンクにはこのビット自体が存在しないため読まず、既定値'cheapest'のままにする。
 - 読み込みは `init()` 内の `loadFromHash()` で実行。`#p=`のデコードは `parseShareBits()`、エンコードは `buildShareBits()`（`BitWriter`/`BitReader`使用）。復元後は`_hqPathCache`・`_traversingCache`・`_fullDistCache`を無効化し`refreshUI()`を呼ぶ（`autoAssignHQ()`は呼ばない）。
+- **`tradeRouteStyle`の領地ごと個別化（2026-09）でグローバル変数`tradeRouteStyle`自体を廃止した。** `eco-logic.js`（`computeTradeRoute`/`getHQPaths`）は無変更で、`script.js`側の`getHQPaths()`ラッパーが渡す`styleResolver`を`(name) => addedTerritories[name]?.tradeRouteStyle || 'cheapest'`に差し替えるだけで対応できた（詳細は「Trading Route探索アルゴリズム」内の該当節参照）。実際にPlaywrightでv6リンク（全領地共通のグローバルfastestビット）を読み込ませ、全領地に正しく適用されること、および新規v7リンクの生成→読み込みの往復で領地ごとに異なる`tradeRouteStyle`（片方cheapest・片方fastest）が保持されることを確認済み（2026-09）。
 
 ### 警告（変更時は必ず確認すること）
 - **`territory-ids.json` は末尾追記のみ。既存要素の並び替え・削除・挿入は禁止**（配列インデックスがそのまま共有リンクのIDになるため、順序を変えると過去の共有リンクが全て壊れる）。
